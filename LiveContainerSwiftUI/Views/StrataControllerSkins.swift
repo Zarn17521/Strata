@@ -82,7 +82,13 @@ private struct StrataControllerSkinGameView: View {
     var body: some View {
         Form {
             Section("Game") {
-                LabeledContent("App", value: app.displayName)
+                HStack {
+                    Text("App")
+                    Spacer()
+                    Text(app.displayName)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
                 if app.uiContainers.isEmpty {
                     Text("Launch this game once to create a data container.")
                         .foregroundStyle(.secondary)
@@ -117,8 +123,10 @@ private struct StrataControllerSkinGameView: View {
                             .frame(maxHeight: 220)
                             .frame(maxWidth: .infinity)
                     }
-                    Button("Import PNG or JPG", systemImage: "photo.badge.plus") { importing = true }
-                        .disabled(container == nil)
+                    Button { importing = true } label: {
+                        Label("Import PNG or JPG", systemImage: "photo.badge.plus")
+                    }
+                    .disabled(container == nil)
                     if importedImage == nil {
                         Text("Choose a transparent PNG skin image. Native touch targets remain in their original positions.")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -126,9 +134,11 @@ private struct StrataControllerSkinGameView: View {
                 }
             }
             Section {
-                Button("Restore original controller", systemImage: "arrow.uturn.backward") {
+                Button {
                     style = "original"
                     save()
+                } label: {
+                    Label("Restore original controller", systemImage: "arrow.uturn.backward")
                 }
                 .disabled(container == nil)
             } footer: {
