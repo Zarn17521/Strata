@@ -1,44 +1,17 @@
 import SwiftUI
 
 private enum LiveBoardMode: String, CaseIterable, Identifiable {
-    case ios, cinematic, bigPicture, switchboard, shelf, arcade
+    case switchboard
     var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .ios: return "iOS Home"
-        case .cinematic: return "Cinematic"
-        case .bigPicture: return "Big Picture"
-        case .switchboard: return "Switchboard"
-        case .shelf: return "Shelf"
-        case .arcade: return "Arcade"
-        }
-    }
-    var symbol: String {
-        switch self {
-        case .ios: return "square.grid.3x3.fill"
-        case .cinematic: return "rectangle.stack.fill"
-        case .bigPicture: return "gamecontroller.fill"
-        case .switchboard: return "rectangle.split.3x1.fill"
-        case .shelf: return "square.grid.3x2.fill"
-        case .arcade: return "app.badge.fill"
-        }
-    }
-    var detail: String {
-        switch self {
-        case .ios: return "A familiar, compact app grid."
-        case .cinematic: return "A cinematic carousel with controller navigation."
-        case .bigPicture: return "A cover library with controller navigation."
-        case .switchboard: return "A clean horizontal game row with controller navigation."
-        case .shelf: return "A full-screen poster grid tinted by the selected game."
-        case .arcade: return "A full-screen grid of rounded app tiles tinted by the selected game."
-        }
-    }
+    var title: String { "Switchboard" }
+    var symbol: String { "rectangle.split.3x1.fill" }
+    var detail: String { "Square game covers in a horizontal row." }
 }
 
 // The existing list stays mounted to retain install, deep-link and JIT delegates.
 struct LiveBoardRootView: View {
     @EnvironmentObject private var sharedModel: SharedModel
-    @AppStorage("LiveBoardMode", store: LCUtils.appGroupUserDefault) private var mode = "ios"
+    @AppStorage("LiveBoardMode", store: LCUtils.appGroupUserDefault) private var mode = "switchboard"
     @State private var interfacePresented = false
     @State private var settingsPresented = false
     @AppStorage("StrataResumeAfterSystemClose", store: LCUtils.appGroupUserDefault) private var resumeAfterSystemClose = false
@@ -47,7 +20,7 @@ struct LiveBoardRootView: View {
 
     var body: some View {
         LCAppListView(openInterface: { interfacePresented = true })
-        .onAppear { if mode == "dashboard" || mode == "spotlight" { mode = "cinematic" }; StrataMemoryOverlay.shared.apply() }
+        .onAppear { if mode != "switchboard" { mode = "switchboard" }; StrataMemoryOverlay.shared.apply() }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $interfacePresented, onDismiss: { NotificationCenter.default.post(name: LiveBoardControllerInput.resumeNotification, object: nil) }) {
             NavigationView {
