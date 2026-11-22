@@ -37,7 +37,7 @@ struct AppReplaceOption : Hashable {
 }
 
 struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
-    @AppStorage("LiveBoardMode", store: LCUtils.appGroupUserDefault) private var liveBoardMode = "ios"
+    @AppStorage("LiveBoardMode", store: LCUtils.appGroupUserDefault) private var liveBoardMode = "switchboard"
     @State private var manageLibrary = false
     private var builtInSideStore: LCAppModel? { LiveBoardBundledApps.sideStore }
     @State var didAppear = false
