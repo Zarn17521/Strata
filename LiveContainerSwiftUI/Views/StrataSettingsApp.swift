@@ -30,6 +30,7 @@ struct StrataSettingsApp: View {
     @AppStorage("StrataKeepGuestAlive", store: LCUtils.appGroupUserDefault) private var keepGuestAlive = false
     @AppStorage("StrataSeamlessSwitching", store: LCUtils.appGroupUserDefault) private var seamlessSwitching = true
     @AppStorage(StrataMemoryOverlay.key, store: LCUtils.appGroupUserDefault) private var memoryOverlay = false
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = false
 
     private struct Entry: Identifiable {
         let id: String
@@ -127,7 +128,11 @@ struct StrataSettingsApp: View {
             actionRow("Choose Interface", symbol: "square.grid.3x3.fill", tint: .indigo, id: "settings.interface") { close(); openInterface() }
             Toggle(isOn: Binding(get: { universalCategories }, set: { LiveBoardSharedCategories.setEnabled($0); universalCategories = $0 })) { row("Same categories everywhere", symbol: "tag.fill", tint: .orange) }
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
+            Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
+                .accessibilityIdentifier("settings.nxnative.skin")
             link("switcher")
+        } footer: {
+            Text("NxNative Skin adds an optional Game Boy-style frame only in unused display areas: teal/purple in portrait, red/cyan in landscape. It never resizes gameplay or moves controller buttons. Turn it ON, then restart the game in Strata. It is OFF by default.")
         }
         Section("Apps") {
             actionRow("Manage Apps", symbol: "square.stack.3d.up", tint: .blue, id: "settings.manage") { openManagement() }
