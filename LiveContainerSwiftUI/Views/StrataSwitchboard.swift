@@ -27,6 +27,11 @@ struct StrataSwitchboard: View {
     private var libraries: [String: LiveBoardModeLibrary] { LiveBoardLibraryCache.decode(savedLibrary) }
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
+    @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
+    private var foreground: Color { darkMode ? .white : .black }
+    private var background: Color { darkMode ? .black : .white }
+    private var buttonSurface: Color { darkMode ? Color(white: 0.13) : Color(white: 0.92) }
+    private var tilePlaceholder: Color { darkMode ? Color(white: 0.10) : Color(white: 0.95) }
     @StateObject private var audio = LiveBoardNavigationAudio()
     private var library: LiveBoardModeLibrary { _ = universalCategories; return LiveBoardSharedCategories.library(libraries, mode: "switchboard") }
     private var filtered: [LCAppModel] { let state = library; return apps.filter { !state.hidden.contains(liveBoardAppKey($0)) && (category == nil || state.assignments[liveBoardAppKey($0)] == category) } }
@@ -37,40 +42,35 @@ struct StrataSwitchboard: View {
     }
     var body: some View {
         GeometryReader { geo in
-            // Console-style home: one edge-to-edge row of large square tiles. The row scrolls only as far as
-            // needed to keep the selection visible, so tiles run off the screen edge instead of being clipped
-            // inside an inset page.
+            // One centered square cover per page. Swipe to navigate games.
             let margin = max(28, geo.safeAreaInsets.leading + 20)
-            let tile = max(96, min(geo.size.height * 0.46, 300))
+            let tile = max(96, min(geo.size.height * 0.46, geo.size.width - margin * 2 - 10))
             let items = filtered
             ZStack {
-                // A fixed white background (no selected-game color tint).
-                Color.white.ignoresSafeArea()
+                // Pure black OLED pixels in dark mode, pure white in light mode.
+                background.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
                     statusBar.padding(.horizontal, margin).padding(.top, 10)
                     categoryStrip.padding(.horizontal, margin).padding(.top, 4)
                     Spacer(minLength: 4)
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(alignment: .bottom, spacing: tile * 0.07) {
-                                ForEach(items, id: \.self) { app in gameTile(app, size: tile) }
-                            }
-                            .padding(.horizontal, margin)
-                            .padding(.vertical, 8)
+                    TabView(selection: $selectedKey) {
+                        ForEach(items, id: \.self) { app in
+                            gameTile(app, size: tile)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .tag(liveBoardAppKey(app))
                         }
-                        .frame(height: tile + 64)
-                        .ignoresSafeArea(.container, edges: .horizontal)
-                        .accessibilityIdentifier("switchboard.row")
-                        .onChange(of: selectedKey) { key in
-                            if sounds && phase == .active { audio.play() }
-                            withAnimation(.easeOut(duration: 0.16)) { proxy.scrollTo(key, anchor: UnitPoint(x: 0.22, y: 0.5)) }
-                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: tile + 70)
+                    .accessibilityIdentifier("switchboard.pages")
+                    .onChange(of: selectedKey) { _ in
+                        if sounds && phase == .active { audio.play() }
                     }
                     if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                     Spacer(minLength: 4)
-                    shortcutButtons.frame(maxWidth: .infinity)
+                    shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
                     Spacer(minLength: 4)
-                    Divider().overlay(Color.black.opacity(0.15))
+                    Divider().overlay(foreground.opacity(0.15))
                     HStack {
                         Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
                         Spacer()
@@ -80,8 +80,8 @@ struct StrataSwitchboard: View {
                     }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
                 }
             }
-        }.foregroundStyle(.black)
-        .preferredColorScheme(.light)
+        }.foregroundStyle(foreground)
+        .preferredColorScheme(darkMode ? .dark : .light)
         .background(LiveBoardOrientationLock(mask: .portrait))
         .onAppear { visible = true; selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
         .onDisappear { visible = false; controller.stop(); audio.stop() }
@@ -124,23 +124,23 @@ struct StrataSwitchboard: View {
                                         VStack(spacing: 8) {
                                             // Name sits above the selected tile only; space is reserved so the row never jumps.
                                             Text(customization.name(app)).font(.system(size: max(15, tile * 0.075), weight: .medium))
-                                                .foregroundStyle(.black).lineLimit(1)
+                                                .foregroundStyle(foreground).lineLimit(1)
                                                 .minimumScaleFactor(0.6).frame(width: tile + 10).opacity(isSelected ? 1 : 0)
                                             ZStack {
-                                                Color(white: 0.95)
+                                                tilePlaceholder
                                                 if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
                                                     Image(uiImage: cover).resizable().scaledToFill()
-                                                } else { LiveBoardIconImage(app: app, dark: false).scaledToFit() }
+                                                } else { LiveBoardIconImage(app: app, dark: darkMode).scaledToFit() }
                                             }
                                             .frame(width: tile, height: tile)
                                             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
                                             .padding(5)
                                             .overlay(RoundedRectangle(cornerRadius: radius + 5, style: .continuous)
-                                                .strokeBorder(.black, lineWidth: isSelected ? 4 : 0))
+                                                .strokeBorder(foreground, lineWidth: isSelected ? 3 : 0))
                                             .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
                                         }.frame(width: tile + 10)
                                     }.buttonStyle(.plain).id(key)
-                                    .strataReorderable(key, all: apps)
+                                    // Drag-to-reorder omitted to keep swipe navigation responsive.
                                     .accessibilityLabel(customization.name(app))
                                     .accessibilityIdentifier("switchboard.tile." + key)
                                     .contextMenu {
@@ -176,18 +176,24 @@ struct StrataSwitchboard: View {
         }
     }
     private var shortcutButtons: some View {
-        HStack(spacing: 22) {
-            roundButton("folder.badge.gearshape", label: "Categories and hidden apps", tint: .orange) { editingLibrary = true }
-            roundButton("square.grid.2x2.fill", label: "Manage apps", tint: .red) { controller.stop(); openManagement() }
-            roundButton("photo.fill", label: "Choose cover artwork", tint: .blue) { if let app = selected { coverKey = liveBoardAppKey(app); choosingCover = true; controller.stop() } }
-            roundButton("gearshape.fill", label: "App settings", tint: .gray) { if let app = selected { controller.stop(); manage(app) } }
-            roundButton("slider.horizontal.3", label: "Interface", tint: .purple) { controller.stop(); openInterface() }
+        // Three equally spaced, icon-only actions directly beneath the cover.
+        HStack(spacing: 20) {
+            roundButton("square.grid.2x2.fill", label: "Manage apps", tint: .red) {
+                controller.stop(); openManagement()
+            }
+            roundButton("slider.horizontal.3", label: "Interface settings", tint: .purple) {
+                controller.stop(); openInterface()
+            }
+            roundButton(darkMode ? "moon.fill" : "moon", label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode", tint: .cyan) {
+                darkMode.toggle()
+            }
         }.buttonStyle(.plain)
     }
     private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: 50, height: 50).background(Circle().fill(Color(white: 0.92)))
+            Image(systemName: symbol).font(.system(size: 21, weight: .semibold)).foregroundStyle(tint)
+                .frame(width: 50, height: 50)
+                .background(Circle().fill(buttonSurface))
         }.accessibilityLabel(label)
     }
 
