@@ -15,7 +15,6 @@ struct StrataSwitchboard: View {
     @ObservedObject private var customization = LiveBoardAppCustomization.shared
     @AppStorage("LiveBoardModeLibraries", store: LCUtils.appGroupUserDefault) private var savedLibrary = "{}"
     @State private var selectedKey = ""
-    @State private var lastGradient: [Color] = [Color(white: 0.17), Color(white: 0.11)]
     @State private var category: String?
     @State private var editingLibrary = false
     @State private var newCategory = ""
@@ -45,11 +44,8 @@ struct StrataSwitchboard: View {
             let tile = max(96, min(geo.size.height * 0.46, 300))
             let items = filtered
             ZStack {
-                // Tinted by the selected game's artwork or icon.
-                LinearGradient(colors: (selected.flatMap { StrataGameColors.gradient(artwork, app: $0) }) ?? lastGradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .ignoresSafeArea()
-                    .animation(.easeInOut(duration: 0.35), value: ((selected.flatMap { StrataGameColors.gradient(artwork, app: $0) }) ?? lastGradient).description)
-                    .onChange(of: selected.flatMap { StrataGameColors.gradient(artwork, app: $0) }?.description) { _ in if let next = selected.flatMap({ StrataGameColors.gradient(artwork, app: $0) }) { lastGradient = next } }
+                // A fixed white background (no selected-game color tint).
+                Color.white.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
                     statusBar.padding(.horizontal, margin).padding(.top, 10)
                     categoryStrip.padding(.horizontal, margin).padding(.top, 4)
@@ -74,7 +70,7 @@ struct StrataSwitchboard: View {
                     Spacer(minLength: 4)
                     shortcutButtons.frame(maxWidth: .infinity)
                     Spacer(minLength: 4)
-                    Divider().overlay(Color.white.opacity(0.12))
+                    Divider().overlay(Color.black.opacity(0.15))
                     HStack {
                         Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
                         Spacer()
@@ -84,7 +80,8 @@ struct StrataSwitchboard: View {
                     }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
                 }
             }
-        }.foregroundStyle(.white)
+        }.foregroundStyle(.black)
+        .preferredColorScheme(.light)
         .background(LiveBoardOrientationLock(mask: .landscape))
         .onAppear { visible = true; selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
         .onDisappear { visible = false; controller.stop(); audio.stop() }
@@ -127,10 +124,10 @@ struct StrataSwitchboard: View {
                                         VStack(spacing: 8) {
                                             // Name sits above the selected tile only; space is reserved so the row never jumps.
                                             Text(customization.name(app)).font(.system(size: max(15, tile * 0.075), weight: .medium))
-                                                .foregroundStyle(Color(red: 0.25, green: 0.85, blue: 1)).lineLimit(1)
+                                                .foregroundStyle(.black).lineLimit(1)
                                                 .minimumScaleFactor(0.6).frame(width: tile + 10).opacity(isSelected ? 1 : 0)
                                             ZStack {
-                                                Color(white: 0.2)
+                                                Color(white: 0.95)
                                                 if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
                                                     Image(uiImage: cover).resizable().scaledToFill()
                                                 } else { LiveBoardIconImage(app: app, dark: false).scaledToFit() }
@@ -139,8 +136,8 @@ struct StrataSwitchboard: View {
                                             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
                                             .padding(5)
                                             .overlay(RoundedRectangle(cornerRadius: radius + 5, style: .continuous)
-                                                .strokeBorder(Color(red: 0.25, green: 0.85, blue: 1), lineWidth: isSelected ? 4 : 0))
-                                            .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+                                                .strokeBorder(.black, lineWidth: isSelected ? 4 : 0))
+                                            .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
                                         }.frame(width: tile + 10)
                                     }.buttonStyle(.plain).id(key)
                                     .strataReorderable(key, all: apps)
@@ -190,7 +187,7 @@ struct StrataSwitchboard: View {
     private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: 50, height: 50).background(Circle().fill(Color(white: 0.27)))
+                .frame(width: 50, height: 50).background(Circle().fill(Color(white: 0.92)))
         }.accessibilityLabel(label)
     }
 
