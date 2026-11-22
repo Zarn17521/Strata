@@ -78,7 +78,27 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.file_to_build.outputs.file_to_build }}
-        run: xcodebuild archive -archivePath "$archive_path" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" -sdk iphoneos -arch arm64 -configuration Release | xcpretty && exit ${PIPESTATUS[0]}
+        run: |
+          set +e
+          # Preserve the raw compiler output; xcpretty often hides the exact Swift
+          # diagnostic while still reporting "SwiftCompile failed".
+          xcodebuild archive -archivePath "$archive_path" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" -sdk iphoneos -arch arm64 -configuration Release 2>&1 | tee "$RUNNER_TEMP/strata-xcodebuild.log" | xcpretty
+          result="${PIPESTATUS[0]}"
+          set -e
+          if [ "$result" -ne 0 ]; then
+            echo "::group::Compiler diagnostics (raw xcodebuild log)"
+            grep -nE 'error:|fatal error:|SwiftCompile|\.swift:[0-9]+:[0-9]+' "$RUNNER_TEMP/strata-xcodebuild.log" | tail -n 120 || true
+            echo "::endgroup::"
+          fi
+          exit "$result"
+      - name: Upload compiler diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Strata-Xcode-Compiler-Log
+          path: ${{ runner.temp }}/strata-xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 3
       - name: Tar Build Artifact
         run: tar -cvf "$archive_path.xcarchive.tar" "$archive_path.xcarchive"
       - name: Upload a Build Artifact
