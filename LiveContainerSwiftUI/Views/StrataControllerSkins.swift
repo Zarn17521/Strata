@@ -57,12 +57,16 @@ private struct StrataControllerSkinGameView: View {
     @State private var message: String?
     @State private var importedImage: UIImage?
 
-    private let styles: [(id: String, title: String)] = [
-        ("original", "Original NxNative"),
-        ("classic", "Classic Dark"),
-        ("neon", "Neon Purple"),
-        ("clear", "Minimal Transparent"),
-        ("image", "Custom Image")
+    private struct SkinPreset: Identifiable {
+        let id: String
+        let title: String
+    }
+    private let styles: [SkinPreset] = [
+        .init(id: "original", title: "Original NxNative"),
+        .init(id: "classic", title: "Classic Dark"),
+        .init(id: "neon", title: "Neon Purple"),
+        .init(id: "clear", title: "Minimal Transparent"),
+        .init(id: "image", title: "Custom Image")
     ]
 
     private var container: LCContainer? {
