@@ -28,6 +28,8 @@ struct StrataSwitchboard: View {
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var skinEnabled = false
+    @AppStorage("StrataSwitchboardLandscape", store: LCUtils.appGroupUserDefault) private var landscapeMode = false
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
     private var buttonSurface: Color { darkMode ? Color(white: 0.13) : Color(white: 0.92) }
@@ -82,7 +84,7 @@ struct StrataSwitchboard: View {
             }
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
-        .background(LiveBoardOrientationLock(mask: .portrait))
+        .background(LiveBoardOrientationLock(mask: landscapeMode ? .landscape : .portrait))
         .onAppear { visible = true; selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
         .onDisappear { visible = false; controller.stop(); audio.stop() }
         .onChange(of: phase) { value in if value == .active { busy = false; bind() } else { controller.stop() } }
@@ -175,17 +177,37 @@ struct StrataSwitchboard: View {
         }
     }
     private var shortcutButtons: some View {
-        // Three equally spaced, icon-only actions directly beneath the cover.
+        // Three equal-sized, icon-only toggles under the single selected cover.
+        // Long-press the first two buttons for the previous management shortcuts.
         HStack(spacing: 20) {
-            roundButton("square.grid.2x2.fill", label: "Manage apps", tint: .red) {
-                controller.stop(); openManagement()
+            roundButton("tshirt.fill",
+                        label: skinEnabled ? "Disable NxNative skin" : "Enable NxNative skin",
+                        tint: skinEnabled ? .purple : .gray) {
+                skinEnabled.toggle()
             }
-            roundButton("slider.horizontal.3", label: "Interface settings", tint: .purple) {
-                controller.stop(); openInterface()
+            .accessibilityIdentifier("switchboard.toggle.skin")
+            .contextMenu {
+                Button("Manage apps", systemImage: "square.grid.2x2.fill") {
+                    controller.stop(); openManagement()
+                }
             }
-            roundButton(darkMode ? "moon.fill" : "moon", label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode", tint: .cyan) {
+            roundButton(landscapeMode ? "iphone" : "iphone.landscape",
+                        label: landscapeMode ? "Switch to portrait" : "Switch to landscape",
+                        tint: .orange) {
+                landscapeMode.toggle()
+            }
+            .accessibilityIdentifier("switchboard.toggle.orientation")
+            .contextMenu {
+                Button("Interface settings", systemImage: "slider.horizontal.3") {
+                    controller.stop(); openInterface()
+                }
+            }
+            roundButton(darkMode ? "moon.fill" : "moon",
+                        label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
+                        tint: .cyan) {
                 darkMode.toggle()
             }
+            .accessibilityIdentifier("switchboard.toggle.darkMode")
         }.buttonStyle(.plain)
     }
     private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
