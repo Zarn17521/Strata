@@ -158,14 +158,13 @@ struct StrataSwitchboard: View {
                                     }
     }
 
+    // The system status bar already displays time, Wi-Fi and battery.
+    // Keep only Strata's wordmark to avoid a duplicated status bar.
     private var statusBar: some View {
-        HStack(spacing: 14) {
-            Text("STRATA").font(.headline.weight(.semibold)).tracking(1.5)
-            Spacer()
-            Text(Date(), style: .time).font(.headline.monospacedDigit())
-            Image(systemName: "wifi")
-            Image(systemName: UIDevice.current.batteryState == .charging ? "battery.100percent.bolt" : "battery.75percent")
-        }.font(.headline)
+        Text("STRATA")
+            .font(.headline.weight(.semibold))
+            .tracking(1.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
     private var categoryStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
