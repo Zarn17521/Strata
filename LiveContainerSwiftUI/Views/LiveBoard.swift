@@ -12,6 +12,7 @@ private enum LiveBoardMode: String, CaseIterable, Identifiable {
 struct LiveBoardRootView: View {
     @EnvironmentObject private var sharedModel: SharedModel
     @AppStorage("LiveBoardMode", store: LCUtils.appGroupUserDefault) private var mode = "switchboard"
+    @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var switchboardDark = false
     @State private var interfacePresented = false
     @State private var settingsPresented = false
     @AppStorage("StrataResumeAfterSystemClose", store: LCUtils.appGroupUserDefault) private var resumeAfterSystemClose = false
@@ -21,7 +22,7 @@ struct LiveBoardRootView: View {
     var body: some View {
         LCAppListView(openInterface: { interfacePresented = true })
         .onAppear { if mode != "switchboard" { mode = "switchboard" }; StrataMemoryOverlay.shared.apply() }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(switchboardDark ? .dark : .light)
         .sheet(isPresented: $interfacePresented, onDismiss: { NotificationCenter.default.post(name: LiveBoardControllerInput.resumeNotification, object: nil) }) {
             NavigationView {
                 ScrollView {
