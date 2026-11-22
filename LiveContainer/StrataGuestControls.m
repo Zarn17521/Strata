@@ -5,6 +5,123 @@
 #import <UIKit/UIKit.h>
 #import <unistd.h>
 
+// Optional NxNative appearance-only bezel. This is a transparent touch-through
+// decoration that lives between the Metal picture and the original gamepad.
+// It never resizes the picture, creates touch controls or changes guest input.
+static NSString * const StrataNxSkinToggleKey = @"StrataNxSkinEnabled";
+static const NSInteger StrataNxSkinViewTag = 877144;
+
+@interface StrataNxSkinView : UIView
+@end
+@implementation StrataNxSkinView
+- (instancetype)initWithFrame:(CGRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+        self.userInteractionEnabled = NO;
+        self.opaque = NO;
+        self.backgroundColor = UIColor.clearColor;
+        self.contentMode = UIViewContentModeRedraw;
+        self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        self.tag = StrataNxSkinViewTag;
+        self.accessibilityIdentifier = @"strata.nxnative.cosmetic-skin";
+    }
+    return self;
+}
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    [self setNeedsDisplay];
+}
+- (void)drawRect:(CGRect)rect {
+    UIView *parent = self.superview;
+    if (!parent || CGRectIsEmpty(self.bounds)) return;
+    UIView *picture = nil;
+    for (UIView *child in parent.subviews) {
+        if ([NSStringFromClass(child.class) isEqualToString:@"DmGameView"]) { picture = child; break; }
+    }
+    if (!picture || picture.hidden) return;
+
+    CGRect bounds = self.bounds;
+    CGRect game = CGRectIntersection(bounds, picture.frame);
+    if (CGRectIsEmpty(game)) return;
+    BOOL portrait = bounds.size.height > bounds.size.width;
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+
+    // Even-odd clip: color ONLY the unused letterbox / touch-panel area.
+    // All existing game pixels and the native pad hit targets remain untouched.
+    CGContextSaveGState(ctx);
+    CGContextAddRect(ctx, bounds);
+    CGContextAddRect(ctx, CGRectInset(game, -0.5, -0.5));
+    CGContextEOClip(ctx);
+
+    NSArray *colors = portrait
+        ? @[
+            (__bridge id)[UIColor colorWithRed:0.06 green:0.06 blue:0.09 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithRed:0.10 green:0.53 blue:0.48 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithRed:0.30 green:0.12 blue:0.39 alpha:1].CGColor
+          ]
+        : @[
+            (__bridge id)[UIColor colorWithRed:0.20 green:0.72 blue:0.82 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithRed:0.20 green:0.72 blue:0.82 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithRed:0.95 green:0.13 blue:0.13 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithRed:0.95 green:0.13 blue:0.13 alpha:1].CGColor
+          ];
+    CGFloat stopsPortrait[] = {0.0, 0.48, 1.0};
+    CGFloat stopsLandscape[] = {0.0, 0.49, 0.51, 1.0};
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGGradientRef grad = CGGradientCreateWithColors(space, (__bridge CFArrayRef)colors, portrait ? stopsPortrait : stopsLandscape);
+    if (grad) {
+        CGContextDrawLinearGradient(ctx, grad,
+            portrait ? CGPointMake(CGRectGetMidX(bounds), CGRectGetMinY(bounds)) : CGPointMake(CGRectGetMinX(bounds), CGRectGetMidY(bounds)),
+            portrait ? CGPointMake(CGRectGetMidX(bounds), CGRectGetMaxY(bounds)) : CGPointMake(CGRectGetMaxX(bounds), CGRectGetMidY(bounds)), 0);
+        CGGradientRelease(grad);
+    }
+    CGColorSpaceRelease(space);
+    CGContextRestoreGState(ctx);
+
+    // A subtle screen edge, without a big opaque cover over the game content.
+    CGContextSaveGState(ctx);
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:0.06 alpha:0.88].CGColor);
+    CGContextSetLineWidth(ctx, 3.0);
+    CGContextStrokeRect(ctx, CGRectInset(game, -1.5, -1.5));
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:1 alpha:0.38].CGColor);
+    CGContextSetLineWidth(ctx, 1.0);
+    CGContextStrokeRect(ctx, CGRectInset(game, -3.0, -3.0));
+    CGContextRestoreGState(ctx);
+}
+@end
+
+static UIView *StrataFindNxPadHost(UIView *view, NSUInteger depth) {
+    if (!view || depth > 6) return nil;
+    BOOL game = NO, pad = NO;
+    for (UIView *child in view.subviews) {
+        NSString *name = NSStringFromClass(child.class);
+        game |= [name isEqualToString:@"DmGameView"];
+        pad |= [name isEqualToString:@"DmGamepad"];
+    }
+    if (game && pad) return view;
+    for (UIView *child in view.subviews) {
+        UIView *found = StrataFindNxPadHost(child, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
+    if (!window || window.isHidden || ![NSUserDefaults.lcGuestAppId.lowercaseString hasPrefix:@"org.nxnative"]) return;
+    if (![[[NSUserDefaults alloc] initWithSuiteName:group] boolForKey:StrataNxSkinToggleKey]) return;
+    UIView *host = StrataFindNxPadHost(window.rootViewController.view, 0);
+    if (!host || [host viewWithTag:StrataNxSkinViewTag]) return;
+    UIView *pad = nil;
+    for (UIView *child in host.subviews) {
+        if ([NSStringFromClass(child.class) isEqualToString:@"DmGamepad"]) { pad = child; break; }
+    }
+    if (!pad) return;
+    StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
+    [host insertSubview:skin belowSubview:pad];
+    [skin setNeedsDisplay];
+    NSLog(@"[Strata] Optional NxNative portrait/landscape bezel enabled (cosmetic only)");
+}
+
 @interface StrataControlsWindow : UIWindow
 @end
 @implementation StrataControlsWindow
@@ -42,6 +159,18 @@
 @implementation StrataGuestControls
 - (void)installInWindow:(UIWindow *)window {
     if (!window || [self.installedWindows containsObject:window]) return;
+    StrataInstallNxSkin(window, self.group);
+    // The guest's Metal view can be created after the window becomes visible.
+    // One-off retries are bounded; no periodic cleanup or render-thread hooks.
+    __weak UIWindow *weakWindow = window;
+    NSString *group = [self.group copy];
+    for (NSNumber *delay in @[@1, @4, @12]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            UIWindow *liveWindow = weakWindow;
+            if (liveWindow) StrataInstallNxSkin(liveWindow, group);
+        });
+    }
     [self.installedWindows addObject:window];
     UITapGestureRecognizer *gesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggle:)];
     gesture.numberOfTouchesRequired = 3;
