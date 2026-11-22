@@ -82,7 +82,7 @@ struct StrataSwitchboard: View {
             }
         }.foregroundStyle(.black)
         .preferredColorScheme(.light)
-        .background(LiveBoardOrientationLock(mask: .landscape))
+        .background(LiveBoardOrientationLock(mask: .portrait))
         .onAppear { visible = true; selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
         .onDisappear { visible = false; controller.stop(); audio.stop() }
         .onChange(of: phase) { value in if value == .active { busy = false; bind() } else { controller.stop() } }
