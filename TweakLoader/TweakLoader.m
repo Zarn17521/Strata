@@ -4,95 +4,6 @@
 #include <objc/runtime.h>
 #import "../LiveContainer/utils.h"
 
-
-// Optional, per-guest NxNative controller appearance bridge. Strata writes the
-// selection under the guest's own Documents directory. No NxNative IPA rebuild
-// and no modifications to input routing, game memory, or JIT are needed.
-// UIKit views are only decorated when the guest explicitly opts in.
-static NSDictionary *strataSkinConfig = nil;
-static UIImage *strataSkinImage = nil;
-static IMP strataOriginalPadLayout = NULL;
-static char strataSkinViewKey;
-
-static void strataSkinLayout(id object, SEL selector) {
-    if (strataOriginalPadLayout) ((void (*)(id, SEL))strataOriginalPadLayout)(object, selector);
-    UIView *pad = (UIView *)object;
-    UIView *skin = objc_getAssociatedObject(object, &strataSkinViewKey);
-    if (!skin) {
-        NSString *style = strataSkinConfig[@"style"];
-        if ([style isEqualToString:@"image"] && strataSkinImage) {
-            UIImageView *art = [[UIImageView alloc] initWithImage:strataSkinImage];
-            art.contentMode = UIViewContentModeScaleToFill;
-            art.userInteractionEnabled = NO;
-            skin = art;
-        } else {
-            skin = [[UIView alloc] initWithFrame:CGRectZero];
-            skin.userInteractionEnabled = NO;
-            if ([style isEqualToString:@"classic"]) skin.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.75];
-            else if ([style isEqualToString:@"neon"]) skin.backgroundColor = [UIColor colorWithRed:0.30 green:0.04 blue:0.67 alpha:0.60];
-            else skin.backgroundColor = UIColor.clearColor;
-        }
-        // Always behind NxNative's existing button drawing and hit targets.
-        [pad insertSubview:skin atIndex:0];
-        objc_setAssociatedObject(object, &strataSkinViewKey, skin, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    NSString *style = strataSkinConfig[@"style"];
-    if ([style isEqualToString:@"image"]) {
-        skin.frame = pad.bounds; // transparent artwork can span the screen
-    } else {
-        CGFloat lower = CGRectGetHeight(pad.bounds) * 0.43;
-        skin.frame = CGRectMake(0, CGRectGetHeight(pad.bounds) - lower,
-                                CGRectGetWidth(pad.bounds), lower);
-        skin.layer.cornerRadius = 20.0;
-        skin.layer.masksToBounds = YES;
-    }
-    NSNumber *opacity = strataSkinConfig[@"opacity"];
-    skin.alpha = opacity ? MIN(1.0, MAX(0.25, opacity.doubleValue)) : 0.70;
-}
-
-static void strataSkinTryHook(void) {
-    if (!strataSkinConfig || strataOriginalPadLayout) return;
-    Class pad = NSClassFromString(@"DmGamepad");
-    if (!pad) return; // Not a supported NxNative controller in this process.
-    Method layout = class_getInstanceMethod(pad, @selector(layoutSubviews));
-    if (!layout) return;
-    strataOriginalPadLayout = method_getImplementation(layout);
-    method_setImplementation(layout, (IMP)strataSkinLayout);
-    NSLog(@"[Strata] NxNative cosmetic controller skin active: %@", strataSkinConfig[@"style"]);
-}
-
-static void strataSkinBootstrap(void) {
-    NSString *guestID = NSUserDefaults.lcGuestAppId;
-    if (![guestID.lowercaseString hasPrefix:@"org.nxnative"]) return;
-    const char *home = getenv("HOME");
-    if (!home || !home[0]) return;
-    NSString *settings = [@(home) stringByAppendingPathComponent:@"Documents/StrataControllerSkin.json"];
-    NSDictionary *config = [NSDictionary dictionaryWithContentsOfFile:settings];
-    if (!config) {
-        NSData *data = [NSData dataWithContentsOfFile:settings];
-        if (data) config = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    }
-    if (![config isKindOfClass:NSDictionary.class] || ![config[@"version"] isEqual:@1]) return;
-    NSString *style = config[@"style"];
-    if (![style isKindOfClass:NSString.class] || [style isEqualToString:@"original"]) return;
-    if (![@[@"classic", @"neon", @"clear", @"image"] containsObject:style]) return;
-    if ([style isEqualToString:@"image"]) {
-        NSString *imagePath = [@(home) stringByAppendingPathComponent:@"Documents/StrataControllerSkin.png"];
-        strataSkinImage = [UIImage imageWithContentsOfFile:imagePath];
-        if (!strataSkinImage) return;
-    }
-    strataSkinConfig = config;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        strataSkinTryHook();
-        // Retry once the guest is foreground if its classes weren't ready at load time.
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
-                                                        object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-            (void)note;
-            strataSkinTryHook();
-        }];
-    });
-}
-
 static NSString *loadTweakAtURL(NSURL *url) {
     NSString *tweakPath = url.path;
     NSString *tweak = tweakPath.lastPathComponent;
@@ -167,7 +78,6 @@ static void showDlerrAlert(NSString *error) {
 
  __attribute__((constructor))
 static void TweakLoaderConstructor() {
-    strataSkinBootstrap();
     const char *tweakFolderC = getenv("LC_GLOBAL_TWEAKS_FOLDER");
     NSString *globalTweakFolder = @(tweakFolderC);
     unsetenv("LC_GLOBAL_TWEAKS_FOLDER");
