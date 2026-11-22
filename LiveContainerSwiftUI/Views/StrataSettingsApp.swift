@@ -124,13 +124,15 @@ struct StrataSettingsApp: View {
             }
             .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
         } header: { Text("Quick Settings") }
-        Section("Interface") {
+        Section {
             actionRow("Choose Interface", symbol: "square.grid.3x3.fill", tint: .indigo, id: "settings.interface") { close(); openInterface() }
             Toggle(isOn: Binding(get: { universalCategories }, set: { LiveBoardSharedCategories.setEnabled($0); universalCategories = $0 })) { row("Same categories everywhere", symbol: "tag.fill", tint: .orange) }
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
             link("switcher")
+        } header: {
+            Text("Interface")
         } footer: {
             Text("NxNative Skin adds an optional Game Boy-style frame only in unused display areas: teal/purple in portrait, red/cyan in landscape. It never resizes gameplay or moves controller buttons. Turn it ON, then restart the game in Strata. It is OFF by default.")
         }
