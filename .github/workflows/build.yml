@@ -28,6 +28,28 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
+      - name: Restore pinned upstream idevice FFI library for StikJIT
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The vendored idevice.h is from StikJIT commit 32287268;
+          # the corresponding 57 MB arm64 static archive is not stored in this fork.
+          # Restore precisely that upstream object before Xcode links ShareExtension.
+          archive="Vendor/StikJIT/idevice/libidevice_ffi.a"
+          curl --fail --location --retry 5 --retry-delay 3 --show-error --silent \
+            "https://raw.githubusercontent.com/StikDebug/StikJIT/32287268fa5824f9edce4cb359f5833ce0cf7b00/idevice/libidevice_ffi.a" \
+            --output "$archive"
+          expected="3fb7e2dbfdb9db3d47bd6364a435bbc10d5581f9"
+          actual="$(git hash-object "$archive")"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::The downloaded idevice library does not match the pinned upstream Git blob"
+            exit 1
+          fi
+          test "$(stat -f %z "$archive")" -gt 50000000 || { echo "::error::idevice archive is incomplete"; exit 1; }
+          lipo -info "$archive"
+          xcrun lipo -verify_arch arm64 "$archive"
+          echo "idevice FFI restored and Git object identity verified."
+
       - name: Set Scheme
         id: scheme
         run: |
