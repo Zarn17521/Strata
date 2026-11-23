@@ -95,7 +95,7 @@ struct StrataSwitchboard: View {
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; bind() }
         .sheet(isPresented: $showingSkinPreview, onDismiss: bind) {
-            NavigationStack {
+            NavigationView {
                 VStack(spacing: 12) {
                     Text("Visual preview only. Guest app touch controls are not changed.")
                         .font(.footnote).foregroundStyle(.secondary)
