@@ -327,6 +327,61 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
 }
 @end
 
+// Visual feedback observes only touch events that NxNative already handles.
+// Its input methods still execute unchanged, including cancellation and drag.
+static void (*StrataOldNxTouchesBegan)(id, SEL, NSSet<UITouch *> *, UIEvent *);
+static void (*StrataOldNxTouchesMoved)(id, SEL, NSSet<UITouch *> *, UIEvent *);
+static void (*StrataOldNxTouchesEnded)(id, SEL, NSSet<UITouch *> *, UIEvent *);
+static void (*StrataOldNxTouchesCancelled)(id, SEL, NSSet<UITouch *> *, UIEvent *);
+
+static void StrataNxSkinTouchVisual(id pad, NSSet<UITouch *> *touches, BOOL ending) {
+    UIView *container = ((UIView *)pad).superview;
+    UIView *skin = [container viewWithTag:877144];
+    SEL selector = @selector(strataTrackTouches:ending:);
+    if (!skin || ![skin respondsToSelector:selector]) return;
+    void (*track)(id, SEL, NSSet<UITouch *> *, BOOL) = (void *)[skin methodForSelector:selector];
+    track(skin, selector, touches, ending);
+}
+static void StrataNxTouchBegan(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
+    StrataNxSkinTouchVisual(pad, touches, NO);
+    if (StrataOldNxTouchesBegan) StrataOldNxTouchesBegan(pad, selector, touches, event);
+}
+static void StrataNxTouchMoved(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
+    StrataNxSkinTouchVisual(pad, touches, NO);
+    if (StrataOldNxTouchesMoved) StrataOldNxTouchesMoved(pad, selector, touches, event);
+}
+static void StrataNxTouchEnded(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
+    if (StrataOldNxTouchesEnded) StrataOldNxTouchesEnded(pad, selector, touches, event);
+    StrataNxSkinTouchVisual(pad, touches, YES);
+}
+static void StrataNxTouchCancelled(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
+    if (StrataOldNxTouchesCancelled) StrataOldNxTouchesCancelled(pad, selector, touches, event);
+    StrataNxSkinTouchVisual(pad, touches, YES);
+}
+static void StrataNxHookPadVisualEvents(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Class padClass = NSClassFromString(@"DmGamepad");
+        if (!padClass) return;
+        const struct {
+            SEL selector;
+            IMP replacement;
+            void (**original)(id, SEL, NSSet<UITouch *> *, UIEvent *);
+        } swaps[] = {
+            {@selector(touchesBegan:withEvent:), (IMP)StrataNxTouchBegan, &StrataOldNxTouchesBegan},
+            {@selector(touchesMoved:withEvent:), (IMP)StrataNxTouchMoved, &StrataOldNxTouchesMoved},
+            {@selector(touchesEnded:withEvent:), (IMP)StrataNxTouchEnded, &StrataOldNxTouchesEnded},
+            {@selector(touchesCancelled:withEvent:), (IMP)StrataNxTouchCancelled, &StrataOldNxTouchesCancelled}
+        };
+        for (NSUInteger i = 0; i < sizeof(swaps)/sizeof(swaps[0]); i++) {
+            Method method = class_getInstanceMethod(padClass, swaps[i].selector);
+            if (!method) continue;
+            *swaps[i].original = (void *)method_getImplementation(method);
+            method_setImplementation(method, swaps[i].replacement);
+        }
+    });
+}
+
 static void StrataEnableNxSkinTouchMapping(UIView *pad) {
     if (!pad || objc_getAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey)) return;
     SEL sel = @selector(locationInView:);
@@ -338,6 +393,7 @@ static void StrataEnableNxSkinTouchMapping(UIView *pad) {
     }
     objc_setAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey,
                             @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    StrataNxHookPadVisualEvents();
     StrataNxArtMenuBridge *target = [StrataNxArtMenuBridge new];
     target.pad = pad;
     UITapGestureRecognizer *menuTap = [[UITapGestureRecognizer alloc]
@@ -375,6 +431,77 @@ static const NSInteger StrataNxSkinViewTag = 877144;
 - (void)layoutSubviews {
     [super layoutSubviews];
     [self setNeedsDisplay];
+}
+- (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending {
+    if (!self.superview) return;
+    BOOL landscape = self.bounds.size.width > self.bounds.size.height;
+    if (!(landscape ? self.landscapeArtwork : self.portraitArtwork)) return;
+    for (UITouch *touch in touches) {
+        NSValue *key = [NSValue valueWithNonretainedObject:touch];
+        if (ending) {
+            [self.artTouches removeObjectForKey:key];
+        } else {
+            UIView *pad = nil;
+            for (UIView *v in self.superview.subviews)
+                if ([NSStringFromClass(v.class) isEqualToString:@"DmGamepad"]) { pad = v; break; }
+            if (!pad) continue;
+            CGPoint point = StrataOriginalLocationInView
+                ? StrataOriginalLocationInView(touch, @selector(locationInView:), pad)
+                : [touch locationInView:pad];
+            if (isfinite(point.x) && isfinite(point.y))
+                self.artTouches[key] = [NSValue valueWithCGPoint:point];
+        }
+    }
+    // Redraw only when input changes, never on an idle 60 FPS timer.
+    [self setNeedsDisplay];
+}
+static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait,
+                                    NSDictionary<NSValue *, NSValue *> *touches) {
+    CGFloat w = area.size.width, h = area.size.height;
+    for (NSValue *entry in touches.allValues) {
+        CGPoint raw = entry.CGPointValue;
+        CGPoint norm = CGPointMake(raw.x / w, raw.y / h);
+        NSInteger role = StrataNxArtRole(norm, !portrait);
+        if (role == StrataArtNoMapping) continue;
+        CGFloat x = raw.x, y = raw.y;
+        if (role == StrataArtLeftStick || role == StrataArtRightStick) {
+            BOOL right = role == StrataArtRightStick;
+            CGPoint centre = portrait
+                ? CGPointMake(w*(right ? 0.698 : 0.224), h*0.756)
+                : CGPointMake(w*(right ? 0.776 : 0.147), h*0.570);
+            CGFloat radius = MIN(w*(portrait ? 0.100 : 0.038), h*(portrait ? 0.047 : 0.067));
+            CGFloat dx = MAX(-1.0, MIN(1.0, (x-centre.x)/MAX(radius,1)));
+            CGFloat dy = MAX(-1.0, MIN(1.0, (y-centre.y)/MAX(radius,1)));
+            // Cover the printed stationary knob, then draw its live position.
+            // The outer black ring and surrounding white shell are left intact.
+            CGRect original = CGRectMake(centre.x-radius*0.96,centre.y-radius*0.96,
+                                         radius*1.92,radius*1.92);
+            CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:0.94 alpha:1].CGColor);
+            CGContextFillEllipseInRect(ctx,original);
+            CGPoint shifted = CGPointMake(centre.x+dx*radius*0.30,centre.y+dy*radius*0.30);
+            CGRect knob = CGRectMake(shifted.x-radius*0.87, shifted.y-radius*0.87,
+                                     radius*1.74, radius*1.74);
+            CGContextSaveGState(ctx);
+            CGContextSetShadowWithColor(ctx,CGSizeMake(0,1.5),2.5,
+                                        [UIColor colorWithWhite:0.05 alpha:0.55].CGColor);
+            CGContextSetFillColorWithColor(ctx,[UIColor colorWithWhite:0.94 alpha:1].CGColor);
+            CGContextFillEllipseInRect(ctx,knob);
+            CGContextRestoreGState(ctx);
+            CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithWhite:0.3 alpha:0.85].CGColor);
+            CGContextSetLineWidth(ctx,1.5);
+            CGContextStrokeEllipseInRect(ctx,CGRectInset(knob,1,1));
+        } else {
+            CGFloat radius = MIN(w*(portrait ? 0.046 : 0.020),
+                                 h*(portrait ? 0.025 : 0.041));
+            // Darkened inset + highlight: the printed shell key appears pressed.
+            CGRect hit = CGRectMake(x-radius,y-radius,radius*2,radius*2);
+            CGContextSetFillColorWithColor(ctx,[UIColor colorWithWhite:0.08 alpha:0.21].CGColor);
+            CGContextFillEllipseInRect(ctx,hit);
+            CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithWhite:1 alpha:0.42].CGColor);
+            CGContextSetLineWidth(ctx,1.0);
+            CGContextStrokeEllipseInRect(ctx,CGRectInset(hit,2,2));
+        }
+    }
 }
 - (void)drawRect:(CGRect)rect {
     UIView *parent = self.superview;
@@ -430,6 +557,9 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     }
     if (grad) CGGradientRelease(grad);
     CGColorSpaceRelease(space);
+    // Draw the visual pressed states above the imported art but never over game pixels.
+    if ((portrait ? self.portraitArtwork : self.landscapeArtwork) && self.artTouches.count)
+        StrataNxDrawArtFeedback(ctx,bounds,portrait,self.artTouches);
     CGContextRestoreGState(ctx);
 
     // A subtle screen edge, without a big opaque cover over the game content.
