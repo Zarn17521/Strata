@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Marketing version plus build revision, e.g. "4.0 (r43)", read from the packaged Info.plist.
 enum StrataVersion {
@@ -51,6 +52,7 @@ struct StrataSettingsApp: View {
             Entry(id: "framegen", title: "Frame Generation", symbol: "square.3.layers.3d", tint: .purple, section: "Performance", keywords: "fps frame generation metal 120hz") { AnyView(StrataFrameGenSettings(apps: sharedModel.apps)) },
             Entry(id: "storage", title: "Storage", symbol: "internaldrive", tint: .gray, section: "Performance", keywords: "storage space size cache data") { AnyView(LCStorageManagementView()) },
             Entry(id: "switcher", title: "App Switcher", symbol: "rectangle.stack", tint: .indigo, section: "Interface", keywords: "switcher three finger multitask pinned running cards") { AnyView(StrataSwitcherSettings(apps: allApps)) },
+            Entry(id: "portraitskin", title: "NxNative Portrait Skin", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait white shell controller skin image png import nxnative") { AnyView(StrataNxPortraitSkinSettings()) },
             Entry(id: "iphone", title: "iPhone Apps", symbol: "iphone", tint: .blue, section: "Apps", keywords: "iphone native ios apps shortcut url add") { AnyView(StrataPhoneAppsView()) },
             Entry(id: "extensions", title: "App Extensions", symbol: "puzzlepiece.extension", tint: .teal, section: "Apps", keywords: "extensions share widgets plugins helper") { AnyView(StrataExtensionsView(apps: sharedModel.apps)) },
             Entry(id: "sources", title: "Sources", symbol: "books.vertical", tint: .orange, section: "Apps", keywords: "sources repositories install altstore") { AnyView(LCSourcesView()) },
@@ -130,11 +132,12 @@ struct StrataSettingsApp: View {
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
+            link("portraitskin")
             link("switcher")
         } header: {
             Text("Interface")
         } footer: {
-            Text("NxNative Skin adds an optional Game Boy-style frame only in unused display areas: teal/purple in portrait, red/cyan in landscape. It never resizes gameplay or moves controller buttons. Turn it ON, then restart the game in Strata. It is OFF by default.")
+            Text("NxNative Skin decorates unused space: white handheld artwork in portrait (optional PNG import), red/cyan in landscape. Native game view and touch mapping stay unchanged. Enable Skin and relaunch the game to apply changes.")
         }
         Section("Apps") {
             actionRow("Manage Apps", symbol: "square.stack.3d.up", tint: .blue, id: "settings.manage") { openManagement() }
@@ -256,4 +259,104 @@ final class StrataSettingsAppInfo: StrataPhoneAppInfo {
             return LCAppModel(appInfo: StrataSettingsAppInfo(entry: entry, path: folder.path))
         } catch { return nil }
     }()
+}
+
+ 
+/// Imports a transparent portrait controller frame for Strata's own cosmetic
+/// NxNative overlay. No game IPA modification, JIT change or input remapping.
+private struct StrataNxPortraitSkinSettings: View {
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var enabled = false
+    @State private var picking = false
+    @State private var imported: UIImage?
+    @State private var notice: String?
+
+    private var assetURL: URL? {
+        LCSharedUtils.appGroupPath()?
+            .appendingPathComponent("Strata3/Skins/NxNativePortrait.png")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Enable NxNative Skin", isOn: $enabled)
+            } footer: {
+                Text("The skin is visual only. The native game screen and touch input positions are not changed.")
+            }
+            Section {
+                if let imported {
+                    Image(uiImage: imported)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 350)
+                        .background(Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else {
+                    Label("Default white handheld frame", systemImage: "gamecontroller")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Import White Portrait PNG", systemImage: "photo.badge.plus") {
+                    picking = true
+                }
+                .accessibilityIdentifier("settings.nxnative.portraitImport")
+                if imported != nil {
+                    Button("Restore Default White Skin", systemImage: "arrow.uturn.backward") {
+                        guard let assetURL else { notice = "App Group unavailable"; return }
+                        do {
+                            try FileManager.default.removeItem(at: assetURL)
+                            imported = nil
+                        } catch { notice = error.localizedDescription }
+                    }
+                }
+            } header: {
+                Text("Portrait Artwork")
+            } footer: {
+                Text("Import a transparent PNG with a clear game-screen window. The supplied silver/white controller artwork is supported. The image is drawn behind the original touch controller, so artwork labels may not exactly match the live touch targets.")
+            }
+            Section("Landscape Skin") {
+                Text("Existing red/cyan theme remains unchanged.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("NxNative Portrait Skin")
+        .onAppear(perform: load)
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.png]) { result in
+            do {
+                let url = try result.get()
+                let granted = url.startAccessingSecurityScopedResource()
+                defer { if granted { url.stopAccessingSecurityScopedResource() } }
+                let data = try Data(contentsOf: url)
+                guard data.count <= 8 * 1024 * 1024,
+                      let image = UIImage(data: data),
+                      image.size.width <= 2048,
+                      image.size.height <= 4096,
+                      image.size.height > image.size.width,
+                      image.cgImage?.alphaInfo != .none
+                else { throw NSError(domain: "StrataPortraitSkin", code: 1,
+                                    userInfo: [NSLocalizedDescriptionKey: "Choose a portrait PNG with transparency, under 8 MB (max 2048×4096)."]) }
+                guard let assetURL else {
+                    throw NSError(domain: "StrataPortraitSkin", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable."])
+                }
+                try FileManager.default.createDirectory(
+                    at: assetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: assetURL, options: .atomic)
+                imported = image
+                enabled = true
+                notice = "Portrait artwork saved. Restart the NxNative game to apply it."
+            } catch { notice = error.localizedDescription }
+        }
+        .alert("Portrait Skin", isPresented: Binding(
+            get: { notice != nil },
+            set: { if !$0 { notice = nil } }
+        )) {
+            Button("OK") { notice = nil }
+        } message: {
+            Text(notice ?? "")
+        }
+    }
+
+    private func load() {
+        imported = assetURL.flatMap { UIImage(contentsOfFile: $0.path) }
+    }
 }
