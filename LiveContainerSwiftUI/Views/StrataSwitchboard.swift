@@ -389,11 +389,10 @@ private struct StrataAppRotationShortcut: View {
     private var mode: LCOrientationLock { app.uiOrientationLock }
 
     private var symbol: String {
-        switch mode {
-        case .Landscape: return "iphone.landscape"
-        case .Portrait: return "iphone"
-        default: return "iphone.gen3"
-        }
+        // Render the same phone silhouette for both forced orientations.
+        // A physical 90-degree turn makes Landscape unmistakably horizontal,
+        // independently of SF Symbol artwork variants on different iOS builds.
+        mode == .Disabled ? "arrow.triangle.2.circlepath" : "iphone"
     }
     private var modeName: String {
         switch mode {
@@ -414,6 +413,7 @@ private struct StrataAppRotationShortcut: View {
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 21, weight: .semibold))
+                .rotationEffect(.degrees(mode == .Landscape ? 90 : 0))
                 .foregroundStyle(.orange)
                 .frame(width: 50, height: 50)
                 .background(Circle().fill(surface))
