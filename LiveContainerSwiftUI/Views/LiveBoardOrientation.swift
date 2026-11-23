@@ -31,6 +31,15 @@ import UIKit
         LiveBoardOrientation.owner = nil
         LiveBoardOrientation.mask = landscape.boolValue ? .landscapeRight : .portrait
     }
+
+    @objc class func applyAuto() {
+        // A previous Switchboard frame may have locked the shared host
+        // window to Portrait. Release that mask for NxNative apps whose
+        // App Settings > Orientation Lock is Disabled (system default).
+        // No forced scene geometry change: the guest handles rotation.
+        LiveBoardOrientation.owner = nil
+        LiveBoardOrientation.mask = .allButUpsideDown
+    }
 }
 
 struct LiveBoardOrientationLock: UIViewRepresentable {
