@@ -349,6 +349,45 @@ static void (*StrataOldNxTouchesMoved)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 static void (*StrataOldNxTouchesEnded)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 static void (*StrataOldNxTouchesCancelled)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 
+// NxNative renders virtual keys into a dedicated CALayer, separate from the
+// DmGamepad UIView that owns their real touches. Hide JUST that artwork layer,
+// never UIView.hidden / UIView.alpha (both would disable UIKit hit testing).
+// The printed skin is visible underneath and gameplay input stays live.
+static void StrataNxKeepNativeInputButHideDrawing(UIView *pad) {
+    if (!pad || ![NSStringFromClass(pad.class) isEqualToString:@"DmGamepad"]) return;
+    UIView *art = [pad.superview viewWithTag:877144];
+    if (!art) return;
+    BOOL landscape = pad.bounds.size.width > pad.bounds.size.height;
+    UIImage *image = [art valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
+    CALayer *controls = nil;
+    @try {
+        id layer = [pad valueForKey:@"controls"]; // NxNative's private CALayer *_controls
+        if ([layer isKindOfClass:CALayer.class]) controls = layer;
+    } @catch (NSException *e) {
+        NSLog(@"[Strata Skin] NxNative control-layer lookup failed: %@", e.reason);
+    }
+    if (!controls) return;  // safest fallback: use the original native controls.
+    controls.hidden = image != nil;
+    // The gear is a separate UIButton (outside _controls): remove its native
+    // drawing but leave the real UIButton and its menu actions intact.
+    UIView *menu = nil;
+    for (UIView *child in pad.subviews)
+        if ([NSStringFromClass(child.class) isEqualToString:@"DmMenuButton"]) {
+            menu = child; break;
+        }
+    if (menu) {
+        if (image) {
+            menu.backgroundColor = UIColor.clearColor;
+            menu.layer.borderWidth = 0;
+            menu.layer.shadowOpacity = 0;
+            menu.tintColor = UIColor.clearColor;
+            menu.layer.sublayers.firstObject.opacity = 0;
+        } else {
+            menu.layer.sublayers.firstObject.opacity = 1;
+        }
+    }
+}
+
 static void StrataNxSkinTouchVisual(id pad, NSSet<UITouch *> *touches, BOOL ending) {
     UIView *container = ((UIView *)pad).superview;
     UIView *skin = [container viewWithTag:877144];
@@ -358,6 +397,7 @@ static void StrataNxSkinTouchVisual(id pad, NSSet<UITouch *> *touches, BOOL endi
     track(skin, selector, touches, ending);
 }
 static void StrataNxTouchBegan(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
+    StrataNxKeepNativeInputButHideDrawing((UIView *)pad);
     StrataNxSkinTouchVisual(pad, touches, NO);
     if (StrataOldNxTouchesBegan) StrataOldNxTouchesBegan(pad, selector, touches, event);
 }
@@ -629,6 +669,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if (landscapePNG) skin.landscapeArtwork = [UIImage imageWithContentsOfFile:landscapePNG.path];
     if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
     [host insertSubview:skin belowSubview:pad];
+    StrataNxKeepNativeInputButHideDrawing(pad);
     [skin setNeedsDisplay];
     NSLog(@"[Strata] Optional NxNative white handheld portrait / red-cyan landscape skin enabled (cosmetic only)");
 }
