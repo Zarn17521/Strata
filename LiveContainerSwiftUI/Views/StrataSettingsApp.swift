@@ -448,10 +448,13 @@ private struct StrataNxBuiltInSkinPreview: View {
                 key("+", w: w, h: h, small: true)
                     .position(x: w * (landscape ? 0.5869 : 0.6559),
                               y: h * (landscape ? 0.7982 : 0.9363))
-                Text("ZN")
-                    .font(.system(size: landscape ? 9 : 11, weight: .black, design: .serif))
-                    .foregroundStyle(Color(red: 0.73, green: 0.53, blue: 0.18))
-                    .position(x: w * (landscape ? 0.12 : 0.12),
+                // Reuse the *real* gold-Z / green-N / Link-cap artwork.
+                // Avoid a misleading text-only 'ZN' mock preview.
+                ZNInitials(darkMode: dark)
+                    .scaleEffect(landscape ? 0.22 : 0.16)
+                    .frame(width: landscape ? 17 : 12,
+                           height: landscape ? 10 : 8)
+                    .position(x: w * 0.12,
                               y: h * (landscape ? 0.80 : 0.94))
             }
             .frame(width: w, height: h)
