@@ -139,6 +139,7 @@ static NSString * const StrataNxSkinToggleKey = @"StrataNxSkinEnabled";
 static const NSInteger StrataNxSkinViewTag = 877144;
 
 @interface StrataNxSkinView : UIView
+@property(nonatomic, strong) UIImage *portraitArtwork;
 @end
 @implementation StrataNxSkinView
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -196,14 +197,21 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     CGFloat stopsLandscape[] = {0.0, 0.49, 0.51, 1.0};
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGGradientRef grad = CGGradientCreateWithColors(space, (__bridge CFArrayRef)colors, portrait ? stopsPortrait : stopsLandscape);
-    if (grad) {
-        CGContextDrawLinearGradient(ctx, grad,
-            portrait ? CGPointMake(CGRectGetMidX(bounds), CGRectGetMinY(bounds)) : CGPointMake(CGRectGetMinX(bounds), CGRectGetMidY(bounds)),
-            portrait ? CGPointMake(CGRectGetMidX(bounds), CGRectGetMaxY(bounds)) : CGPointMake(CGRectGetMaxX(bounds), CGRectGetMidY(bounds)), 0);
-        CGGradientRelease(grad);
+    if (portrait && self.portraitArtwork) {
+        // Exact imported white-shell artwork. The imported PNG has a transparent
+        // aperture, and the clip above also protects ALL live game pixels.
+        // This is only visual: no game aspect ratio or DmGamepad input changes.
+        [self.portraitArtwork drawInRect:bounds];
+    } else {
+        if (grad) {
+            CGContextDrawLinearGradient(ctx, grad,
+                portrait ? CGPointMake(CGRectGetMidX(bounds), CGRectGetMinY(bounds)) : CGPointMake(CGRectGetMinX(bounds), CGRectGetMidY(bounds)),
+                portrait ? CGPointMake(CGRectGetMidX(bounds), CGRectGetMaxY(bounds)) : CGPointMake(CGRectGetMaxX(bounds), CGRectGetMidY(bounds)), 0);
+        }
+        if (portrait) StrataNxDrawPortraitHandheld(bounds, game);
     }
+    if (grad) CGGradientRelease(grad);
     CGColorSpaceRelease(space);
-    if (portrait) StrataNxDrawPortraitHandheld(bounds, game);
     CGContextRestoreGState(ctx);
 
     // A subtle screen edge, without a big opaque cover over the game content.
@@ -245,6 +253,11 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     }
     if (!pad) return;
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
+    // The library stores artwork in the host App Group, readable by the guest
+    // even for existing BOTW / TOTK IPAs without an NxNative rebuild.
+    NSURL *groupURL = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:group];
+    NSURL *portraitPNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativePortrait.png"];
+    if (portraitPNG) skin.portraitArtwork = [UIImage imageWithContentsOfFile:portraitPNG.path];
     [host insertSubview:skin belowSubview:pad];
     [skin setNeedsDisplay];
     NSLog(@"[Strata] Optional NxNative white handheld portrait / red-cyan landscape skin enabled (cosmetic only)");
