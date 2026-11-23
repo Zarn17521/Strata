@@ -976,7 +976,9 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
     if (CGRectIsNull(opening) || CGRectIsEmpty(opening)) return;
     CGContextSaveGState(ctx);
     CGContextAddRect(ctx, bounds);
-    CGContextAddRect(ctx, CGRectInset(opening, -0.25, -0.25));
+    // A tiny inward overlap prevents the Metal drawable from peeking past
+    // the printed screen border because of fractional backing-pixel rounding.
+    CGContextAddRect(ctx, CGRectInset(opening, 0.35, 0.35));
     CGContextEOClip(ctx);
     if (artwork) {
         // Cover even transparent parts of imported PNGs so the extra-wide
