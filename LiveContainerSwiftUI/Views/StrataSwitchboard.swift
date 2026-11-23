@@ -29,7 +29,7 @@ struct StrataSwitchboard: View {
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
-    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = false
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
     private var buttonSurface: Color { darkMode ? Color(white: 0.13) : Color(white: 0.92) }
