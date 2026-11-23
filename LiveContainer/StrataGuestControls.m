@@ -896,7 +896,7 @@ static void StrataNxDrawArtCrop(UIImage *image, CGRect sourceNorm,
 }
 
 static void StrataNxDrawRearrangedArtwork(UIImage *image, CGRect art,
-                                           BOOL landscape) {
+                                           BOOL landscape, BOOL darkTheme) {
     if (!image || !image.CGImage) return;
     // Face diamond and right thumbstick from the supplied white-shell art.
     // Portrait and landscape both move actual art, not just invisible hitboxes.
@@ -912,7 +912,10 @@ static void StrataNxDrawRearrangedArtwork(UIImage *image, CGRect art,
 
     // Clear the two original positions first, otherwise both controls remain
     // visible under the newly repositioned artwork.
-    UIColor *shell = [UIColor colorWithWhite:0.970 alpha:1];
+    // Photo-derived AMOLED art needs a black/graphite erasure surface;
+    // previously the white-only patch created glaring squares on dark.
+    UIColor *shell = darkTheme ? StrataNxBuiltShell(YES)
+                               : [UIColor colorWithWhite:0.970 alpha:1];
     [shell setFill];
     for (NSValue *v in @[[NSValue valueWithCGRect:StrataNxArtRect(art,face)],
                         [NSValue valueWithCGRect:StrataNxArtRect(art,look)]]) {
@@ -939,14 +942,19 @@ static void StrataNxDrawRearrangedArtwork(UIImage *image, CGRect art,
                                     art.origin.y+y*art.size.height);
         CGRect erase = CGRectMake(centre.x - size*1.02,centre.y-size*0.66,
                                   size*2.04,size*1.32);
-        [[UIColor colorWithWhite:0.965 alpha:1] setFill];
+        UIColor *labelGround = darkTheme
+            ? [UIColor colorWithRed:0.25 green:0.28 blue:0.32 alpha:1]
+            : [UIColor colorWithWhite:0.965 alpha:1];
+        [labelGround setFill];
         [[UIBezierPath bezierPathWithRoundedRect:erase cornerRadius:size*0.2] fill];
         NSString *label = labels[i];
         CGSize textSize = [label sizeWithAttributes:@{NSFontAttributeName:font}];
         [label drawAtPoint:CGPointMake(centre.x-textSize.width*0.5,
                                       centre.y-textSize.height*0.5)
            withAttributes:@{NSFontAttributeName:font,
-                            NSForegroundColorAttributeName:[UIColor colorWithWhite:0.43 alpha:1]}];
+                            NSForegroundColorAttributeName:darkTheme
+                                ? [UIColor whiteColor]
+                                : [UIColor colorWithWhite:0.43 alpha:1]}];
     }
 }
 
@@ -1050,6 +1058,57 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
     CGContextRestoreGState(ctx);
 }
 
+// Settings uses the exact same cached photograph and the very same
+// Look/ABXY, R/ZR and ZN transforms as the running NxNative game. A vector
+// mockup would give the user a misleading preview of the shipped skin.
+UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
+    static NSCache<NSString *, UIImage *> *previewCache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        previewCache = [NSCache new];
+        previewCache.countLimit = 4;
+        previewCache.totalCostLimit = 32 * 1024 * 1024;
+    });
+    NSString *key = [NSString stringWithFormat:@"photo-preview-%@-%@",
+                     portrait ? @"portrait" : @"landscape",
+                     dark ? @"amoled" : @"pearl"];
+    UIImage *cached = [previewCache objectForKey:key];
+    if (cached) return cached;
+
+    UIImage *source = StrataNxBuiltinArtwork(portrait,dark);
+    if (!source) return nil;
+    CGSize size = source.size;
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    format.opaque = YES;
+    format.scale = 1;
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
+    UIImage *result = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *r) {
+        CGRect art = CGRectMake(0,0,size.width,size.height);
+        [StrataNxBuiltShell(dark) setFill];
+        UIRectFill(art);
+        CGContextRef ctx=UIGraphicsGetCurrentContext();
+        if (!ctx) return;
+        CGContextSaveGState(ctx);
+        if (!StrataNxIsBuiltinImage(source)) {
+            CGRect body=StrataNxArtRect(art,
+                 portrait ? CGRectMake(0.025,0.015,0.950,0.970)
+                          : CGRectMake(0.052,0.100,0.896,0.790));
+            [[UIBezierPath bezierPathWithRoundedRect:body
+                    cornerRadius:MIN(body.size.width,body.size.height)*
+                                       (portrait?0.055:0.135)] addClip];
+        }
+        [source drawInRect:art];
+        if (!StrataNxIsBuiltinImage(source))
+            StrataNxDrawRearrangedArtwork(source,art,!portrait,dark);
+        StrataNxDrawZNBrand(art,portrait);
+        CGContextRestoreGState(ctx);
+    }];
+    if (result) [previewCache setObject:result forKey:key
+        cost:(NSUInteger)(result.size.width*result.size.height*4)];
+    return result;
+}
+
 - (void)drawRect:(CGRect)rect {
     UIView *parent = self.superview;
     if (!parent || CGRectIsEmpty(self.bounds)) return;
@@ -1124,7 +1183,7 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
         [image drawInRect:art];
         if (!builtIn) {
             // Custom imported art uses the original unmodified button positions.
-            StrataNxDrawRearrangedArtwork(image,art,!portrait);
+            StrataNxDrawRearrangedArtwork(image,art,!portrait,self.darkTheme);
         }
         // Built-ins are already laid out with Look above ABXY. Do not
         // repaint white crop patches over the dark shell.
