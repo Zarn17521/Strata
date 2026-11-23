@@ -1,139 +1,233 @@
 import SwiftUI
 
-/// Custom handheld skin overlay.
-/// Landscape uses full-display (aspectFit) with the exact screen offsets from the skin image.
-/// Portrait uses the corresponding offsets.
+/// Custom white handheld console skin overlay matching the provided images.
+/// Landscape (IMG_7623 style): full display with screen centered.
+/// Portrait (IMG_7621 style): screen near top.
+/// Driven by LiveBoardControllerInput for visual press / stick movement.
 struct HandheldSkinView: View {
     @ObservedObject var controller: LiveBoardControllerInput
     var isLandscape: Bool = true
-    /// Optional skin image. If nil a simple placeholder is drawn so layout can be verified.
     var skinImage: UIImage? = nil
 
-    // Exact values from the provided skin sheet
-    private var imageSize: CGSize {
-        isLandscape ? CGSize(width: 1792, height: 1008) : CGSize(width: 923, height: 2000)
-    }
-    private var screenOffset: CGPoint {
-        isLandscape ? CGPoint(x: 463, y: 169) : CGPoint(x: 37, y: 138)
-    }
-    private var screenSize: CGSize {
-        isLandscape ? CGSize(width: 863, height: 574) : CGSize(width: 847, height: 661)
+    // Measured from the uploaded images
+    private var screenRel: (x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat) {
+        if isLandscape {
+            // From IMG_7623.jpg (1500x844)
+            return (0.2587, 0.1682, 0.4813, 0.5687)
+        } else {
+            // From IMG_7621.jpg (1500x3251)
+            return (0.0400, 0.0692, 0.9180, 0.3301)
+        }
     }
 
     var body: some View {
         GeometryReader { geo in
-            let screen = geo.size
-            // Scale so the entire skin is visible (full display in landscape)
-            let scale = min(screen.width / imageSize.width, screen.height / imageSize.height)
-            let skinW = imageSize.width * scale
-            let skinH = imageSize.height * scale
-            let skinOrigin = CGPoint(
-                x: (screen.width - skinW) / 2,
-                y: (screen.height - skinH) / 2
+            let size = geo.size
+            // Prefer full-bleed fit for landscape so the whole skin is visible
+            let scale: CGFloat = isLandscape
+                ? min(size.width / 1500, size.height / 844)
+                : min(size.width / 1500, size.height / 3251)
+            let skinW = (isLandscape ? 1500 : 1500) * scale
+            let skinH = (isLandscape ? 844 : 3251) * scale
+            let origin = CGPoint(
+                x: (size.width - skinW) / 2,
+                y: (size.height - skinH) / 2
             )
 
             ZStack {
-                // Skin background (full display)
+                // Base skin
                 Group {
                     if let img = skinImage {
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                     } else {
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .fill(Color.white.opacity(0.92))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                                    .strokeBorder(Color.black.opacity(0.15), lineWidth: 1)
-                            )
+                        skinBase
                     }
                 }
                 .frame(width: skinW, height: skinH)
-                .position(x: skinOrigin.x + skinW/2, y: skinOrigin.y + skinH/2)
+                .position(x: origin.x + skinW/2, y: origin.y + skinH/2)
 
-                // Game viewport placeholder (the real metal view goes here in the guest)
-                let gx = skinOrigin.x + screenOffset.x * scale
-                let gy = skinOrigin.y + screenOffset.y * scale
-                let gw = screenSize.width * scale
-                let gh = screenSize.height * scale
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.cyan.opacity(0.6), lineWidth: 2)
-                    .frame(width: gw, height: gh)
-                    .position(x: gx + gw/2, y: gy + gh/2)
+                // Game screen area (black)
+                let sr = screenRel
+                let sx = origin.x + sr.x * skinW
+                let sy = origin.y + sr.y * skinH
+                let sw = sr.w * skinW
+                let sh = sr.h * skinH
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.black)
+                    .frame(width: sw, height: sh)
+                    .position(x: sx + sw/2, y: sy + sh/2)
 
-                // Left stick
-                stickView(offset: controller.leftStick, label: "L")
-                    .position(x: skinOrigin.x + skinW * 0.22, y: skinOrigin.y + skinH * 0.62)
-
-                // Right stick
-                stickView(offset: controller.rightStick, label: "R")
-                    .position(x: skinOrigin.x + skinW * 0.78, y: skinOrigin.y + skinH * 0.62)
-
-                // Face buttons
-                faceButtons
-                    .position(x: skinOrigin.x + skinW * 0.78, y: skinOrigin.y + skinH * 0.38)
-
-                // Shoulders / triggers (top)
-                HStack(spacing: skinW * 0.35) {
-                    shoulder("L", pressed: controller.lPressed)
-                    shoulder("R", pressed: controller.rPressed)
-                }
-                .position(x: skinOrigin.x + skinW/2, y: skinOrigin.y + skinH * 0.12)
-
-                HStack(spacing: skinW * 0.42) {
-                    shoulder("ZL", pressed: controller.zlPressed)
-                    shoulder("ZR", pressed: controller.zrPressed)
-                }
-                .position(x: skinOrigin.x + skinW/2, y: skinOrigin.y + skinH * 0.05)
+                // Controls overlaid (positions tuned to the photos)
+                controls(origin: origin, skinW: skinW, skinH: skinH)
             }
-            .frame(width: screen.width, height: screen.height)
+            .frame(width: size.width, height: size.height)
         }
         .ignoresSafeArea()
     }
 
-    private func stickView(offset: CGPoint, label: String) -> some View {
-        ZStack {
-            Circle()
-                .fill(Color.gray.opacity(0.25))
-                .frame(width: 70, height: 70)
-            Circle()
-                .fill(Color.white)
-                .frame(width: 34, height: 34)
-                .offset(x: offset.x * 16, y: -offset.y * 16)
-                .animation(.easeOut(duration: 0.08), value: offset)
-            Text(label).font(.caption2.bold()).foregroundStyle(.secondary)
+    private var skinBase: some View {
+        RoundedRectangle(cornerRadius: isLandscape ? 36 : 48, style: .continuous)
+            .fill(Color(white: 0.96))
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+    }
+
+    @ViewBuilder
+    private func controls(origin: CGPoint, skinW: CGFloat, skinH: CGFloat) -> some View {
+        if isLandscape {
+            // Landscape layout matching IMG_7623
+            // Left side: D-pad above left stick
+            dpad
+                .position(x: origin.x + skinW * 0.16, y: origin.y + skinH * 0.42)
+            stickView(offset: controller.leftStick)
+                .position(x: origin.x + skinW * 0.16, y: origin.y + skinH * 0.72)
+
+            // Right side: face buttons above right stick
+            faceButtons
+                .position(x: origin.x + skinW * 0.84, y: origin.y + skinH * 0.42)
+            stickView(offset: controller.rightStick)
+                .position(x: origin.x + skinW * 0.84, y: origin.y + skinH * 0.72)
+
+            // Top shoulders
+            HStack(spacing: skinW * 0.04) {
+                shoulder("L", pressed: controller.lPressed)
+                shoulder("ZL", pressed: controller.zlPressed)
+            }
+            .position(x: origin.x + skinW * 0.16, y: origin.y + skinH * 0.12)
+
+            HStack(spacing: skinW * 0.04) {
+                shoulder("ZR", pressed: controller.zrPressed)
+                shoulder("R", pressed: controller.rPressed)
+            }
+            .position(x: origin.x + skinW * 0.84, y: origin.y + skinH * 0.12)
+
+            // Bottom center system buttons
+            HStack(spacing: skinW * 0.06) {
+                smallButton("-")
+                smallButton("⚙") // gear
+                smallButton("+")
+            }
+            .position(x: origin.x + skinW * 0.50, y: origin.y + skinH * 0.88)
+        } else {
+            // Portrait layout matching IMG_7621 (screen on top)
+            // Shoulders under screen
+            HStack(spacing: skinW * 0.12) {
+                HStack(spacing: 8) {
+                    shoulder("L", pressed: controller.lPressed)
+                    shoulder("ZL", pressed: controller.zlPressed)
+                }
+                HStack(spacing: 8) {
+                    shoulder("ZR", pressed: controller.zrPressed)
+                    shoulder("R", pressed: controller.rPressed)
+                }
+            }
+            .position(x: origin.x + skinW * 0.50, y: origin.y + skinH * 0.42)
+
+            // D-pad left, face right
+            dpad
+                .position(x: origin.x + skinW * 0.28, y: origin.y + skinH * 0.55)
+            faceButtons
+                .position(x: origin.x + skinW * 0.72, y: origin.y + skinH * 0.55)
+
+            // Sticks lower
+            stickView(offset: controller.leftStick)
+                .position(x: origin.x + skinW * 0.28, y: origin.y + skinH * 0.78)
+            stickView(offset: controller.rightStick)
+                .position(x: origin.x + skinW * 0.72, y: origin.y + skinH * 0.78)
+
+            // Bottom system
+            HStack(spacing: skinW * 0.08) {
+                smallButton("-")
+                smallButton("⚙")
+                smallButton("+")
+            }
+            .position(x: origin.x + skinW * 0.50, y: origin.y + skinH * 0.92)
         }
+    }
+
+    private var dpad: some View {
+        ZStack {
+            // Cross shape approximation
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white)
+                .frame(width: 28, height: 70)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.4), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white)
+                .frame(width: 70, height: 28)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.4), lineWidth: 1))
+            // Direction indicators
+            Text("|").font(.system(size: 10)).offset(y: -22)
+            Text("|").font(.system(size: 10)).offset(y: 22)
+            Text("-").font(.system(size: 12)).offset(x: -22)
+            Text("-").font(.system(size: 12)).offset(x: 22)
+        }
+        .frame(width: 70, height: 70)
     }
 
     private var faceButtons: some View {
         ZStack {
-            skinButton("A", pressed: controller.aPressed).offset(x: 22, y: 22)
-            skinButton("B", pressed: controller.bPressed).offset(x: -22, y: 22)
-            skinButton("X", pressed: controller.xPressed).offset(x: -22, y: -22)
-            skinButton("Y", pressed: controller.yPressed).offset(x: 22, y: -22)
+            skinButton("X", pressed: controller.xPressed).offset(x: 0, y: -26)
+            skinButton("Y", pressed: controller.yPressed).offset(x: -26, y: 0)
+            skinButton("A", pressed: controller.aPressed).offset(x: 26, y: 0)
+            skinButton("b", pressed: controller.bPressed).offset(x: 0, y: 26)
+        }
+    }
+
+    private func stickView(offset: CGPoint) -> some View {
+        ZStack {
+            Circle()
+                .strokeBorder(Color.gray.opacity(0.35), lineWidth: 3)
+                .background(Circle().fill(Color.white))
+                .frame(width: 64, height: 64)
+            Circle()
+                .fill(Color.white)
+                .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                .frame(width: 32, height: 32)
+                .offset(x: offset.x * 14, y: -offset.y * 14)
+                .animation(.easeOut(duration: 0.08), value: offset)
         }
     }
 
     private func skinButton(_ label: String, pressed: Bool) -> some View {
         Text(label)
-            .font(.system(size: 13, weight: .bold))
-            .frame(width: 34, height: 34)
-            .background(Circle().fill(pressed ? Color.gray.opacity(0.55) : Color.white))
-            .scaleEffect(pressed ? 0.88 : 1.0)
-            .offset(y: pressed ? 2 : 0)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.gray.opacity(0.8))
+            .frame(width: 32, height: 32)
+            .background(
+                Circle()
+                    .fill(Color.white)
+                    .overlay(Circle().stroke(Color.gray.opacity(0.35), lineWidth: 1))
+            )
+            .scaleEffect(pressed ? 0.86 : 1.0)
+            .offset(y: pressed ? 2.5 : 0)
             .animation(.easeOut(duration: 0.07), value: pressed)
     }
 
     private func shoulder(_ label: String, pressed: Bool) -> some View {
         Text(label)
-            .font(.caption.bold())
-            .frame(width: 56, height: 20)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color.gray.opacity(0.75))
+            .frame(width: 42, height: 22)
             .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(pressed ? Color.gray.opacity(0.5) : Color.white.opacity(0.85))
+                Capsule()
+                    .fill(Color.white)
+                    .overlay(Capsule().stroke(Color.gray.opacity(0.3), lineWidth: 1))
             )
-            .scaleEffect(pressed ? 0.92 : 1.0)
+            .scaleEffect(pressed ? 0.90 : 1.0)
             .offset(y: pressed ? 1.5 : 0)
             .animation(.easeOut(duration: 0.07), value: pressed)
+    }
+
+    private func smallButton(_ label: String) -> some View {
+        Text(label)
+            .font(.system(size: 12, weight: .medium))
+            .frame(width: 28, height: 28)
+            .background(
+                Circle()
+                    .fill(Color.white)
+                    .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            )
     }
 }
