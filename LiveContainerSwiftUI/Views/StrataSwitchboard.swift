@@ -224,11 +224,11 @@ struct StrataSwitchboard: View {
             }
 
             shortcutCell("Settings") {
-                roundButton("slider.horizontal.3", label: "Strata settings", tint: .purple) {
+                roundButton("gearshape.fill", label: "Open Strata Settings", tint: .purple) {
                     controller.stop()
                     NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
                 }
-                .accessibilityIdentifier("switchboard.interfaceSettings")
+                .accessibilityIdentifier("switchboard.open.settings")
             }
 
             shortcutCell("Dark") {
