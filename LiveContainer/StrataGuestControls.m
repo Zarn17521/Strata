@@ -396,8 +396,28 @@ static void StrataNxSkinTouchVisual(id pad, NSSet<UITouch *> *touches, BOOL endi
     void (*track)(id, SEL, NSSet<UITouch *> *, BOOL) = (void *)[skin methodForSelector:selector];
     track(skin, selector, touches, ending);
 }
+// Prime each touch's Skin role BEFORE NxNative's native touchesBegan gets
+// its first locationInView:. UIKit can query a touch during hit testing,
+// where UITouch.phase is not reliably "Began", so lazy selection was fragile.
+static void StrataNxPrimeArtTouchRoles(UIView *pad, NSSet<UITouch *> *touches) {
+    if (!pad || !objc_getAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey)) return;
+    UIView *art = [pad.superview viewWithTag:877144];
+    BOOL landscape = pad.bounds.size.width > pad.bounds.size.height;
+    UIImage *image = [art valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
+    if (!image || !StrataOriginalLocationInView) return;
+    CGRect frame = StrataNxArtworkFrame(pad.bounds, image);
+    for (UITouch *touch in touches) {
+        CGPoint native = StrataOriginalLocationInView(touch, @selector(locationInView:), pad);
+        CGPoint p = CGPointMake((native.x-frame.origin.x)/MAX(frame.size.width,1),
+                                (native.y-frame.origin.y)/MAX(frame.size.height,1));
+        NSInteger role = StrataNxArtRole(p, landscape);
+        objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
+                                @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
 static void StrataNxTouchBegan(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
     StrataNxKeepNativeInputButHideDrawing((UIView *)pad);
+    StrataNxPrimeArtTouchRoles((UIView *)pad, touches);
     StrataNxSkinTouchVisual(pad, touches, NO);
     if (StrataOldNxTouchesBegan) StrataOldNxTouchesBegan(pad, selector, touches, event);
 }
@@ -405,13 +425,19 @@ static void StrataNxTouchMoved(id pad, SEL selector, NSSet<UITouch *> *touches, 
     StrataNxSkinTouchVisual(pad, touches, NO);
     if (StrataOldNxTouchesMoved) StrataOldNxTouchesMoved(pad, selector, touches, event);
 }
+static void StrataNxClearArtTouchRoles(NSSet<UITouch *> *touches) {
+    for (UITouch *touch in touches)
+        objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 static void StrataNxTouchEnded(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
     if (StrataOldNxTouchesEnded) StrataOldNxTouchesEnded(pad, selector, touches, event);
     StrataNxSkinTouchVisual(pad, touches, YES);
+    StrataNxClearArtTouchRoles(touches);
 }
 static void StrataNxTouchCancelled(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
     if (StrataOldNxTouchesCancelled) StrataOldNxTouchesCancelled(pad, selector, touches, event);
     StrataNxSkinTouchVisual(pad, touches, YES);
+    StrataNxClearArtTouchRoles(touches);
 }
 static void StrataNxHookPadVisualEvents(void) {
     static dispatch_once_t once;
