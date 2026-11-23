@@ -646,11 +646,78 @@ static void StrataEnableNxSkinTouchMapping(UIView *pad) {
 static NSString * const StrataNxSkinToggleKey = @"StrataNxSkinEnabled";
 static const NSInteger StrataNxSkinViewTag = 877144;
 
+// Press feedback uses the EXACT control geometry of the touch remapper,
+// with no extra view hitboxes or replacement input handler.
+static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
+    switch (role) {
+        case StrataArtFace: {
+            CGFloat best=CGFLOAT_MAX; CGPoint point=CGPointZero;
+            for (int i=0;i<4;i++) {
+                CGPoint f=StrataArtFaceCentre(land,i);
+                CGFloat dx=(p.x-f.x)/(land?0.029:0.074);
+                CGFloat dy=(p.y-f.y)/(land?0.048:0.038);
+                CGFloat score=dx*dx+dy*dy;
+                if (score<best) { best=score;point=f; }
+            }
+            return point;
+        }
+        case StrataArtDpad: {
+            CGPoint d=StrataArtDpadCentre(land);
+            CGFloat dx=(p.x-d.x)/(land?0.052:0.145);
+            CGFloat dy=(p.y-d.y)/(land?0.086:0.078);
+            if (fabs(dx)>fabs(dy))
+                d.x+=(dx>=0?1:-1)*(land?0.030:0.065);
+            else
+                d.y+=(dy>=0?1:-1)*(land?0.050:0.046);
+            return d;
+        }
+        case StrataArtLeftStick: case StrataArtRightStick: {
+            CGPoint s=StrataArtStickCentre(land,role==StrataArtRightStick);
+            CGFloat dx=MAX(-1,MIN(1,(p.x-s.x)/(land?0.040:0.110)));
+            CGFloat dy=MAX(-1,MIN(1,(p.y-s.y)/(land?0.073:0.055)));
+            s.x+=dx*(land?0.012:0.026);
+            s.y+=dy*(land?0.020:0.018);
+            return s;
+        }
+        case StrataArtL: return land?CGPointMake(0.1430,0.1804):CGPointMake(0.119,0.504);
+        case StrataArtZL: return land?CGPointMake(0.2146,0.1804):CGPointMake(0.283,0.504);
+        case StrataArtR: return land?CGPointMake(0.8126,0.1827):CGPointMake(0.719,0.504);
+        case StrataArtZR: return land?CGPointMake(0.8628,0.1827):CGPointMake(0.879,0.504);
+        case StrataArtMinus: return land?CGPointMake(0.4122,0.7982):CGPointMake(0.3452,0.9357);
+        case StrataArtPlus: return land?CGPointMake(0.5869,0.7994):CGPointMake(0.6559,0.9339);
+        default: return CGPointMake(NAN,NAN);
+    }
+}
+static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL land) {
+    CGPoint centre=StrataNxPressCentre(p,role,land);
+    if (!isfinite(centre.x)||!isfinite(centre.y)) return CGRectNull;
+    CGFloat w=art.size.width,h=art.size.height,width=0,height=0;
+    switch (role) {
+        case StrataArtL: case StrataArtZL: case StrataArtR: case StrataArtZR:
+            width=w*(land?0.046:0.135);height=h*(land?0.035:0.016);break;
+        case StrataArtMinus: case StrataArtPlus:
+            width=w*(land?0.036:0.075);height=h*(land?0.059:0.027);break;
+        case StrataArtDpad:
+            width=w*(land?0.035:0.077);height=h*(land?0.066:0.035);break;
+        case StrataArtLeftStick: case StrataArtRightStick: {
+            CGFloat side=MIN(w*(land?0.069:0.118),h*(land?0.116:0.054));
+            width=side;height=side;break;
+        }
+        case StrataArtFace:
+            width=w*(land?0.050:0.119);height=h*(land?0.088:0.055);break;
+        default: return CGRectNull;
+    }
+    width=MAX(9,width);height=MAX(9,height);
+    return CGRectMake(CGRectGetMinX(art)+centre.x*w-width*0.5,
+                      CGRectGetMinY(art)+centre.y*h-height*0.5,width,height);
+}
+
 @interface StrataNxSkinView : UIView
 @property(nonatomic, strong) UIImage *portraitArtwork;
 @property(nonatomic, strong) UIImage *landscapeArtwork;
-@property(nonatomic, strong) NSMutableDictionary<NSValue *, NSValue *> *artTouches;
-@property(nonatomic, strong) NSMutableDictionary<NSValue *, NSNumber *> *artRoles;
+@property(nonatomic, weak) UIView *mappedPad;
+@property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
+@property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending;
 @end
 @implementation StrataNxSkinView
@@ -662,8 +729,31 @@ static const NSInteger StrataNxSkinViewTag = 877144;
         self.contentMode = UIViewContentModeRedraw;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.tag = StrataNxSkinViewTag;
-        self.artTouches = [NSMutableDictionary new];
-        self.artRoles = [NSMutableDictionary new];
+        self.pressLayers=[NSMutableDictionary new];
+        self.sparePressLayers=[NSMutableArray arrayWithCapacity:10];
+        // Pool GPU-composited pearl/champagne texture layers BEFORE gameplay.
+        // No allocations, glow shadow or skin bitmap redraw on every press.
+        for (NSUInteger i=0;i<10;i++) {
+            CAGradientLayer *shine=[CAGradientLayer layer];
+            shine.colors=@[
+                (__bridge id)[UIColor colorWithWhite:1 alpha:0.62].CGColor,
+                (__bridge id)[UIColor colorWithWhite:1 alpha:0.24].CGColor,
+                (__bridge id)[UIColor colorWithRed:0.88 green:0.80 blue:0.64 alpha:0.14].CGColor
+            ];
+            shine.locations=@[@0.0,@0.46,@1.0];
+            shine.startPoint=CGPointMake(0.25,0);
+            shine.endPoint=CGPointMake(0.70,1);
+            shine.borderColor=[UIColor colorWithRed:0.77 green:0.65 blue:0.44 alpha:0.55].CGColor;
+            shine.borderWidth=0.85;
+            shine.masksToBounds=YES;
+            shine.opacity=0;
+            shine.zPosition=2;
+            shine.actions=@{@"position":[NSNull null],@"bounds":[NSNull null],
+                            @"opacity":[NSNull null],@"transform":[NSNull null],
+                            @"cornerRadius":[NSNull null]};
+            [self.layer addSublayer:shine];
+            [self.sparePressLayers addObject:shine];
+        }
         self.accessibilityIdentifier = @"strata.nxnative.cosmetic-skin";
     }
     return self;
@@ -673,44 +763,62 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     [self setNeedsDisplay];
 }
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending {
-    if (!self.superview) return;
-    BOOL landscape = self.bounds.size.width > self.bounds.size.height;
-    if (!(landscape ? self.landscapeArtwork : self.portraitArtwork)) return;
-    BOOL needsVisualUpdate = NO;
+    UIView *pad=self.mappedPad;
+    if (!pad||!self.superview||touches.count==0) return;
+    BOOL land=self.bounds.size.width>self.bounds.size.height;
+    UIImage *image=land?self.landscapeArtwork:self.portraitArtwork;
+    if (!image) return;
+    CGRect art=StrataNxArtworkFrame(self.bounds,image);
+    if (CGRectIsEmpty(art)) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     for (UITouch *touch in touches) {
-        NSValue *key = [NSValue valueWithNonretainedObject:touch];
-        NSNumber *role = self.artRoles[key];
+        NSValue *key=[NSValue valueWithNonretainedObject:touch];
+        CAGradientLayer *shine=self.pressLayers[key];
         if (ending) {
-            NSInteger roleID = role ? role.integerValue : StrataArtNoMapping;
-            if (roleID == StrataArtLeftStick || roleID == StrataArtRightStick)
-                needsVisualUpdate = YES;
-            [self.artTouches removeObjectForKey:key];
-            [self.artRoles removeObjectForKey:key];
-        } else {
-            if (!role) {
-                role = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
-                if (role) self.artRoles[key] = role;
-            }
-            NSInteger roleID = role ? role.integerValue : StrataArtNoMapping;
-            // A/B/X/Y, D-pad and shoulders no longer draw opaque press rings.
-            // Don't redraw a full 1792x1008 image for every digital button hit.
-            if (roleID != StrataArtLeftStick && roleID != StrataArtRightStick)
-                continue;
-            needsVisualUpdate = YES;
-            UIView *pad = nil;
-            for (UIView *v in self.superview.subviews)
-                if ([NSStringFromClass(v.class) isEqualToString:@"DmGamepad"]) { pad = v; break; }
-            if (!pad) continue;
-            CGPoint point = StrataOriginalLocationInView
-                ? StrataOriginalLocationInView(touch, @selector(locationInView:), pad)
-                : [touch locationInView:pad];
-            if (isfinite(point.x) && isfinite(point.y))
-                self.artTouches[key] = [NSValue valueWithCGPoint:
-                                       [self convertPoint:point fromView:pad]];
+            if (!shine) continue;
+            // Native touch-up already completed; release sheen never delays HID.
+            [shine removeAllAnimations];
+            CABasicAnimation *fade=[CABasicAnimation animationWithKeyPath:@"opacity"];
+            fade.fromValue=@(shine.opacity);fade.toValue=@0;
+            fade.duration=0.075;
+            fade.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            shine.opacity=0;
+            [shine addAnimation:fade forKey:@"zn.press.release"];
+            [self.pressLayers removeObjectForKey:key];
+            [self.sparePressLayers addObject:shine];
+            continue;
         }
+        NSNumber *number=objc_getAssociatedObject(touch,&StrataNxTouchArtRoleKey);
+        NSInteger role=number?number.integerValue:StrataArtNoMapping;
+        if (role==StrataArtNoMapping) continue;
+        BOOL moving=role==StrataArtLeftStick||role==StrataArtRightStick||
+                    role==StrataArtFace||role==StrataArtDpad;
+        if (shine&&!moving) continue; // no work each frame for digital keys
+        CGPoint raw=StrataOriginalLocationInView
+            ? StrataOriginalLocationInView(touch,@selector(locationInView:),pad)
+            : [touch locationInView:pad];
+        CGPoint local=[self convertPoint:raw fromView:pad];
+        CGPoint norm=CGPointMake((local.x-art.origin.x)/art.size.width,
+                                 (local.y-art.origin.y)/art.size.height);
+        if (!isfinite(norm.x)||!isfinite(norm.y)) continue;
+        CGRect frame=StrataNxPressFrame(art,norm,role,land);
+        if (CGRectIsNull(frame)||CGRectIsEmpty(frame)) continue;
+        if (!shine) {
+            shine=self.sparePressLayers.lastObject;
+            if (!shine) continue; // gameplay still accepts every extra touch
+            [self.sparePressLayers removeLastObject];
+            self.pressLayers[key]=shine;
+            [shine removeAllAnimations];
+        }
+        shine.frame=frame;
+        shine.cornerRadius=MIN(frame.size.width,frame.size.height)*
+                           ((role==StrataArtL||role==StrataArtZL||
+                             role==StrataArtR||role==StrataArtZR)?0.42:0.50);
+        shine.transform=CATransform3DMakeScale(0.94,0.94,1);
+        shine.opacity=0.92;
     }
-    // Only the two moving stick knobs need live artwork redraw.
-    if (needsVisualUpdate) [self setNeedsDisplay];
+    [CATransaction commit];
 }
 // All rectangles below use the SAME normalized artwork coordinates as the
 // actual DmGamepad touch map, not physical iPhone point coordinates.
@@ -906,48 +1014,6 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
     CGContextRestoreGState(ctx);
 }
 
-static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait,
-                                    NSDictionary<NSValue *, NSValue *> *touches,
-                                    NSDictionary<NSValue *, NSNumber *> *roles) {
-    CGFloat w = area.size.width, h = area.size.height;
-    for (NSValue *key in touches) {
-        CGPoint raw = touches[key].CGPointValue;
-        CGPoint norm = CGPointMake((raw.x-area.origin.x) / MAX(w,1),
-                                   (raw.y-area.origin.y) / MAX(h,1));
-        NSNumber *fixedRole = roles[key];
-        NSInteger role = fixedRole ? fixedRole.integerValue : StrataNxArtRole(norm, !portrait);
-        if (role == StrataArtNoMapping) continue;
-        CGFloat x = raw.x, y = raw.y;
-        if (role == StrataArtLeftStick || role == StrataArtRightStick) {
-            BOOL right = role == StrataArtRightStick;
-            CGPoint s = StrataArtStickCentre(!portrait, right);
-            CGPoint centre = CGPointMake(area.origin.x+w*s.x,area.origin.y+h*s.y);
-            CGFloat radius = MIN(w*(portrait ? 0.100 : 0.038), h*(portrait ? 0.047 : 0.067));
-            CGFloat dx = MAX(-1.0, MIN(1.0, (x-centre.x)/MAX(radius,1)));
-            CGFloat dy = MAX(-1.0, MIN(1.0, (y-centre.y)/MAX(radius,1)));
-            // Cover the printed stationary knob, then draw its live position.
-            // The outer black ring and surrounding white shell are left intact.
-            CGRect original = CGRectMake(centre.x-radius*0.96,centre.y-radius*0.96,
-                                         radius*1.92,radius*1.92);
-            CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:0.94 alpha:1].CGColor);
-            CGContextFillEllipseInRect(ctx,original);
-            CGPoint shifted = CGPointMake(centre.x+dx*radius*0.30,centre.y+dy*radius*0.30);
-            CGRect knob = CGRectMake(shifted.x-radius*0.87, shifted.y-radius*0.87,
-                                     radius*1.74, radius*1.74);
-            CGContextSaveGState(ctx);
-            CGContextSetShadowWithColor(ctx,CGSizeMake(0,1.5),2.5,
-                                        [UIColor colorWithWhite:0.05 alpha:0.55].CGColor);
-            CGContextSetFillColorWithColor(ctx,[UIColor colorWithWhite:0.94 alpha:1].CGColor);
-            CGContextFillEllipseInRect(ctx,knob);
-            CGContextRestoreGState(ctx);
-            CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithWhite:0.3 alpha:0.85].CGColor);
-            CGContextSetLineWidth(ctx,1.5);
-            CGContextStrokeEllipseInRect(ctx,CGRectInset(knob,1,1));
-        }
-        // No button press circles: the imported key appearance remains
-        // unchanged. Analog knob movement above is the only visual feedback.
-    }
-}
 - (void)drawRect:(CGRect)rect {
     UIView *parent = self.superview;
     if (!parent || CGRectIsEmpty(self.bounds)) return;
@@ -1030,11 +1096,8 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
     }
     if (grad) CGGradientRelease(grad);
     CGColorSpaceRelease(space);
-    // Draw the visual pressed states above the imported art but never over game pixels.
-    if ((portrait ? self.portraitArtwork : self.landscapeArtwork) && self.artTouches.count)
-        StrataNxDrawArtFeedback(ctx,
-                                StrataNxArtworkFrame(bounds,portrait ? self.portraitArtwork : self.landscapeArtwork),
-                                portrait,self.artTouches,self.artRoles);
+    // Cached GPU layers now provide premium button/analog feedback; the
+    // large imported skin bitmap is NEVER redrawn because of touch motion.
     CGContextRestoreGState(ctx);
 
     // A subtle screen edge follows the fixed opening, not the oversized game.
@@ -1220,6 +1283,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     }
     if (!pad) return;
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
+    skin.mappedPad = pad;
     // The library stores artwork in the host App Group, readable by the guest
     // even for existing BOTW / TOTK IPAs without an NxNative rebuild.
     NSURL *groupURL = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:group];
