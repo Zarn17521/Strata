@@ -129,7 +129,7 @@ struct StrataSwitchboard: View {
                                     } label: {
                                         VStack(spacing: 8) {
                                             // Name sits above the selected tile only; space is reserved so the row never jumps.
-                                            Text(customization.name(app)).font(.system(size: max(15, tile * 0.075), weight: .medium))
+                                            Text(customization.name(app)).font(.system(size: max(15, tile * 0.075), weight: .bold))
                                                 .foregroundStyle(foreground).lineLimit(1)
                                                 .minimumScaleFactor(0.6).frame(width: tile + 10).opacity(isSelected ? 1 : 0)
                                             ZStack {
@@ -190,7 +190,7 @@ struct StrataSwitchboard: View {
         // Keep each real action within an equally wide column. The small
         // captions are visual labels only; tap and long-press actions stay on
         // their existing icon controls.
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             shortcutCell("Apps") {
                 roundButton("plus", label: "Manage apps", tint: .red) {
                     controller.stop(); openManagement()
@@ -232,7 +232,7 @@ struct StrataSwitchboard: View {
                 .accessibilityIdentifier("switchboard.toggle.darkMode")
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
     }
@@ -243,11 +243,17 @@ struct StrataSwitchboard: View {
             content()
             Text(caption)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(foreground.opacity(0.58))
+                .foregroundStyle(foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(foreground, lineWidth: 1.3)
+                .allowsHitTesting(false)
+        )
     }
     // Two mutually exclusive gestures: a short tap updates the shared
     // NxNative guest skin setting; holding never accidentally toggles it.
