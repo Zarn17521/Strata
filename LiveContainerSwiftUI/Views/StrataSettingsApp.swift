@@ -84,13 +84,25 @@ struct StrataSettingsApp: View {
 
     var body: some View {
         if #available(iOS 16.0, *) {
-            // Value-based navigation: every row pushes its own destination reliably
-            // (NavigationView links in a long List could highlight without opening).
-            NavigationStack(path: $path) {
-                content.navigationDestination(for: String.self) { id in destination(id) }
-            }
-            .onAppear {
-                if let initialDestination, path.isEmpty { path = [initialDestination] }
+            if initialDestination == "portraitskin" {
+                // Switchboard Skin long-press lands DIRECTLY on the built-in
+                // skin selector. Never briefly show the generic Settings list.
+                NavigationStack {
+                    StrataNxPortraitSkinSettings()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { close() }
+                            }
+                        }
+                }
+            } else {
+                // Ordinary Settings opens on its searchable root page.
+                NavigationStack(path: $path) {
+                    content.navigationDestination(for: String.self) { id in destination(id) }
+                }
+                .onAppear {
+                    if let initialDestination, path.isEmpty { path = [initialDestination] }
+                }
             }
         } else if initialDestination == "portraitskin" {
             // iOS 15 fallback: open the requested detail screen directly.
