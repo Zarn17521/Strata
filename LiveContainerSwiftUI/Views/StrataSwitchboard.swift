@@ -53,22 +53,8 @@ struct StrataSwitchboard: View {
                 background.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
                     statusBar.padding(.horizontal, margin).padding(.top, 10)
+                    // All / Games / Tools and AMOLED moon share one row.
                     categoryStrip.padding(.horizontal, margin).padding(.top, 4)
-                    // Keep the AMOLED toggle under "All", separate from game controls.
-                    Button {
-                        darkMode.toggle()
-                    } label: {
-                        Image(systemName: darkMode ? "moon.fill" : "moon")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.cyan)
-                            .frame(width: 42, height: 42)
-                            .background(Circle().fill(buttonSurface))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode")
-                    .accessibilityIdentifier("switchboard.toggle.darkMode")
-                    .padding(.horizontal, margin)
-                    .padding(.top, 8)
                     Spacer(minLength: 4)
                     TabView(selection: $selectedKey) {
                         ForEach(items, id: \.self) { app in
@@ -193,16 +179,34 @@ struct StrataSwitchboard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
     private var categoryStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 18) {
-                Button("All") { category = nil }.opacity(category == nil ? 1 : 0.55)
-                ForEach(library.visibleCategories(apps), id: \.self) { value in Button(value) { category = value }.opacity(category == value ? 1 : 0.55) }
-            }.font(.subheadline.weight(.semibold)).buttonStyle(.plain)
+        HStack(spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 18) {
+                    Button("All") { category = nil }.opacity(category == nil ? 1 : 0.55)
+                    ForEach(library.visibleCategories(apps), id: \.self) { value in
+                        Button(value) { category = value }.opacity(category == value ? 1 : 0.55)
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.plain)
+            }
+            Button {
+                darkMode.toggle()
+            } label: {
+                Image(systemName: darkMode ? "moon.fill" : "moon")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.cyan)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(buttonSurface))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode")
+            .accessibilityIdentifier("switchboard.toggle.darkMode")
         }
     }
     private var shortcutButtons: some View {
-        // Four equally-sized shortcuts below the cover. The fifth (AMOLED)
-        // lives below "All". Guest orientation never rotates the Switchboard.
+        // Four equally-sized shortcuts below the cover; fifth (AMOLED) is next to categories.
+        // Guest orientation never rotates the Switchboard.
         HStack(spacing: 18) {
             roundButton("square.grid.2x2.fill", label: "Manage apps", tint: .red) {
                 controller.stop(); openManagement()
