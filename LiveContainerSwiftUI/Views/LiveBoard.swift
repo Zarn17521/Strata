@@ -15,6 +15,7 @@ struct LiveBoardRootView: View {
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var switchboardDark = false
     @State private var interfacePresented = false
     @State private var settingsPresented = false
+    @State private var settingsInitialDestination: String? = nil
     @AppStorage("StrataResumeAfterSystemClose", store: LCUtils.appGroupUserDefault) private var resumeAfterSystemClose = false
     @AppStorage("StrataKeepGuestAlive", store: LCUtils.appGroupUserDefault) private var keepGuestAlive = false
     @State private var destinationPresented = false
@@ -27,7 +28,7 @@ struct LiveBoardRootView: View {
             NavigationView {
                 ScrollView {
                     VStack(spacing: 16) {
-                        Button { interfacePresented = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { settingsPresented = true } } label: {
+                        Button { interfacePresented = false; settingsInitialDestination = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { settingsPresented = true } } label: {
                             Label("Settings", systemImage: "gearshape.fill").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding(20)
                                 .background(Color.white.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 24))
                         }.buttonStyle(.plain).accessibilityIdentifier("interface.settings")
@@ -73,11 +74,15 @@ struct LiveBoardRootView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .strataOpenSettings)) { _ in
-            NotificationCenter.default.post(name: LiveBoardControllerInput.pauseNotification, object: nil)
-            if interfacePresented { interfacePresented = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { settingsPresented = true } } else { settingsPresented = true }
+            presentSettings(destination: nil)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .strataOpenNxNativeSkinSettings)) { _ in
+            presentSettings(destination: "portraitskin")
         }
         .fullScreenCover(isPresented: $settingsPresented, onDismiss: { NotificationCenter.default.post(name: LiveBoardControllerInput.resumeNotification, object: nil) }) {
-            StrataSettingsApp(openInterface: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { interfacePresented = true } }, close: { settingsPresented = false })
+            StrataSettingsApp(openInterface: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { interfacePresented = true } },
+                              close: { settingsPresented = false },
+                              initialDestination: settingsInitialDestination)
                 .environmentObject(sharedModel)
         }
         .onChange(of: sharedModel.selectedTab) { tab in
@@ -90,4 +95,16 @@ struct LiveBoardRootView: View {
         }
     }
 
+    private func presentSettings(destination: String?) {
+        settingsInitialDestination = destination
+        NotificationCenter.default.post(name: LiveBoardControllerInput.pauseNotification, object: nil)
+        if interfacePresented {
+            interfacePresented = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                settingsPresented = true
+            }
+        } else {
+            settingsPresented = true
+        }
+    }
 }
