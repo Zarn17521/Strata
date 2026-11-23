@@ -99,7 +99,11 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
 
     @AppStorage(StrataLauncherOrder.key, store: LCUtils.appGroupUserDefault) private var launcherOrder = "[]"
     var launcherApps: [LCAppModel] {
-        StrataLauncherOrder.apply(sortedApps + (builtInSideStore.map { [$0] } ?? []) + phoneApps.models + (StrataBuiltInSettings.model.map { [$0] } ?? []), order: launcherOrder)
+        // Settings now lives behind the launcher gear shortcut and in the
+        // Strata Settings page, not as a selectable App List / game tile.
+        // Keep a compatibility path for old settings entries, but never add
+        // the synthetic built-in Settings app to the launcher's app sources.
+        StrataLauncherOrder.apply(sortedApps + (builtInSideStore.map { [$0] } ?? []) + phoneApps.models, order: launcherOrder)
     }
 
     var filteredLauncherApps: [LCAppModel] {
