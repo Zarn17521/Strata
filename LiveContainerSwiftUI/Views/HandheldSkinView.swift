@@ -25,7 +25,12 @@ struct HandheldSkinView: View {
             let size = geo.size
             let baseW: CGFloat = isLandscape ? 1792 : 923
             let baseH: CGFloat = isLandscape ? 1008 : 2000
-            let scale = min(size.width / baseW, size.height / baseH)
+            // Match the in-game NxNative artwork: portrait keeps the whole
+            // console visible; landscape fills the screen edge-to-edge,
+            // cropping only the excess (no squashed buttons or game window).
+            let scale = isLandscape
+                ? max(size.width / baseW, size.height / baseH)
+                : min(size.width / baseW, size.height / baseH)
             let skinW = baseW * scale
             let skinH = baseH * scale
             let origin = CGPoint(
@@ -62,6 +67,7 @@ struct HandheldSkinView: View {
                 controls(origin: origin, skinW: skinW, skinH: skinH)
             }
             .frame(width: size.width, height: size.height)
+            .clipped() // crop the oversize landscape art to the display bounds
         }
         .ignoresSafeArea()
     }
