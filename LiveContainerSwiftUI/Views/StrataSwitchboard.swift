@@ -28,7 +28,7 @@ struct StrataSwitchboard: View {
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
-    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var skinEnabled = false
+    @State private var showingSkinPreview = false
     @AppStorage("StrataNxGuestLandscape", store: LCUtils.appGroupUserDefault) private var gameLandscape = true
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
@@ -73,24 +73,18 @@ struct StrataSwitchboard: View {
                     Spacer(minLength: 4)
                     shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
                     Spacer(minLength: 4)
-                    if !skinEnabled {
-                        Divider().overlay(foreground.opacity(0.15))
-                        HStack {
-                            Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
-                            Spacer()
-                            if controller.connected {
-                                HStack(spacing: 18) { Label("Options", systemImage: controller.detailsSymbol); Label("Open", systemImage: controller.confirmSymbol) }
-                            }
-                        }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
-                    }
+                    Divider().overlay(foreground.opacity(0.15))
+                    HStack {
+                        Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
+                        Spacer()
+                        if controller.connected {
+                            HStack(spacing: 18) { Label("Options", systemImage: controller.detailsSymbol); Label("Open", systemImage: controller.confirmSymbol) }
+                        }
+                    }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
                 }
 
-                // Custom skin overlay (preview + layout verification). Full display in landscape.
-                if skinEnabled {
-                    HandheldSkinView(controller: controller, isLandscape: gameLandscape)
-                        .allowsHitTesting(false) // visual only in launcher; real input goes to guest
-                        .transition(.opacity)
-                }
+                // Keep the launcher unobstructed. The skin is a separate preview sheet,
+                // not a guest input overlay: drawing it here hid every app and action.
             }
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
@@ -100,6 +94,25 @@ struct StrataSwitchboard: View {
         .onChange(of: phase) { value in if value == .active { busy = false; bind() } else { controller.stop() } }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; bind() }
+        .sheet(isPresented: $showingSkinPreview, onDismiss: bind) {
+            NavigationStack {
+                VStack(spacing: 12) {
+                    Text("Visual preview only. Guest app touch controls are not changed.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    HandheldSkinView(controller: controller, isLandscape: gameLandscape)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding()
+                .navigationTitle("Controller skin preview")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingSkinPreview = false }
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $choosingCover, onDismiss: bind) {
             LiveBoardWallpaperPicker { image in
                 if let image { do { try artwork.save(image, for: coverKey, kind: .cover, mode: "switchboard") } catch { artworkError = error.localizedDescription } }
@@ -213,15 +226,13 @@ struct StrataSwitchboard: View {
             }
             .accessibilityIdentifier("switchboard.manageApps")
 
-            roundButton("tshirt.fill",
-                        label: skinEnabled ? "Disable NxNative skin for next launch" : "Enable NxNative skin for next launch",
-                        tint: skinEnabled ? .purple : .gray) {
-                skinEnabled.toggle()
+            roundButton("tshirt.fill", label: "Preview controller skin", tint: .purple) {
+                showingSkinPreview = true
             }
-            .accessibilityIdentifier("switchboard.toggle.skin")
+            .accessibilityIdentifier("switchboard.preview.skin")
 
             roundButton(gameLandscape ? "iphone.landscape" : "iphone",
-                        label: gameLandscape ? "Game orientation: landscape; switch next launch to portrait" : "Game orientation: portrait; switch next launch to landscape",
+                        label: gameLandscape ? "Skin preview: landscape; switch to portrait" : "Skin preview: portrait; switch to landscape",
                         tint: .orange) {
                 gameLandscape.toggle()
             }
