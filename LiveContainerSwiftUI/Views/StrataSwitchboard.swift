@@ -30,7 +30,6 @@ struct StrataSwitchboard: View {
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = false
-    @AppStorage("StrataNxGuestLandscape", store: LCUtils.appGroupUserDefault) private var gameLandscape = true
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
     private var buttonSurface: Color { darkMode ? Color(white: 0.13) : Color(white: 0.92) }
@@ -260,15 +259,15 @@ struct StrataSwitchboard: View {
             }
 
             shortcutCell("Rotation") {
-                roundButton(gameLandscape ? "iphone.landscape" : "iphone",
-                            label: gameLandscape
-                                ? "NxNative game orientation: Landscape. Tap to use Portrait next launch"
-                                : "NxNative game orientation: Portrait. Tap to use Landscape next launch",
-                            tint: .orange) {
-                    // NxNative reads this App Group key at game launch.
-                    gameLandscape.toggle()
+                if let selected {
+                    // The exact same per-app LCOrientationLock property used
+                    // by App Settings > Orientation. No second global toggle.
+                    StrataAppRotationShortcut(app: selected, surface: buttonSurface)
+                        .accessibilityIdentifier("switchboard.toggle.gameOrientation")
+                } else {
+                    roundButton("iphone.gen3", label: "Select an app to set its orientation", tint: .gray) {}
+                        .disabled(true)
                 }
-                .accessibilityIdentifier("switchboard.toggle.gameOrientation")
             }
 
             shortcutCell("Settings") {
@@ -379,6 +378,51 @@ struct StrataSwitchboard: View {
     }
 }
 
+
+
+// Observes the SELECTED game model so changes in App Settings immediately
+// update this icon, and a tap persists through LCAppInfo.orientationLock.
+private struct StrataAppRotationShortcut: View {
+    @ObservedObject var app: LCAppModel
+    let surface: Color
+
+    private var mode: LCOrientationLock { app.uiOrientationLock }
+
+    private var symbol: String {
+        switch mode {
+        case .Landscape: return "iphone.landscape"
+        case .Portrait: return "iphone"
+        default: return "iphone.gen3"
+        }
+    }
+    private var modeName: String {
+        switch mode {
+        case .Landscape: return "Landscape"
+        case .Portrait: return "Portrait"
+        default: return "Auto"
+        }
+    }
+    var body: some View {
+        Button {
+            // Mirror all three values from the actual App Settings picker:
+            // Disabled (Auto) -> Landscape -> Portrait -> Disabled.
+            switch app.uiOrientationLock {
+            case .Disabled: app.uiOrientationLock = .Landscape
+            case .Landscape: app.uiOrientationLock = .Portrait
+            default: app.uiOrientationLock = .Disabled
+            }
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 50, height: 50)
+                .background(Circle().fill(surface))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("App orientation: " + modeName + ". Tap to change for " + app.displayName)
+        .accessibilityHint("Changes this app's Orientation Lock in App Settings. Applies on next launch.")
+    }
+}
 
 // MARK: - ZN's Library hand-drawn vector initials
 private func znScaledPath(_ p: Path, in rect: CGRect) -> Path {
