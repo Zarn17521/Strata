@@ -5,6 +5,19 @@
 // with the requested FINAL mapping (look stick above, ABXY below).
 #pragma once
 
+// When the supplied portrait PNG / landscape JPG (and their graphite dark
+// variants) are checked into LiveContainer/StrataNxSkins, GitHub Actions
+// embeds their *exact bytes* into LiveContainerShared at build time.
+// No network, file import, or PNG asset catalog lookup during game launch.
+#if __has_include("StrataNxPhotoData.h")
+#include "StrataNxPhotoData.h"
+#else
+static NSData *StrataNxPackedPhotoData(BOOL portrait, BOOL dark) {
+    (void)portrait; (void)dark;
+    return nil; // Compatibility fallback until the four image files are uploaded.
+}
+#endif
+
 static char StrataNxBuiltinImageKey;
 
 static BOOL StrataNxIsBuiltinImage(UIImage *image) {
@@ -218,7 +231,13 @@ static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark) {
         portrait?@"portrait":@"landscape",dark?@"amoled":@"pearl"];
     UIImage *image=[cache objectForKey:key];
     if (!image) {
-        image=StrataNxBuildArtwork(portrait,dark);
+        // Prefer the exact submitted photo skin, not the out-of-date vector
+        // recreation. Photos are deliberately NOT tagged as builtin-vector:
+        // the existing crop/swap path then exchanges Look and ABXY and
+        // corrects the R/ZR glyphs at precisely the same touch coordinates.
+        NSData *photo=StrataNxPackedPhotoData(portrait,dark);
+        if (photo.length) image=[UIImage imageWithData:photo];
+        if (!image) image=StrataNxBuildArtwork(portrait,dark);
         if (image) [cache setObject:image forKey:key
                  cost:(NSUInteger)(image.size.width*image.size.height*4)];
     }
