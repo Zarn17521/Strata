@@ -357,8 +357,8 @@ private struct StrataNxPortraitSkinSettings: View {
     }
 }
 
-// Preview is deliberately drawn in SwiftUI; the guest has a cached native
-// vector implementation using matching coordinates, and never decodes PNGs.
+// Faithful SwiftUI preview: same normalized portrait / landscape centers as
+// the zero-download Core Graphics built-in skins. It never draws game content.
 private struct StrataNxBuiltInSkinPreview: View {
     let dark: Bool
     let landscape: Bool
@@ -367,11 +367,27 @@ private struct StrataNxBuiltInSkinPreview: View {
         dark ? Color(red: 0.008, green: 0.010, blue: 0.014)
              : Color(red: 0.973, green: 0.973, blue: 0.956)
     }
-    private var button: Color {
-        dark ? Color(red: 0.27, green: 0.31, blue: 0.36)
-             : Color(red: 0.91, green: 0.92, blue: 0.90)
+    private var keyTop: Color {
+        dark ? Color(red: 0.37, green: 0.41, blue: 0.46) : .white
     }
-    private var contrast: Color { dark ? .white.opacity(0.82) : .black.opacity(0.45) }
+    private var keyBottom: Color {
+        dark ? Color(red: 0.13, green: 0.16, blue: 0.20)
+             : Color(red: 0.82, green: 0.84, blue: 0.82)
+    }
+    private var labelColor: Color { dark ? .white : Color(white: 0.35) }
+
+    private var facePoints: [(String, CGFloat, CGFloat)] {
+        landscape
+        ? [("A", 0.8836, 0.6185), ("B", 0.8381, 0.6983),
+           ("X", 0.8381, 0.5376), ("Y", 0.7925, 0.6185)]
+        : [("A", 0.8746, 0.8371), ("B", 0.7472, 0.8953),
+           ("X", 0.7485, 0.7729), ("Y", 0.6172, 0.8371)]
+    }
+    private var shoulderPoints: [(String, CGFloat)] {
+        landscape
+        ? [("L", 0.1430), ("ZL", 0.2146), ("R", 0.8126), ("ZR", 0.8628)]
+        : [("L", 0.119), ("ZL", 0.283), ("R", 0.719), ("ZR", 0.879)]
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -381,56 +397,105 @@ private struct StrataNxBuiltInSkinPreview: View {
                 RoundedRectangle(cornerRadius: landscape ? 13 : 17)
                     .fill(shell)
                     .overlay(RoundedRectangle(cornerRadius: landscape ? 13 : 17)
-                        .strokeBorder(dark ? Color.white.opacity(0.2) : Color.gray.opacity(0.4)))
-                RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(dark ? Color.white.opacity(0.23) : Color.gray.opacity(0.40)))
+                RoundedRectangle(cornerRadius: 4)
                     .fill(Color.black)
-                    .overlay(RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(dark ? Color.gray : Color(white: 0.25), lineWidth: 2))
-                    .frame(width: w*(landscape ? 0.482 : 0.917),
-                           height: h*(landscape ? 0.569 : 0.331))
-                    .position(x:w*0.50, y:h*(landscape ? 0.453 : 0.234))
+                    .overlay(RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(dark ? Color(white: 0.34) : Color(white: 0.3), lineWidth: 1.5))
+                    .frame(width: w * (landscape ? 863.0/1792.0 : 847.0/923.0),
+                           height: h * (landscape ? 574.0/1008.0 : 661.0/2000.0))
+                    .position(x: w * 0.50, y: h * (landscape ? 456.0/1008.0 : 468.5/2000.0))
 
-                controlCircle(w: w, h: h, x: landscape ? 0.159 : 0.249,
-                              y: landscape ? 0.362 : 0.646, name: "+")
-                controlCircle(w: w, h: h, x: landscape ? 0.159 : 0.244,
-                              y: landscape ? 0.616 : 0.838, name: "")
-                controlCircle(w: w, h: h, x: landscape ? 0.840 : 0.747,
-                              y: landscape ? 0.361 : 0.645, name: "")
-                // Final physical layout: ABXY BELOW the right look stick.
-                controlCircle(w: w, h: h, x: landscape ? 0.838 : 0.747,
-                              y: landscape ? 0.618 : 0.836, name: "ABXY")
+                // Correct left D-pad, left stick and RIGHT look stick above ABXY.
+                dpad(w: w, h: h)
+                    .position(x: w * (landscape ? 0.1590 : 0.2490),
+                              y: h * (landscape ? 0.3620 : 0.6460))
+                analog(w: w)
+                    .position(x: w * (landscape ? 0.1590 : 0.2438),
+                              y: h * (landscape ? 0.6161 : 0.8379))
+                analog(w: w)
+                    .position(x: w * (landscape ? 0.8401 : 0.7466),
+                              y: h * (landscape ? 0.3613 : 0.6449))
 
-                Text("L  ZL")
-                    .font(.system(size: landscape ? 5 : 7, weight: .semibold))
-                    .foregroundStyle(contrast)
-                    .position(x:w*0.17, y:h*(landscape ? 0.18 : 0.50))
-                Text("R  ZR")
-                    .font(.system(size: landscape ? 5 : 7, weight: .semibold))
-                    .foregroundStyle(contrast)
-                    .position(x:w*0.84, y:h*(landscape ? 0.18 : 0.50))
+                ForEach(facePoints.indices, id: \.self) { index in
+                    let point = facePoints[index]
+                    key(point.0, w: w, h: h)
+                        .position(x: w * point.1, y: h * point.2)
+                }
+                ForEach(shoulderPoints.indices, id: \.self) { index in
+                    let item = shoulderPoints[index]
+                    shoulder(item.0, w: w, h: h)
+                        .position(x: w * item.1,
+                                  y: h * (landscape ? 0.1827 : 0.504))
+                }
+                key("−", w: w, h: h, small: true)
+                    .position(x: w * (landscape ? 0.4122 : 0.3452),
+                              y: h * (landscape ? 0.7982 : 0.9363))
+                key("⚙", w: w, h: h, small: true)
+                    .position(x: w * 0.4999, y: h * (landscape ? 0.7982 : 0.9363))
+                key("+", w: w, h: h, small: true)
+                    .position(x: w * (landscape ? 0.5869 : 0.6559),
+                              y: h * (landscape ? 0.7982 : 0.9363))
                 Text("ZN")
                     .font(.system(size: landscape ? 9 : 11, weight: .black, design: .serif))
                     .foregroundStyle(Color(red: 0.73, green: 0.53, blue: 0.18))
-                    .position(x:w*0.13, y:h*(landscape ? 0.80 : 0.94))
+                    .position(x: w * (landscape ? 0.12 : 0.12),
+                              y: h * (landscape ? 0.80 : 0.94))
             }
-            .frame(width:w,height:h)
+            .frame(width: w, height: h)
+            .clipped()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(dark ? "AMOLED Dark controller skin preview" : "Pearl Light controller skin preview")
     }
 
-    private func controlCircle(w: CGFloat, h: CGFloat, x: CGFloat, y: CGFloat,
-                               name: String) -> some View {
-        Circle()
-            .fill(LinearGradient(colors: [
-                dark ? Color(red: 0.43, green: 0.47, blue: 0.51) : .white,
-                button
-            ], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .overlay(Circle().strokeBorder(dark ? Color.gray.opacity(0.7) : Color.gray.opacity(0.5)))
-            .frame(width: landscape ? w*0.078 : w*0.23)
-            .overlay(Text(name)
-                .font(.system(size: landscape ? 6 : 8, weight: .medium))
-                .foregroundStyle(contrast))
-            .position(x:w*x,y:h*y)
+    private func surface() -> LinearGradient {
+        LinearGradient(colors: [keyTop, keyBottom],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+    private func key(_ title: String, w: CGFloat, h: CGFloat, small: Bool = false) -> some View {
+        let diameter = w * (landscape ? (small ? 0.026 : 0.040) : (small ? 0.068 : 0.095))
+        return Circle()
+            .fill(surface())
+            .overlay(Circle().strokeBorder(dark ? Color.gray.opacity(0.65) : Color.gray.opacity(0.4),
+                                            lineWidth: 0.75))
+            .frame(width: diameter, height: diameter)
+            .overlay(Text(title)
+                .font(.system(size: max(4, diameter * 0.42), weight: .semibold))
+                .foregroundStyle(labelColor))
+    }
+    private func shoulder(_ title: String, w: CGFloat, h: CGFloat) -> some View {
+        let width = w * (landscape ? 0.044 : 0.126)
+        let height = h * (landscape ? 0.036 : 0.022)
+        return RoundedRectangle(cornerRadius: 2)
+            .fill(surface())
+            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.gray.opacity(0.5)))
+            .frame(width: width, height: height)
+            .overlay(Text(title).font(.system(size: max(4, height * 0.67), weight: .semibold))
+                .foregroundStyle(labelColor))
+    }
+    private func analog(w: CGFloat) -> some View {
+        let diameter = w * (landscape ? 114.0/1792.0 : 140.0/923.0)
+        return Circle()
+            .fill(keyBottom)
+            .overlay(Circle().strokeBorder(dark ? Color.gray : Color(white: 0.5), lineWidth: 1))
+            .frame(width: diameter, height: diameter)
+            .overlay(Circle().fill(surface())
+                .frame(width: diameter * 0.68, height: diameter * 0.68)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.27))))
+    }
+    private func dpad(w: CGFloat, h: CGFloat) -> some View {
+        let width = w * (landscape ? 130.0/1792.0 : 182.0/923.0)
+        return ZStack {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(surface())
+                .frame(width: width * 0.40, height: width)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(surface())
+                .frame(width: width, height: width * 0.40)
+        }
+        .overlay(Circle().fill(keyBottom).frame(width: width * 0.13))
+        .frame(width: width, height: width)
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.gray.opacity(0.25)))
     }
 }
