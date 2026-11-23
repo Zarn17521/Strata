@@ -519,14 +519,9 @@ static void StrataEnableNxSkinTouchMapping(UIView *pad) {
     objc_setAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey,
                             @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     StrataNxHookPadVisualEvents();
-    StrataNxArtMenuBridge *target = [StrataNxArtMenuBridge new];
-    target.pad = pad;
-    UITapGestureRecognizer *menuTap = [[UITapGestureRecognizer alloc]
-                                      initWithTarget:target action:@selector(openMenu:)];
-    menuTap.delegate = target;
-    menuTap.cancelsTouchesInView = NO;
-    [pad addGestureRecognizer:menuTap];
-    objc_setAssociatedObject(pad, @selector(openMenu:), target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // The actual native UIMenu is attached to a transparent UIButton at
+    // the artwork's gear position by StrataNxUpdateGameMenuButton below.
+    // A separate tap gesture calling TouchUpInside did not present the UIMenu.
     NSLog(@"[Strata] NxNative white art touch targets mapped to native DmGamepad");
 }
 
@@ -739,6 +734,51 @@ static UIView *StrataNxChildOfClass(UIView *host, NSString *name) {
     return nil;
 }
 
+static const NSInteger StrataNxSkinMenuButtonTag = 877145;
+static void StrataNxUpdateGameMenuButton(UIView *pad) {
+    UIView *skin = [pad.superview viewWithTag:StrataNxSkinViewTag];
+    if (![skin isKindOfClass:StrataNxSkinView.class]) return;
+    BOOL portrait = pad.bounds.size.height > pad.bounds.size.width;
+    UIImage *image = portrait ? ((StrataNxSkinView *)skin).portraitArtwork
+                              : ((StrataNxSkinView *)skin).landscapeArtwork;
+    UIButton *nativeMenu = nil;
+    for (UIView *candidate in pad.subviews)
+        if ([NSStringFromClass(candidate.class) isEqualToString:@"DmMenuButton"]) {
+            nativeMenu = (UIButton *)candidate; break;
+        }
+    if (!nativeMenu) return;
+    UIButton *artMenu = (UIButton *)[pad viewWithTag:StrataNxSkinMenuButtonTag];
+    if (!image) {
+        artMenu.hidden = YES;
+        nativeMenu.userInteractionEnabled = YES;
+        return;
+    }
+    if (!artMenu) {
+        artMenu = [UIButton buttonWithType:UIButtonTypeCustom];
+        artMenu.tag = StrataNxSkinMenuButtonTag;
+        artMenu.accessibilityLabel = @"NxNative game menu";
+        artMenu.backgroundColor = UIColor.clearColor;
+        artMenu.showsMenuAsPrimaryAction = YES;
+        // Preserve NxNative's actual menu actions and reset on open.
+        __weak UIView *weakPad = pad;
+        [artMenu addAction:[UIAction actionWithHandler:^(__unused UIAction *action) {
+            UIView *livePad = weakPad;
+            if (livePad && [livePad respondsToSelector:@selector(reset)])
+                ((void (*)(id, SEL))[livePad methodForSelector:@selector(reset)])(livePad,@selector(reset));
+        }] forControlEvents:UIControlEventMenuActionTriggered];
+        [pad addSubview:artMenu];
+    }
+    artMenu.menu = nativeMenu.menu;
+    artMenu.hidden = NO;
+    nativeMenu.userInteractionEnabled = NO;
+    CGRect r = StrataNxArtworkFrame(pad.bounds,image);
+    CGPoint centre = CGPointMake(CGRectGetMinX(r)+r.size.width*(portrait?0.453:0.460),
+                                  CGRectGetMinY(r)+r.size.height*(portrait?0.842:0.734));
+    CGFloat radius = MAX(20,MIN(r.size.width*(portrait?0.055:0.032),
+                                r.size.height*(portrait?0.035:0.052)));
+    artMenu.frame = CGRectMake(centre.x-radius,centre.y-radius,radius*2,radius*2);
+}
+
 static void StrataNxFitGameToImportedArt(UIViewController *root) {
     NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
     if (!group || ![[[NSUserDefaults alloc] initWithSuiteName:group]
@@ -776,6 +816,7 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     }
     // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
     StrataNxKeepNativeInputButHideDrawing(pad);
+    StrataNxUpdateGameMenuButton(pad);
     @try {
         UILabel *fps = [root valueForKey:@"fps"];
         if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
