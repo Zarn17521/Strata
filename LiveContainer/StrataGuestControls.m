@@ -265,7 +265,9 @@ static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     BOOL landscapeArtwork = image.size.width > image.size.height;
     CGFloat sx = bounds.size.width / image.size.width;
     CGFloat sy = bounds.size.height / image.size.height;
-    CGFloat scale = landscapeArtwork ? MAX(sx, sy) : MIN(sx, sy);
+    // Crop only the source image's outer black gutter in landscape. All
+    // screen-aperture and touch positions use this SAME transformed frame.
+    CGFloat scale = landscapeArtwork ? MAX(sx, sy) * 1.12 : MIN(sx, sy);
     CGSize fit = CGSizeMake(image.size.width*scale, image.size.height*scale);
     return CGRectMake(CGRectGetMidX(bounds)-fit.width/2,
                       CGRectGetMidY(bounds)-fit.height/2,fit.width,fit.height);
@@ -932,10 +934,21 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
         // This is only visual: no game aspect ratio or DmGamepad input changes.
         UIImage *image = portrait ? self.portraitArtwork : self.landscapeArtwork;
         CGRect art = StrataNxArtworkFrame(bounds, image);
+        // JPG skins have opaque BLACK gutters around the rounded white shell
+        // that survive aspect-fill. Clip those gutters away; the white opaque
+        // backing painted above remains, so landscape has no black exterior.
+        CGRect body = StrataNxArtRect(
+            art, portrait ? CGRectMake(0.025,0.015,0.950,0.970)
+                          : CGRectMake(0.052,0.100,0.896,0.790));
+        CGFloat radius = MIN(body.size.width,body.size.height) *
+                         (portrait ? 0.055 : 0.135);
+        CGContextSaveGState(ctx);
+        [[UIBezierPath bezierPathWithRoundedRect:body cornerRadius:radius] addClip];
         [image drawInRect:art];
-        // Only the shell pixels outside the live aperture are repainted.
+        // The printed artwork and actual touch layout both move together.
         StrataNxDrawRearrangedArtwork(image,art,!portrait);
         StrataNxDrawZNBrand(art,portrait);
+        CGContextRestoreGState(ctx);
     } else {
         if (grad) {
             CGContextDrawLinearGradient(ctx, grad,
