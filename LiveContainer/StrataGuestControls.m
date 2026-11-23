@@ -5,6 +5,7 @@
 #import <UIKit/UIKit.h>
 #import <unistd.h>
 #import <math.h>
+#import "StrataNxBuiltinSkin.h"
 
 // Optional NxNative appearance-only bezel. This is a transparent touch-through
 // decoration that lives between the Metal picture and the original gamepad.
@@ -267,7 +268,12 @@ static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     CGFloat sy = bounds.size.height / image.size.height;
     // Crop only the source image's outer black gutter in landscape. All
     // screen-aperture and touch positions use this SAME transformed frame.
-    CGFloat scale = landscapeArtwork ? MAX(sx, sy) * 1.12 : MIN(sx, sy);
+    // Legacy JPEG artwork needs gutter crop. Built-in vectors have no
+    // baked black gutters, so aspect-fill alone reaches every display edge
+    // without cropping the shoulder buttons.
+    CGFloat scale = landscapeArtwork
+        ? MAX(sx, sy) * (StrataNxIsBuiltinImage(image) ? 1.0 : 1.12)
+        : MIN(sx, sy);
     CGSize fit = CGSizeMake(image.size.width*scale, image.size.height*scale);
     return CGRectMake(CGRectGetMidX(bounds)-fit.width/2,
                       CGRectGetMidY(bounds)-fit.height/2,fit.width,fit.height);
@@ -644,6 +650,14 @@ static void StrataEnableNxSkinTouchMapping(UIView *pad) {
 }
 
 static NSString * const StrataNxSkinToggleKey = @"StrataNxSkinEnabled";
+static NSString * const StrataNxSkinStyleKey = @"StrataNxSkinStyle";
+static BOOL StrataNxSkinIsEnabled(NSString *group) {
+    if (!group.length) return NO;
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:group];
+    // Built-in Pearl Light is the default; preserve explicit Skin OFF choices.
+    return [defaults objectForKey:StrataNxSkinToggleKey]
+        ? [defaults boolForKey:StrataNxSkinToggleKey] : YES;
+}
 static const NSInteger StrataNxSkinViewTag = 877144;
 
 // Press feedback uses the EXACT control geometry of the touch remapper,
@@ -715,6 +729,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @interface StrataNxSkinView : UIView
 @property(nonatomic, strong) UIImage *portraitArtwork;
 @property(nonatomic, strong) UIImage *landscapeArtwork;
+@property(nonatomic) BOOL darkTheme;
 @property(nonatomic, weak) UIView *mappedPad;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
 @property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
@@ -757,6 +772,27 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         self.accessibilityIdentifier = @"strata.nxnative.cosmetic-skin";
     }
     return self;
+}
+- (void)setDarkTheme:(BOOL)darkTheme {
+    _darkTheme = darkTheme;
+    // Recolor the pooled, zero-hit-test premium press texture to match the
+    // selected built-in Pearl Light / graphite glass controls.
+    NSArray *colors = darkTheme ? @[
+        (__bridge id)[UIColor colorWithRed:0.75 green:0.81 blue:0.88 alpha:0.39].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.59 green:0.65 blue:0.73 alpha:0.28].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.33 green:0.40 blue:0.48 alpha:0.16].CGColor
+    ] : @[
+        (__bridge id)[UIColor colorWithWhite:1 alpha:0.62].CGColor,
+        (__bridge id)[UIColor colorWithWhite:1 alpha:0.24].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.88 green:0.80 blue:0.64 alpha:0.14].CGColor
+    ];
+    UIColor *edge = darkTheme
+        ? [UIColor colorWithRed:0.57 green:0.64 blue:0.72 alpha:0.53]
+        : [UIColor colorWithRed:0.77 green:0.65 blue:0.44 alpha:0.55];
+    for (CAGradientLayer *layer in self.sparePressLayers) {
+        layer.colors = colors;
+        layer.borderColor = edge.CGColor;
+    }
 }
 - (void)layoutSubviews {
     [super layoutSubviews];
@@ -1045,7 +1081,7 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
     if (artwork) {
         // Cover even transparent parts of imported PNGs so the extra-wide
         // Metal drawable cannot leak around the handheld artwork.
-        CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:0.97 alpha:1].CGColor);
+        CGContextSetFillColorWithColor(ctx, StrataNxBuiltShell(self.darkTheme).CGColor);
         CGContextFillRect(ctx, bounds);
     }
 
@@ -1080,10 +1116,18 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
         CGFloat radius = MIN(body.size.width,body.size.height) *
                          (portrait ? 0.055 : 0.135);
         CGContextSaveGState(ctx);
-        [[UIBezierPath bezierPathWithRoundedRect:body cornerRadius:radius] addClip];
+        BOOL builtIn = StrataNxIsBuiltinImage(image);
+        if (!builtIn) {
+            // Legacy imported JPG geometry retained for backward compatibility.
+            [[UIBezierPath bezierPathWithRoundedRect:body cornerRadius:radius] addClip];
+        }
         [image drawInRect:art];
-        // The printed artwork and actual touch layout both move together.
-        StrataNxDrawRearrangedArtwork(image,art,!portrait);
+        if (!builtIn) {
+            // Custom imported art uses the original unmodified button positions.
+            StrataNxDrawRearrangedArtwork(image,art,!portrait);
+        }
+        // Built-ins are already laid out with Look above ABXY. Do not
+        // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
         CGContextRestoreGState(ctx);
     } else {
@@ -1188,8 +1232,7 @@ static void StrataNxUpdateGameMenuButton(UIView *pad) {
 
 static void StrataNxFitGameToImportedArt(UIViewController *root) {
     NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
-    if (!group || ![[[NSUserDefaults alloc] initWithSuiteName:group]
-                    boolForKey:StrataNxSkinToggleKey]) return;
+    if (!StrataNxSkinIsEnabled(group)) return;
     UIView *host = root.view;
     UIView *skinView = [host viewWithTag:StrataNxSkinViewTag];
     if (![skinView isKindOfClass:StrataNxSkinView.class]) return;
@@ -1274,7 +1317,7 @@ static void StrataNxHookRootLayout(UIViewController *root, NSString *group) {
 
 static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if (!window || window.isHidden || ![NSUserDefaults.lcGuestAppId.lowercaseString hasPrefix:@"org.nxnative"]) return;
-    if (![[[NSUserDefaults alloc] initWithSuiteName:group] boolForKey:StrataNxSkinToggleKey]) return;
+    if (!StrataNxSkinIsEnabled(group)) return;
     UIView *host = StrataFindNxPadHost(window.rootViewController.view, 0);
     if (!host || [host viewWithTag:StrataNxSkinViewTag]) return;
     UIView *pad = nil;
@@ -1284,13 +1327,13 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if (!pad) return;
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
     skin.mappedPad = pad;
-    // The library stores artwork in the host App Group, readable by the guest
-    // even for existing BOTW / TOTK IPAs without an NxNative rebuild.
-    NSURL *groupURL = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:group];
-    NSURL *portraitPNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativePortrait.png"];
-    if (portraitPNG) skin.portraitArtwork = [UIImage imageWithContentsOfFile:portraitPNG.path];
-    NSURL *landscapePNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativeLandscape.png"];
-    if (landscapePNG) skin.landscapeArtwork = [UIImage imageWithContentsOfFile:landscapePNG.path];
+    // Built-in vector skin: every NxNative guest has BOTH orientations
+    // without importing or downloading any PNG. The user's old custom
+    // artwork files remain untouched on disk for potential future restore.
+    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
+    skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
+    skin.portraitArtwork = StrataNxBuiltinArtwork(YES, skin.darkTheme);
+    skin.landscapeArtwork = StrataNxBuiltinArtwork(NO, skin.darkTheme);
     if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
     // The shell must cover aspect-FILL side overscan while staying under
     // the active DmGamepad touch view. Never reparent DmGameView.
@@ -1310,8 +1353,10 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
         }
     }
     [skin setNeedsDisplay];
-    NSLog(@"[Strata][NxSkin] imported portrait=%@ landscape=%@; viewport fit and input mapping",
-          skin.portraitArtwork ? @"YES":@"NO", skin.landscapeArtwork ? @"YES":@"NO");
+    NSLog(@"[Strata][NxSkin] built-in %@ portrait=%@ landscape=%@; mapped native input",
+          skin.darkTheme ? @"AMOLED Dark" : @"Pearl Light",
+          skin.portraitArtwork ? @"YES" : @"NO",
+          skin.landscapeArtwork ? @"YES" : @"NO");
 }
 
 // Apply the PER-APP Orientation Lock selected in App Settings or the
