@@ -825,6 +825,9 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     if (!CGRectEqualToRect(game.frame,fitted)) {
         game.frame = fitted;
         [skin setNeedsDisplay];
+        NSLog(@"[Strata][NxSkin] %@ picture fitted %@ in artwork aperture %@",
+              portrait ? @"portrait":@"landscape",
+              NSStringFromCGRect(fitted),NSStringFromCGRect(hole));
     }
     // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
     StrataNxKeepNativeInputButHideDrawing(pad);
@@ -839,6 +842,16 @@ static void StrataNxRootDidLayout(id root, SEL sel) {
     if (StrataNxOriginalRootDidLayout) StrataNxOriginalRootDidLayout(root,sel);
     StrataNxFitGameToImportedArt((UIViewController *)root);
 }
+static UIViewController *StrataNxFindGameController(UIViewController *controller, NSUInteger depth) {
+    if (!controller || depth > 6) return nil;
+    if ([NSStringFromClass(controller.class) isEqualToString:@"DmRootVC"]) return controller;
+    for (UIViewController *child in controller.childViewControllers) {
+        UIViewController *game = StrataNxFindGameController(child,depth+1);
+        if (game) return game;
+    }
+    return nil;
+}
+
 static void StrataNxHookRootLayout(UIViewController *root, NSString *group) {
     if (!root || ![NSStringFromClass(root.class) isEqualToString:@"DmRootVC"]) return;
     objc_setAssociatedObject(root, &StrataNxSkinRootGroupKey,group,OBJC_ASSOCIATION_COPY_NONATOMIC);
@@ -873,10 +886,15 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     [host insertSubview:skin belowSubview:pad];
     if (skin.portraitArtwork || skin.landscapeArtwork) {
         StrataNxKeepNativeInputButHideDrawing(pad);
-        StrataNxHookRootLayout(window.rootViewController, group);
-        [host setNeedsLayout];
-        [host layoutIfNeeded];
-        StrataNxFitGameToImportedArt(window.rootViewController);
+        UIViewController *gameRoot = StrataNxFindGameController(window.rootViewController,0);
+        if (gameRoot) {
+            StrataNxHookRootLayout(gameRoot, group);
+            [gameRoot.view setNeedsLayout];
+            [gameRoot.view layoutIfNeeded];
+            StrataNxFitGameToImportedArt(gameRoot);
+        } else {
+            NSLog(@"[Strata][NxSkin] DmRootVC not found; leaving native picture size unchanged");
+        }
     }
     [skin setNeedsDisplay];
     NSLog(@"[Strata][NxSkin] imported portrait=%@ landscape=%@; viewport fit and input mapping",
