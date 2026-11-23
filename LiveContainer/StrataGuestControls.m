@@ -122,6 +122,49 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     NSLog(@"[Strata] Optional NxNative portrait/landscape bezel enabled (cosmetic only)");
 }
 
+// Apply the Switchboard's portrait/landscape choice to the NxNative guest,
+// never to Strata's launcher. The existing NxNative DmRootVC supports both
+// orientations, so the native game will relayout its own picture and gamepad.
+static NSString * const StrataNxGuestLandscapeKey = @"StrataNxGuestLandscape";
+static char StrataNxOrientationRequestKey;
+
+static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
+    if (!window || !window.windowScene || !group.length) return;
+    if (![NSUserDefaults.lcGuestAppId.lowercaseString hasPrefix:@"org.nxnative"]) return;
+    UIViewController *root = window.rootViewController;
+    if (!root || ![NSStringFromClass(root.class) isEqualToString:@"DmRootVC"]) return;
+
+    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
+    id stored = [prefs objectForKey:StrataNxGuestLandscapeKey];
+    if (![stored respondsToSelector:@selector(boolValue)]) return; // no override selected
+    BOOL landscape = [stored boolValue];
+    UIWindowScene *scene = window.windowScene;
+    BOOL satisfied = landscape ? UIInterfaceOrientationIsLandscape(scene.interfaceOrientation)
+                               : (scene.interfaceOrientation == UIInterfaceOrientationPortrait);
+    if (satisfied) return;
+    NSString *requested = landscape ? @"landscape" : @"portrait";
+    if ([objc_getAssociatedObject(window, &StrataNxOrientationRequestKey) isEqual:requested]) return;
+
+    objc_setAssociatedObject(window, &StrataNxOrientationRequestKey,
+                            requested, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    if (@available(iOS 16.0, *)) {
+        UIInterfaceOrientationMask mask = landscape ? UIInterfaceOrientationMaskLandscapeRight
+                                                   : UIInterfaceOrientationMaskPortrait;
+        [root setNeedsUpdateOfSupportedInterfaceOrientations];
+        UIWindowSceneGeometryPreferencesIOS *geometry =
+            [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:mask];
+        __weak UIWindow *weakWindow = window;
+        [scene requestGeometryUpdateWithPreferences:geometry errorHandler:^(NSError *error) {
+            NSLog(@"[Strata] NxNative guest orientation %@ rejected: %@", requested, error.localizedDescription);
+            UIWindow *liveWindow = weakWindow;
+            if (liveWindow) objc_setAssociatedObject(liveWindow, &StrataNxOrientationRequestKey,
+                                                    nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        }];
+    } else {
+        [UIViewController attemptRotationToDeviceOrientation];
+    }
+}
+
 @interface StrataControlsWindow : UIWindow
 @end
 @implementation StrataControlsWindow
@@ -159,6 +202,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
 @implementation StrataGuestControls
 - (void)installInWindow:(UIWindow *)window {
     if (!window || [self.installedWindows containsObject:window]) return;
+    StrataApplyNxGameOrientation(window, self.group);
     StrataInstallNxSkin(window, self.group);
     // The guest's Metal view can be created after the window becomes visible.
     // One-off retries are bounded; no periodic cleanup or render-thread hooks.
@@ -168,7 +212,10 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             UIWindow *liveWindow = weakWindow;
-            if (liveWindow) StrataInstallNxSkin(liveWindow, group);
+            if (liveWindow) {
+                StrataApplyNxGameOrientation(liveWindow, group);
+                StrataInstallNxSkin(liveWindow, group);
+            }
         });
     }
     [self.installedWindows addObject:window];
