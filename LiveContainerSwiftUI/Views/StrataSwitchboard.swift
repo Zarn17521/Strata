@@ -173,42 +173,35 @@ struct StrataSwitchboard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
     private var categoryStrip: some View {
-        HStack(spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
-                    Button("All") { category = nil }.opacity(category == nil ? 1 : 0.55)
-                    ForEach(library.visibleCategories(apps), id: \.self) { value in
-                        Button(value) { category = value }.opacity(category == value ? 1 : 0.55)
-                    }
+        // Categories have the whole top row; AMOLED controls live on the
+        // shortcut rail at the far right, not beside All / Games / Tools.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 18) {
+                Button("All") { category = nil }.opacity(category == nil ? 1 : 0.55)
+                ForEach(library.visibleCategories(apps), id: \.self) { value in
+                    Button(value) { category = value }.opacity(category == value ? 1 : 0.55)
                 }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.plain)
             }
-            Button {
-                darkMode.toggle()
-            } label: {
-                Image(systemName: darkMode ? "moon.fill" : "moon")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.cyan)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(buttonSurface))
-            }
+            .font(.subheadline.weight(.semibold))
             .buttonStyle(.plain)
-            .accessibilityLabel(darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode")
-            .accessibilityIdentifier("switchboard.toggle.darkMode")
         }
     }
     private var shortcutButtons: some View {
-        // Four equally-sized shortcuts below the cover; fifth (AMOLED) is next to categories.
+        // Five real actions across the bottom rail. Put the moon at the
+        // trailing edge with equal flexible gaps that fit compact iPhones.
         // Guest orientation never rotates the Switchboard.
-        HStack(spacing: 18) {
-            roundButton("square.grid.2x2.fill", label: "Manage apps", tint: .red) {
+        HStack(spacing: 0) {
+            roundButton("plus", label: "Manage apps", tint: .red) {
                 controller.stop(); openManagement()
             }
             .accessibilityIdentifier("switchboard.manageApps")
 
+            Spacer(minLength: 0)
+
             skinShortcut
                 .accessibilityIdentifier("switchboard.toggle.skin")
+
+            Spacer(minLength: 0)
 
             roundButton(gameLandscape ? "iphone.landscape" : "iphone",
                         label: gameLandscape
@@ -221,12 +214,25 @@ struct StrataSwitchboard: View {
             }
             .accessibilityIdentifier("switchboard.toggle.gameOrientation")
 
+            Spacer(minLength: 0)
+
             roundButton("slider.horizontal.3", label: "Strata settings", tint: .purple) {
                 controller.stop()
                 NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
             }
             .accessibilityIdentifier("switchboard.interfaceSettings")
+
+            Spacer(minLength: 0)
+
+            roundButton(darkMode ? "moon.fill" : "moon",
+                        label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
+                        tint: .cyan) {
+                darkMode.toggle()
+            }
+            .accessibilityIdentifier("switchboard.toggle.darkMode")
         }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
     }
     // Two mutually exclusive gestures: a short tap updates the shared
