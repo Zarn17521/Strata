@@ -1021,13 +1021,25 @@ static char StrataNxOrientationRequestKey;
 static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
     if (!window || !window.windowScene || !group.length) return;
     if (![NSUserDefaults.lcGuestAppId.lowercaseString hasPrefix:@"org.nxnative"]) return;
-    UIViewController *root = window.rootViewController;
-    if (!root || ![NSStringFromClass(root.class) isEqualToString:@"DmRootVC"]) return;
+    // The guest can be nested in a LiveContainer hosting controller.
+    // Looking only at the window's immediate root missed those launches.
+    UIViewController *root = StrataNxFindGameController(window.rootViewController, 0);
+    if (!root) return;
 
     NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
     id stored = [prefs objectForKey:StrataNxGuestLandscapeKey];
     if (![stored respondsToSelector:@selector(boolValue)]) return; // no override selected
     BOOL landscape = [stored boolValue];
+
+    // AppDelegate supportedInterfaceOrientationsForWindow reads the shared
+    // LiveBoardOrientation mask. Clear the launcher's portrait lock only for
+    // this actual NxNative guest before requesting UIWindowScene geometry.
+    Class bridge = NSClassFromString(@"StrataNxGameOrientationBridge");
+    SEL apply = NSSelectorFromString(@"apply:");
+    if (bridge && [bridge respondsToSelector:apply]) {
+        void (*call)(id, SEL, NSNumber *) = (void *)[bridge methodForSelector:apply];
+        call(bridge, apply, @(landscape));
+    }
     UIWindowScene *scene = window.windowScene;
     BOOL satisfied = landscape ? UIInterfaceOrientationIsLandscape(scene.interfaceOrientation)
                                : (scene.interfaceOrientation == UIInterfaceOrientationPortrait);
@@ -1041,6 +1053,9 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
         UIInterfaceOrientationMask mask = landscape ? UIInterfaceOrientationMaskLandscapeRight
                                                    : UIInterfaceOrientationMaskPortrait;
         [root setNeedsUpdateOfSupportedInterfaceOrientations];
+        if (window.rootViewController != root) {
+            [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
         UIWindowSceneGeometryPreferencesIOS *geometry =
             [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:mask];
         __weak UIWindow *weakWindow = window;
