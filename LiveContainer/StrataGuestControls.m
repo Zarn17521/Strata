@@ -802,38 +802,100 @@ static void StrataNxDrawRearrangedArtwork(UIImage *image, CGRect art,
 // Small ZN's LIBRARY motif on the LOWER LEFT of the shell, matching the
 // launcher's gold Z, jade N and green tilted Link cap. Kept away from D-pad,
 // sticks and menu hitboxes. It is purely artwork, never an input target.
-static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
-    CGFloat x = CGRectGetMinX(art)+art.size.width*(portrait ? 0.075 : 0.088);
-    CGFloat y = CGRectGetMinY(art)+art.size.height*(portrait ? 0.931 : 0.811);
-    CGFloat fs = MIN(art.size.width*(portrait ? 0.058 : 0.034),
-                      art.size.height*(portrait ? 0.028 : 0.061));
-    UIFont *font = [UIFont fontWithName:@"Georgia-BoldItalic" size:fs];
-    if (!font) font = [UIFont boldSystemFontOfSize:fs];
-    NSDictionary *gold = @{NSFontAttributeName:font,
-      NSForegroundColorAttributeName:[UIColor colorWithRed:0.70 green:0.43 blue:0.10 alpha:1]};
-    NSDictionary *jade = @{NSFontAttributeName:font,
-      NSForegroundColorAttributeName:[UIColor colorWithRed:0.10 green:0.51 blue:0.35 alpha:1]};
-    [@"Z" drawAtPoint:CGPointMake(x,y+fs*0.14) withAttributes:gold];
-    CGFloat nX = x + [@"Z" sizeWithAttributes:gold].width*0.76;
-    [@"N" drawAtPoint:CGPointMake(nX,y+fs*0.14) withAttributes:jade];
-
+// Pixel-for-pixel shape coordinates from the SwiftUI ZN's LIBRARY header,
+// rendered at a compact size on the LOWER LEFT of the imported controller.
+static void StrataNxPaintLogoPath(UIBezierPath *path, CGRect target,
+                                  UIColor *color) {
     CGContextRef ctx = UIGraphicsGetCurrentContext();
-    if (!ctx) return;
-    // Slanted floppy emerald hat over the first initial.
+    if (!ctx || CGRectIsEmpty(target)) return;
     CGContextSaveGState(ctx);
-    CGContextTranslateCTM(ctx,x+fs*0.06,y-fs*0.04);
-    CGContextRotateCTM(ctx,(CGFloat)(-M_PI/18.0));
+    CGContextTranslateCTM(ctx,target.origin.x,target.origin.y);
+    CGContextScaleCTM(ctx,target.size.width/100.0,target.size.height/100.0);
+    [color setFill];
+    [path fill];
+    CGContextRestoreGState(ctx);
+}
+static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
+    CGFloat width = art.size.width * (portrait ? 0.160 : 0.075);
+    CGFloat height = width * (43.0/74.0);
+    CGFloat x = CGRectGetMinX(art) + art.size.width * (portrait ? 0.066 : 0.090);
+    CGFloat y = CGRectGetMinY(art) + art.size.height * (portrait ? 0.923 : 0.758);
+    CGRect frame = CGRectMake(x,y,width,height);
+
+    UIBezierPath *z = [UIBezierPath bezierPath];
+    [z moveToPoint:CGPointMake(5,36)];
+    [z addQuadCurveToPoint:CGPointMake(20,6) controlPoint:CGPointMake(14,25)];
+    for (NSValue *v in @[
+      [NSValue valueWithCGPoint:CGPointMake(91,6)],
+      [NSValue valueWithCGPoint:CGPointMake(100,0)],
+      [NSValue valueWithCGPoint:CGPointMake(91,29)],
+      [NSValue valueWithCGPoint:CGPointMake(85,29)],
+      [NSValue valueWithCGPoint:CGPointMake(87,18)],
+      [NSValue valueWithCGPoint:CGPointMake(77,18)],
+      [NSValue valueWithCGPoint:CGPointMake(28,87)],
+      [NSValue valueWithCGPoint:CGPointMake(91,87)],
+      [NSValue valueWithCGPoint:CGPointMake(99,74)],
+      [NSValue valueWithCGPoint:CGPointMake(97,100)],
+      [NSValue valueWithCGPoint:CGPointMake(4,100)],
+      [NSValue valueWithCGPoint:CGPointMake(11,86)],
+      [NSValue valueWithCGPoint:CGPointMake(66,18)],
+      [NSValue valueWithCGPoint:CGPointMake(29,18)]
+    ]) [z addLineToPoint:v.CGPointValue];
+    [z closePath];
+    // Cut the same ornamental notches used on the library header.
+    [z moveToPoint:CGPointMake(63,51)];
+    [z addLineToPoint:CGPointMake(70,45)];
+    [z addLineToPoint:CGPointMake(66,59)];
+    [z closePath];
+    [z moveToPoint:CGPointMake(50,71)];
+    [z addLineToPoint:CGPointMake(56,63)];
+    [z addLineToPoint:CGPointMake(55,76)];
+    [z closePath];
+    z.usesEvenOddFillRule = YES;
+
+    UIBezierPath *n = [UIBezierPath bezierPath];
+    [n appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(10,10,14,80)]];
+    [n appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(76,10,14,80)]];
+    [n moveToPoint:CGPointMake(19,10)];
+    [n addLineToPoint:CGPointMake(35,10)];
+    [n addLineToPoint:CGPointMake(83,89)];
+    [n addLineToPoint:CGPointMake(66,89)];
+    [n closePath];
+    for (NSValue *v in @[
+      [NSValue valueWithCGRect:CGRectMake(2,5,31,8)],
+      [NSValue valueWithCGRect:CGRectMake(3,88,31,9)],
+      [NSValue valueWithCGRect:CGRectMake(67,5,31,8)],
+      [NSValue valueWithCGRect:CGRectMake(67,88,31,9)]
+    ]) [n appendPath:[UIBezierPath bezierPathWithRect:v.CGRectValue]];
+
     UIBezierPath *hat = [UIBezierPath bezierPath];
-    [hat moveToPoint:CGPointMake(fs*0.02,fs*0.40)];
-    [hat addQuadCurveToPoint:CGPointMake(fs*0.43,fs*0.03)
-               controlPoint:CGPointMake(fs*0.06,fs*0.04)];
-    [hat addQuadCurveToPoint:CGPointMake(fs*0.73,fs*0.37)
-               controlPoint:CGPointMake(fs*0.69,fs*0.03)];
-    [hat addQuadCurveToPoint:CGPointMake(fs*0.03,fs*0.41)
-               controlPoint:CGPointMake(fs*0.43,fs*0.34)];
+    [hat moveToPoint:CGPointMake(14,69)];
+    [hat addCurveToPoint:CGPointMake(57,18)
+           controlPoint1:CGPointMake(23,38)
+           controlPoint2:CGPointMake(43,14)];
+    [hat addCurveToPoint:CGPointMake(92,63)
+           controlPoint1:CGPointMake(73,19)
+           controlPoint2:CGPointMake(89,46)];
+    [hat addQuadCurveToPoint:CGPointMake(73,77) controlPoint:CGPointMake(90,78)];
+    [hat addQuadCurveToPoint:CGPointMake(21,78) controlPoint:CGPointMake(44,68)];
+    [hat addQuadCurveToPoint:CGPointMake(4,34) controlPoint:CGPointMake(5,65)];
+    [hat addQuadCurveToPoint:CGPointMake(28,52) controlPoint:CGPointMake(18,41)];
+    [hat addLineToPoint:CGPointMake(14,69)];
     [hat closePath];
-    [[UIColor colorWithRed:0.10 green:0.56 blue:0.23 alpha:1] setFill];
-    [hat fill];
+
+    UIColor *gold = [UIColor colorWithRed:0.70 green:0.43 blue:0.10 alpha:1];
+    UIColor *jade = [UIColor colorWithRed:0.10 green:0.51 blue:0.35 alpha:1];
+    UIColor *green = [UIColor colorWithRed:0.10 green:0.56 blue:0.23 alpha:1];
+    StrataNxPaintLogoPath(z,CGRectMake(x+width*(3.0/74.0),y+height*(12.0/43.0),
+                                       width*(32.0/74.0),height*(30.0/43.0)),gold);
+    StrataNxPaintLogoPath(n,CGRectMake(x+width*(39.0/74.0),y+height*(12.0/43.0),
+                                       width*(32.0/74.0),height*(30.0/43.0)),jade);
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextSaveGState(ctx);
+    CGContextTranslateCTM(ctx,x-width/74.0,y);
+    CGContextRotateCTM(ctx,(CGFloat)(-M_PI/18.0));
+    StrataNxPaintLogoPath(hat,CGRectMake(0,0,width*(30.0/74.0),
+                                            height*(19.0/43.0)),green);
     CGContextRestoreGState(ctx);
 }
 
