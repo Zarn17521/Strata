@@ -252,6 +252,23 @@ static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     return CGRectMake(CGRectGetMidX(bounds)-fit.width/2,
                       CGRectGetMidY(bounds)-fit.height/2,fit.width,fit.height);
 }
+// Exact visible game opening cut out of the imported artwork. Shared by
+// Metal-view layout and skin drawing: they MUST use the same rectangle.
+static CGRect StrataNxArtworkAperture(CGRect bounds, UIImage *image) {
+    if (!image || CGRectIsEmpty(bounds)) return CGRectNull;
+    CGRect art = StrataNxArtworkFrame(bounds, image);
+    BOOL portrait = bounds.size.height > bounds.size.width;
+    CGRect hole = portrait
+        ? CGRectMake(CGRectGetMinX(art) + art.size.width * (37.0/923.0),
+                     CGRectGetMinY(art) + art.size.height * (138.0/2000.0),
+                     art.size.width * (847.0/923.0),
+                     art.size.height * (661.0/2000.0))
+        : CGRectMake(CGRectGetMinX(art) + art.size.width * (463.0/1792.0),
+                     CGRectGetMinY(art) + art.size.height * (169.0/1008.0),
+                     art.size.width * (863.0/1792.0),
+                     art.size.height * (574.0/1008.0));
+    return CGRectIntersection(hole, bounds);
+}
 static CGRect StrataNxArtworkFrameInPad(UIView *pad, UIImage *image) {
     UIView *skin = [pad.superview viewWithTag:877144];
     if (!skin) return StrataNxArtworkFrame(pad.bounds, image);
@@ -705,17 +722,9 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
             CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithWhite:0.3 alpha:0.85].CGColor);
             CGContextSetLineWidth(ctx,1.5);
             CGContextStrokeEllipseInRect(ctx,CGRectInset(knob,1,1));
-        } else {
-            CGFloat radius = MIN(w*(portrait ? 0.046 : 0.020),
-                                 h*(portrait ? 0.025 : 0.041));
-            // Darkened inset + highlight: the printed shell key appears pressed.
-            CGRect hit = CGRectMake(x-radius,y-radius,radius*2,radius*2);
-            CGContextSetFillColorWithColor(ctx,[UIColor colorWithWhite:0.08 alpha:0.21].CGColor);
-            CGContextFillEllipseInRect(ctx,hit);
-            CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithWhite:1 alpha:0.42].CGColor);
-            CGContextSetLineWidth(ctx,1.0);
-            CGContextStrokeEllipseInRect(ctx,CGRectInset(hit,2,2));
         }
+        // No button press circles: the imported key appearance remains
+        // unchanged. Analog knob movement above is the only visual feedback.
     }
 }
 - (void)drawRect:(CGRect)rect {
@@ -734,12 +743,22 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
     CGContextRef ctx = UIGraphicsGetCurrentContext();
     if (!ctx) return;
 
-    // Even-odd clip: color ONLY the unused letterbox / touch-panel area.
-    // All existing game pixels and the native pad hit targets remain untouched.
+    // The artwork overlay now sits ABOVE DmGameView. Cut out exactly the
+    // skin's black opening, not the oversized game frame. The opaque shell
+    // covers every pixel of aspect-FILL overscan outside the opening.
+    UIImage *artwork = portrait ? self.portraitArtwork : self.landscapeArtwork;
+    CGRect opening = artwork ? StrataNxArtworkAperture(bounds, artwork) : game;
+    if (CGRectIsNull(opening) || CGRectIsEmpty(opening)) return;
     CGContextSaveGState(ctx);
     CGContextAddRect(ctx, bounds);
-    CGContextAddRect(ctx, CGRectInset(game, -0.5, -0.5));
+    CGContextAddRect(ctx, CGRectInset(opening, -0.25, -0.25));
     CGContextEOClip(ctx);
+    if (artwork) {
+        // Cover even transparent parts of imported PNGs so the extra-wide
+        // Metal drawable cannot leak around the handheld artwork.
+        CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:0.97 alpha:1].CGColor);
+        CGContextFillRect(ctx, bounds);
+    }
 
     NSArray *colors = portrait
         ? @[
@@ -780,14 +799,15 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
                                 portrait,self.artTouches,self.artRoles);
     CGContextRestoreGState(ctx);
 
-    // A subtle screen edge, without a big opaque cover over the game content.
+    // A subtle screen edge follows the fixed opening, not the oversized game.
+    CGRect displayEdge = artwork ? opening : game;
     CGContextSaveGState(ctx);
     CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:0.06 alpha:0.88].CGColor);
     CGContextSetLineWidth(ctx, 3.0);
-    CGContextStrokeRect(ctx, CGRectInset(game, -1.5, -1.5));
+    CGContextStrokeRect(ctx, CGRectInset(displayEdge, -0.5, -0.5));
     CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:1 alpha:0.38].CGColor);
     CGContextSetLineWidth(ctx, 1.0);
-    CGContextStrokeRect(ctx, CGRectInset(game, -3.0, -3.0));
+    CGContextStrokeRect(ctx, CGRectInset(displayEdge, -2.0, -2.0));
     CGContextRestoreGState(ctx);
 }
 @end
@@ -889,56 +909,32 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     UIView *pad = StrataNxChildOfClass(host, @"DmGamepad");
     if (!game || game.superview != host || !pad) return;
 
-    CGRect frame = StrataNxArtworkFrame(host.bounds,img);
-    // Measured aperture of the ORIGINAL supplied artwork: 923x2000
-    // (37,138,847,661) portrait; 1792x1008 (463,169,863,574) landscape.
-    // Do not use approximate hand-tuned ratios here: the game must fit the
-    // same physical aperture used by the imported PNG and touch mapping.
-    CGRect hole = portrait
-        ? CGRectMake(CGRectGetMinX(frame) + frame.size.width * (37.0/923.0),
-                     CGRectGetMinY(frame) + frame.size.height * (138.0/2000.0),
-                     frame.size.width * (847.0/923.0),
-                     frame.size.height * (661.0/2000.0))
-        : CGRectMake(CGRectGetMinX(frame) + frame.size.width * (463.0/1792.0),
-                     CGRectGetMinY(frame) + frame.size.height * (169.0/1008.0),
-                     frame.size.width * (863.0/1792.0),
-                     frame.size.height * (574.0/1008.0));
-    // The landscape artwork is aspect-FILL (cropped at the physical screen).
-    // Constrain the BLACK APERTURE to the visible screen first; never let the
-    // guest's CAMetalLayer draw beyond it, even at fractional point scales.
-    CGRect visibleHole = CGRectIntersection(hole, host.bounds);
-    if (CGRectIsNull(visibleHole) || CGRectIsEmpty(visibleHole) ||
-        visibleHole.size.width < 80 || visibleHole.size.height < 50 ||
+    CGRect hole = StrataNxArtworkAperture(host.bounds, img);
+    // The opening is taller than the usual 16:9 guest picture. Aspect-FIT
+    // created the black top/bottom bands shown in the user's screenshots.
+    // Aspect-FILL preserves the picture's aspect and covers the ENTIRE hole:
+    // the shell above the Metal view occludes the small left/right overscan.
+    // Never change DmGameView's superview (NxNative treats that as TV output).
+    if (CGRectIsNull(hole) || CGRectIsEmpty(hole) ||
+        hole.size.width < 80 || hole.size.height < 50 ||
         game.frame.size.width <= 0 || game.frame.size.height <= 0) return;
-
-    // Keep a one-point inset from the artwork's printed bezel. This avoids
-    // antialiasing / pixel-rounding bleed along all four aperture edges.
-    CGRect safeHole = CGRectInset(visibleHole, 1.0, 1.0);
-    if (CGRectIsEmpty(safeHole)) return;
-
-    // DmRootVC just laid out the game's actual aspect. Aspect-FIT, not FILL:
-    // preserve the whole image and centre it within the black opening.
     CGFloat aspect = game.frame.size.width / game.frame.size.height;
     if (!isfinite(aspect) || aspect <= 0) return;
-    CGFloat width = MIN(safeHole.size.width, safeHole.size.height * aspect);
+    CGFloat width = MAX(hole.size.width, hole.size.height * aspect);
     CGFloat height = width / aspect;
-    CGRect fitted = CGRectMake(CGRectGetMidX(safeHole) - width / 2.0,
-                               CGRectGetMidY(safeHole) - height / 2.0,
+    CGRect filled = CGRectMake(CGRectGetMidX(hole) - width * 0.5,
+                               CGRectGetMidY(hole) - height * 0.5,
                                width, height);
-
-    // Unlike CGRectIntegral, fractional UIKit coordinates must NOT expand
-    // outward beyond the printed window. Clamp to its interior as a guard.
-    fitted = CGRectIntersection(fitted, safeHole);
-    if (CGRectIsNull(fitted) || CGRectIsEmpty(fitted)) return;
-    // The game view owns a CAMetalLayer; clip any oversized drawable content
-    // to its new bounds without an expensive additional mask/offscreen layer.
+    // No layer masks or offscreen extra surfaces: the imported white shell is
+    // rendered ABOVE the guest Metal view but BELOW the touch input layer.
+    // It draws only outside StrataNxArtworkAperture and covers the overscan.
     game.clipsToBounds = YES;
-    if (!CGRectEqualToRect(game.frame, fitted)) {
-        game.frame = fitted;
+    if (!CGRectEqualToRect(game.frame, filled)) {
+        game.frame = filled;
         [skin setNeedsDisplay];
-        NSLog(@"[Strata][NxSkin] %@ game aspect-FIT %@ inside black opening %@",
+        NSLog(@"[Strata][NxSkin] %@ aspect-FILL %@ over aperture %@",
               portrait ? @"portrait" : @"landscape",
-              NSStringFromCGRect(fitted), NSStringFromCGRect(visibleHole));
+              NSStringFromCGRect(filled), NSStringFromCGRect(hole));
     }
     // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
     StrataNxKeepNativeInputButHideDrawing(pad);
@@ -946,7 +942,7 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     @try {
         UILabel *fps = [root valueForKey:@"fps"];
         if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
-            fps.frame = CGRectMake(CGRectGetMinX(fitted)+5,CGRectGetMinY(fitted)+5,64,22);
+            fps.frame = CGRectMake(CGRectGetMinX(hole)+5,CGRectGetMinY(hole)+5,64,22);
     } @catch (__unused NSException *e) {}
 }
 static void StrataNxRootDidLayout(id root, SEL sel) {
@@ -994,7 +990,11 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     NSURL *landscapePNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativeLandscape.png"];
     if (landscapePNG) skin.landscapeArtwork = [UIImage imageWithContentsOfFile:landscapePNG.path];
     if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
-    [host insertSubview:skin belowSubview:pad];
+    // The shell must cover aspect-FILL side overscan while staying under
+    // the active DmGamepad touch view. Never reparent DmGameView.
+    UIView *gameView = StrataNxChildOfClass(host, @"DmGameView");
+    if (gameView) [host insertSubview:skin aboveSubview:gameView];
+    else [host insertSubview:skin belowSubview:pad];
     if (skin.portraitArtwork || skin.landscapeArtwork) {
         StrataNxKeepNativeInputButHideDrawing(pad);
         UIViewController *gameRoot = StrataNxFindGameController(window.rootViewController,0);
