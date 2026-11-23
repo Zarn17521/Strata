@@ -161,7 +161,10 @@ static BOOL StrataArtNear(CGPoint point, CGFloat x, CGFloat y, CGFloat rx, CGFlo
 // Portrait 923x2000: measured from IMG_7621; landscape 1792x1008:
 // measured from IMG_7623. Keep ALL remapping and artwork hit-tests tied
 // to these exact centres so changes cannot drift between methods.
-static CGPoint StrataArtFaceCentre(BOOL landscape, int b) {
+// The imported image still has its original A/B/X/Y diamond above the
+// right look stick. Swap their artwork, THEN move input hit centres by the
+// identical offset. The visual and actual controls must never diverge.
+static CGPoint StrataArtOriginalFaceCentre(BOOL landscape, int b) {
     static const CGFloat portraitX[4] = {0.8743, 0.7469, 0.7482, 0.6169}; // A B X Y
     static const CGFloat portraitY[4] = {0.6459, 0.7041, 0.5817, 0.6459};
     static const CGFloat landscapeX[4] = {0.8856, 0.8401, 0.8401, 0.7945};
@@ -170,12 +173,27 @@ static CGPoint StrataArtFaceCentre(BOOL landscape, int b) {
     return CGPointMake(landscape ? landscapeX[b] : portraitX[b],
                        landscape ? landscapeY[b] : portraitY[b]);
 }
+static CGPoint StrataArtOriginalFaceGroupCentre(BOOL landscape) {
+    return landscape ? CGPointMake(0.8401, 0.3613)
+                     : CGPointMake(0.7466, 0.6449);
+}
+static CGPoint StrataArtOriginalRightStickCentre(BOOL landscape) {
+    return landscape ? CGPointMake(0.8381, 0.6185)
+                     : CGPointMake(0.7469, 0.8361);
+}
+static CGPoint StrataArtFaceCentre(BOOL landscape, int b) {
+    CGPoint c = StrataArtOriginalFaceCentre(landscape, b);
+    CGPoint from = StrataArtOriginalFaceGroupCentre(landscape);
+    CGPoint to = StrataArtOriginalRightStickCentre(landscape);
+    return CGPointMake(c.x + to.x - from.x, c.y + to.y - from.y);
+}
 static CGPoint StrataArtDpadCentre(BOOL landscape) {
     return landscape ? CGPointMake(0.1590, 0.3620) : CGPointMake(0.2490, 0.6460);
 }
 static CGPoint StrataArtStickCentre(BOOL landscape, BOOL right) {
-    if (landscape) return right ? CGPointMake(0.8381, 0.6185) : CGPointMake(0.1590, 0.6161);
-    return right ? CGPointMake(0.7469, 0.8361) : CGPointMake(0.2438, 0.8379);
+    if (right) return StrataArtOriginalFaceGroupCentre(landscape);
+    return landscape ? CGPointMake(0.1590, 0.6161)
+                     : CGPointMake(0.2438, 0.8379);
 }
 static CGPoint StrataArtGearCentre(BOOL landscape) {
     return landscape ? CGPointMake(0.4999, 0.7982) : CGPointMake(0.4999, 0.9363);
@@ -185,15 +203,15 @@ static NSInteger StrataNxArtRole(CGPoint p, BOOL landscape) {
     if (landscape) {
         if (StrataArtNear(p, 0.1430, 0.1804, 0.026, 0.025)) return StrataArtL;
         if (StrataArtNear(p, 0.2146, 0.1804, 0.026, 0.025)) return StrataArtZL;
-        if (StrataArtNear(p, 0.8126, 0.1827, 0.026, 0.025)) return StrataArtZR;
-        if (StrataArtNear(p, 0.8628, 0.1827, 0.026, 0.025)) return StrataArtR;
+        if (StrataArtNear(p, 0.8126, 0.1827, 0.026, 0.025)) return StrataArtR;
+        if (StrataArtNear(p, 0.8628, 0.1827, 0.026, 0.025)) return StrataArtZR;
         if (StrataArtNear(p, 0.4122, 0.7982, 0.025, 0.038)) return StrataArtMinus;
         if (StrataArtNear(p, 0.5869, 0.7994, 0.025, 0.038)) return StrataArtPlus;
     } else {
         if (StrataArtNear(p, 0.119, 0.504, 0.081, 0.024)) return StrataArtL;
         if (StrataArtNear(p, 0.283, 0.504, 0.081, 0.024)) return StrataArtZL;
-        if (StrataArtNear(p, 0.719, 0.504, 0.081, 0.024)) return StrataArtZR;
-        if (StrataArtNear(p, 0.879, 0.504, 0.081, 0.024)) return StrataArtR;
+        if (StrataArtNear(p, 0.719, 0.504, 0.081, 0.024)) return StrataArtR;
+        if (StrataArtNear(p, 0.879, 0.504, 0.081, 0.024)) return StrataArtZR;
         if (StrataArtNear(p, 0.3452, 0.9357, 0.058, 0.035)) return StrataArtMinus;
         if (StrataArtNear(p, 0.6559, 0.9339, 0.058, 0.035)) return StrataArtPlus;
     }
