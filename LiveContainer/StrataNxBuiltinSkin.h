@@ -43,9 +43,9 @@ static void StrataNxBuiltKey(CGPoint p, CGSize s, NSString *label, BOOL dark, BO
     CGRect box = CGRectMake(p.x-s.width*0.5,p.y-s.height*0.5,s.width,s.height);
     CGFloat radius = round ? MIN(s.width,s.height)*0.5 : MIN(s.width,s.height)*0.24;
     UIBezierPath *outline = [UIBezierPath bezierPathWithRoundedRect:box cornerRadius:radius];
-    UIColor *upper = dark ? [UIColor colorWithRed:0.37 green:0.41 blue:0.46 alpha:1]
+    UIColor *upper = dark ? [UIColor colorWithRed:0.42 green:0.46 blue:0.52 alpha:0.85]
                           : [UIColor colorWithRed:1 green:1 blue:1 alpha:1];
-    UIColor *lower = dark ? [UIColor colorWithRed:0.13 green:0.16 blue:0.20 alpha:1]
+    UIColor *lower = dark ? [UIColor colorWithRed:0.17 green:0.20 blue:0.26 alpha:0.78]
                           : [UIColor colorWithRed:0.82 green:0.84 blue:0.82 alpha:1];
     StrataNxBuiltGradient(outline,upper,lower);
     outline.lineWidth = dark ? 2.1 : 2.0;
@@ -62,7 +62,7 @@ static void StrataNxBuiltKey(CGPoint p, CGSize s, NSString *label, BOOL dark, BO
         NSDictionary *attrs=@{
             NSFontAttributeName:font,
             NSForegroundColorAttributeName:dark
-                ? [UIColor colorWithRed:0.88 green:0.91 blue:0.93 alpha:1]
+                ? [UIColor whiteColor]
                 : [UIColor colorWithWhite:0.36 alpha:1]
         };
         CGSize sz=[label sizeWithAttributes:attrs];
@@ -82,8 +82,8 @@ static void StrataNxBuiltAnalog(CGPoint p, CGFloat radius, BOOL dark) {
     [StrataNxBuiltEdge(dark) setStroke];[outer stroke];
     UIBezierPath *inner=[UIBezierPath bezierPathWithOvalInRect:CGRectInset(ring,radius*0.16,radius*0.16)];
     StrataNxBuiltGradient(inner,
-        dark ? [UIColor colorWithRed:0.43 green:0.47 blue:0.53 alpha:1] : [UIColor whiteColor],
-        dark ? [UIColor colorWithRed:0.16 green:0.19 blue:0.23 alpha:1] : [UIColor colorWithWhite:0.79 alpha:1]);
+        dark ? [UIColor colorWithRed:0.43 green:0.47 blue:0.53 alpha:0.88] : [UIColor whiteColor],
+        dark ? [UIColor colorWithRed:0.16 green:0.19 blue:0.23 alpha:0.84] : [UIColor colorWithWhite:0.79 alpha:1]);
     inner.lineWidth = 1.8;
     [StrataNxBuiltEdge(dark) setStroke];[inner stroke];
     UIBezierPath *knob=[UIBezierPath bezierPathWithOvalInRect:CGRectInset(ring,radius*0.31,radius*0.31)];
@@ -109,8 +109,8 @@ static void StrataNxBuiltDPad(CGPoint p, CGFloat unit, BOOL dark) {
     [cross addLineToPoint:CGPointMake(p.x-a,p.y-a)];
     [cross closePath];
     StrataNxBuiltGradient(cross,
-        dark ? [UIColor colorWithRed:0.39 green:0.42 blue:0.47 alpha:1] : [UIColor whiteColor],
-        dark ? [UIColor colorWithRed:0.16 green:0.18 blue:0.21 alpha:1] : [UIColor colorWithWhite:0.82 alpha:1]);
+        dark ? [UIColor colorWithRed:0.39 green:0.42 blue:0.47 alpha:0.88] : [UIColor whiteColor],
+        dark ? [UIColor colorWithRed:0.16 green:0.18 blue:0.21 alpha:0.82] : [UIColor colorWithWhite:0.82 alpha:1]);
     cross.lineWidth=2.5;
     [StrataNxBuiltEdge(dark) setStroke];[cross stroke];
     UIBezierPath *dot=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(p.x-7,p.y-7,14,14)];
