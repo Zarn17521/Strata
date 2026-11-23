@@ -367,15 +367,38 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
 
 // Visual feedback observes only touch events that NxNative already handles.
 // Its input methods still execute unchanged, including cancellation and drag.
+// NxNative paints its buttons in _controls, but its full-screen DmGamepad UIView
+// STILL hit-tests the invisible native controls. Only accept touches inside
+// imported artwork buttons; keep the engine to own those touches and publish HID.
+static UIView *(*StrataOldNxPadHitTest)(id, SEL, CGPoint, UIEvent *) = NULL;
+static UIView *StrataNxPadHitTest(id pad, SEL selector, CGPoint point, UIEvent *event) {
+    UIView *hit = StrataOldNxPadHitTest
+        ? StrataOldNxPadHitTest(pad, selector, point, event) : nil;
+    UIView *view = (UIView *)pad;
+    if (hit != view || !objc_getAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey))
+        return hit; // preserve the real artwork menu button and non-skin games
+    BOOL landscape = view.bounds.size.width > view.bounds.size.height;
+    UIView *skin = [view.superview viewWithTag:877144];
+    UIImage *image = [skin valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
+    if (!image) return hit; // no artwork for this orientation: native fallback
+    CGRect artFrame = StrataNxArtworkFrame(view.bounds, image);
+    if (CGRectIsEmpty(artFrame)) return hit;
+    CGPoint artPoint = CGPointMake((point.x - artFrame.origin.x)/artFrame.size.width,
+                                  (point.y - artFrame.origin.y)/artFrame.size.height);
+    // No mapping = NO input. In particular, no invisible native buttons
+    // underneath the skin's game viewport or in the unused margins.
+    if (StrataNxArtRole(artPoint, landscape) == StrataArtNoMapping) return nil;
+    return hit;
+}
 static void (*StrataOldNxTouchesBegan)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 static void (*StrataOldNxTouchesMoved)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 static void (*StrataOldNxTouchesEnded)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 static void (*StrataOldNxTouchesCancelled)(id, SEL, NSSet<UITouch *> *, UIEvent *);
 
 // NxNative renders virtual keys into a dedicated CALayer, separate from the
-// DmGamepad UIView that owns their real touches. Hide JUST that artwork layer,
-// never UIView.hidden / UIView.alpha (both would disable UIKit hit testing).
-// The printed skin is visible underneath and gameplay input stays live.
+// DmGamepad UIView that dispatches touch HID. Hide that artwork layer (not the
+// UIView: the engine still owns skin button touches). StrataNxPadHitTest
+// separately blocks the invisible native touch regions when artwork is active.
 static void StrataNxKeepNativeInputButHideDrawing(UIView *pad) {
     if (!pad || ![NSStringFromClass(pad.class) isEqualToString:@"DmGamepad"]) return;
     UIView *art = [pad.superview viewWithTag:877144];
@@ -526,6 +549,11 @@ static void StrataNxHookPadVisualEvents(void) {
             if (!method) continue;
             *swaps[i].original = (void *)method_getImplementation(method);
             method_setImplementation(method, swaps[i].replacement);
+        }
+        Method hit = class_getInstanceMethod(padClass, @selector(hitTest:withEvent:));
+        if (hit) {
+            StrataOldNxPadHitTest = (void *)method_getImplementation(hit);
+            method_setImplementation(hit, (IMP)StrataNxPadHitTest);
         }
     });
 }
@@ -827,13 +855,19 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     if (!game || game.superview != host || !pad) return;
 
     CGRect frame = StrataNxArtworkFrame(host.bounds,img);
+    // Measured aperture of the ORIGINAL supplied artwork: 923x2000
+    // (37,138,847,661) portrait; 1792x1008 (463,169,863,574) landscape.
+    // Do not use approximate hand-tuned ratios here: the game must fit the
+    // same physical aperture used by the imported PNG and touch mapping.
     CGRect hole = portrait
-        ? CGRectMake(CGRectGetMinX(frame)+frame.size.width*0.039,
-                     CGRectGetMinY(frame)+frame.size.height*0.064,
-                     frame.size.width*0.923,frame.size.height*0.295)
-        : CGRectMake(CGRectGetMinX(frame)+frame.size.width*0.238,
-                     CGRectGetMinY(frame)+frame.size.height*0.155,
-                     frame.size.width*0.442,frame.size.height*0.525);
+        ? CGRectMake(CGRectGetMinX(frame) + frame.size.width * (37.0/923.0),
+                     CGRectGetMinY(frame) + frame.size.height * (138.0/2000.0),
+                     frame.size.width * (847.0/923.0),
+                     frame.size.height * (661.0/2000.0))
+        : CGRectMake(CGRectGetMinX(frame) + frame.size.width * (463.0/1792.0),
+                     CGRectGetMinY(frame) + frame.size.height * (169.0/1008.0),
+                     frame.size.width * (863.0/1792.0),
+                     frame.size.height * (574.0/1008.0));
     if (hole.size.width < 80 || hole.size.height < 50 ||
         game.frame.size.width < 1 || game.frame.size.height < 1) return;
     // DmRootVC's original layout was just calculated, including game aspect.
