@@ -246,7 +246,7 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
         objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
                                 @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (role == StrataArtNoMapping || role == StrataArtRightStick) return original;
+    if (role == StrataArtNoMapping) return original;
 
     // Source NxNative DmGamepad.m button identifiers. These are only used
     // to ask DmGamepad for its OWN current interactive target centres.
@@ -300,6 +300,27 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
             CGFloat dy = fmax(-1, fmin(1, (p.y - (landscape ? 0.333 : 0.577)) / (landscape ? 0.093 : 0.071)));
             return CGPointMake(c.x + dx * radius * 0.90, c.y + dy * radius * 0.90);
         }
+        case StrataArtRightStick: {
+            // NxNative's 3D right stick has no permanent visual hitbox.
+            // At touch-down it claims a point in the controls' rightmost third,
+            // provided that point is far from the native ABXY diamond.
+            CGRect safe = CGRectNull;
+            SEL safeSel = NSSelectorFromString(@"safe");
+            if ([view respondsToSelector:safeSel]) {
+                CGRect (*get)(id, SEL) = (void *)[view methodForSelector:safeSel];
+                safe = get(view, safeSel);
+            }
+            if (CGRectIsNull(safe) || CGRectIsEmpty(safe)) safe = view.bounds;
+            CGPoint home = CGPointMake(CGRectGetMaxX(safe)-MAX(8, safe.size.width*0.055),
+                                       CGRectGetMinY(safe)+safe.size.height*0.52);
+            CGFloat radius = StrataArtNativeRadius(view, 1);
+            if (!isfinite(radius) || radius <= 0) return original;
+            CGFloat sx = landscape ? 0.776 : 0.698;
+            CGFloat sy = landscape ? 0.570 : 0.756;
+            CGFloat dx = fmax(-1, fmin(1, (p.x-sx)/(landscape ? 0.048 : 0.125)));
+            CGFloat dy = fmax(-1, fmin(1, (p.y-sy)/(landscape ? 0.073 : 0.075)));
+            return CGPointMake(home.x+dx*radius*0.82, home.y+dy*radius*0.82);
+        }
         case StrataArtLeftStick: {
             CGPoint c = StrataArtNativePoint(view, @selector(stickHome));
             CGFloat radius = StrataArtNativeRadius(view, 0);
@@ -317,7 +338,9 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
 @end
 @implementation StrataNxArtMenuBridge
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
-    CGPoint p = [touch locationInView:self.pad];
+    CGPoint p = StrataOriginalLocationInView
+        ? StrataOriginalLocationInView(touch, @selector(locationInView:), self.pad)
+        : [touch locationInView:self.pad];
     CGSize b = self.pad.bounds.size;
     if (b.width <= 0 || b.height <= 0) return NO;
     BOOL landscape = b.width > b.height;
