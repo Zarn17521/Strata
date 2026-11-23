@@ -87,14 +87,23 @@ struct StrataSwitchboard: View {
                     Spacer(minLength: 4)
                     shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
                     Spacer(minLength: 4)
-                    Divider().overlay(foreground.opacity(0.15))
-                    HStack {
-                        Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
-                        Spacer()
-                        if controller.connected {
-                            HStack(spacing: 18) { Label("Options", systemImage: controller.detailsSymbol); Label("Open", systemImage: controller.confirmSymbol) }
-                        }
-                    }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
+                    if !skinEnabled {
+                        Divider().overlay(foreground.opacity(0.15))
+                        HStack {
+                            Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
+                            Spacer()
+                            if controller.connected {
+                                HStack(spacing: 18) { Label("Options", systemImage: controller.detailsSymbol); Label("Open", systemImage: controller.confirmSymbol) }
+                            }
+                        }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
+                    }
+                }
+
+                // Custom skin overlay (preview + layout verification). Full display in landscape.
+                if skinEnabled {
+                    HandheldSkinView(controller: controller, isLandscape: gameLandscape)
+                        .allowsHitTesting(false) // visual only in launcher; real input goes to guest
+                        .transition(.opacity)
                 }
             }
         }.foregroundStyle(foreground)
