@@ -52,7 +52,7 @@ struct StrataSettingsApp: View {
             Entry(id: "framegen", title: "Frame Generation", symbol: "square.3.layers.3d", tint: .purple, section: "Performance", keywords: "fps frame generation metal 120hz") { AnyView(StrataFrameGenSettings(apps: sharedModel.apps)) },
             Entry(id: "storage", title: "Storage", symbol: "internaldrive", tint: .gray, section: "Performance", keywords: "storage space size cache data") { AnyView(LCStorageManagementView()) },
             Entry(id: "switcher", title: "App Switcher", symbol: "rectangle.stack", tint: .indigo, section: "Interface", keywords: "switcher three finger multitask pinned running cards") { AnyView(StrataSwitcherSettings(apps: allApps)) },
-            Entry(id: "portraitskin", title: "NxNative Portrait Skin", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait white shell controller skin image png import nxnative") { AnyView(StrataNxPortraitSkinSettings()) },
+            Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape white shell controller skin jpg png import nxnative touch feedback") { AnyView(StrataNxPortraitSkinSettings()) },
             Entry(id: "iphone", title: "iPhone Apps", symbol: "iphone", tint: .blue, section: "Apps", keywords: "iphone native ios apps shortcut url add") { AnyView(StrataPhoneAppsView()) },
             Entry(id: "extensions", title: "App Extensions", symbol: "puzzlepiece.extension", tint: .teal, section: "Apps", keywords: "extensions share widgets plugins helper") { AnyView(StrataExtensionsView(apps: sharedModel.apps)) },
             Entry(id: "sources", title: "Sources", symbol: "books.vertical", tint: .orange, section: "Apps", keywords: "sources repositories install altstore") { AnyView(LCSourcesView()) },
@@ -286,7 +286,7 @@ private struct StrataNxPortraitSkinSettings: View {
             Section {
                 Toggle("Enable NxNative Skin", isOn: $enabled)
             } footer: {
-                Text("The skin is visual only. The native game screen and touch input positions are not changed.")
+                Text("Experimental: Skin button touches are mapped to NxNative’s existing input targets. Pressed-button and analog feedback are drawn on the artwork. Restart the game after any change; turn Skin OFF if a game has touch issues.")
             }
             Section {
                 if let imported {
@@ -317,7 +317,7 @@ private struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Portrait Artwork")
             } footer: {
-                Text("Import a transparent PNG with a clear game-screen window. The supplied silver/white controller artwork is supported. The image is drawn behind the original touch controller, so artwork labels may not exactly match the live touch targets.")
+                Text("Import your white portrait PNG. Strata draws it outside the current game viewport and maps common buttons through NxNative’s original touch input. The displayed screen is not resized to the decorative frame.")
             }
             Section {
                 if let importedLandscape {
@@ -348,10 +348,10 @@ private struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Landscape Artwork")
             } footer: {
-                Text("Use your white landscape controller image. The game image remains visible because Strata clips skin artwork outside the live game viewport. Native button controls are preserved.")
+                Text("Import the white landscape JPG or PNG. Button feedback and stick movement are experimental, and the original game viewport is kept unchanged. Parts overlapping the live game remain hidden to avoid cropping gameplay.")
             }
         }
-        .navigationTitle("NxNative Portrait Skin")
+        .navigationTitle("NxNative Controller Skins")
         .onAppear(perform: load)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.png]) { result in
             do {
