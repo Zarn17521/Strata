@@ -28,7 +28,7 @@ struct StrataSwitchboard: View {
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
-    @State private var showingSkinPreview = false
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = false
     @AppStorage("StrataNxGuestLandscape", store: LCUtils.appGroupUserDefault) private var gameLandscape = true
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
@@ -94,25 +94,6 @@ struct StrataSwitchboard: View {
         .onChange(of: phase) { value in if value == .active { busy = false; bind() } else { controller.stop() } }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; bind() }
-        .sheet(isPresented: $showingSkinPreview, onDismiss: bind) {
-            NavigationView {
-                VStack(spacing: 12) {
-                    Text("Visual preview only. Guest app touch controls are not changed.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    HandheldSkinView(controller: controller, isLandscape: gameLandscape)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .padding()
-                .navigationTitle("Controller skin preview")
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showingSkinPreview = false }
-                    }
-                }
-            }
-        }
         .sheet(isPresented: $choosingCover, onDismiss: bind) {
             LiveBoardWallpaperPicker { image in
                 if let image { do { try artwork.save(image, for: coverKey, kind: .cover, mode: "switchboard") } catch { artworkError = error.localizedDescription } }
@@ -226,25 +207,64 @@ struct StrataSwitchboard: View {
             }
             .accessibilityIdentifier("switchboard.manageApps")
 
-            roundButton("tshirt.fill", label: "Preview controller skin", tint: .purple) {
-                showingSkinPreview = true
-            }
-            .accessibilityIdentifier("switchboard.preview.skin")
+            skinShortcut
+                .accessibilityIdentifier("switchboard.toggle.skin")
 
             roundButton(gameLandscape ? "iphone.landscape" : "iphone",
-                        label: gameLandscape ? "Skin preview: landscape; switch to portrait" : "Skin preview: portrait; switch to landscape",
+                        label: gameLandscape
+                            ? "NxNative game orientation: Landscape. Tap to use Portrait next launch"
+                            : "NxNative game orientation: Portrait. Tap to use Landscape next launch",
                         tint: .orange) {
+                // This exact App Group key is read by StrataApplyNxGameOrientation
+                // inside the NxNative guest, not by the cosmetic skin preview.
                 gameLandscape.toggle()
             }
             .accessibilityIdentifier("switchboard.toggle.gameOrientation")
 
-            roundButton("slider.horizontal.3", label: "Interface settings", tint: .purple) {
-                controller.stop(); openInterface()
+            roundButton("slider.horizontal.3", label: "Strata settings", tint: .purple) {
+                controller.stop()
+                NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
             }
             .accessibilityIdentifier("switchboard.interfaceSettings")
         }
         .buttonStyle(.plain)
     }
+    // Two mutually exclusive gestures: a short tap updates the shared
+    // NxNative guest skin setting; holding never accidentally toggles it.
+    // Use the same preference as Settings > NxNative Controller Skins.
+    private var skinShortcut: some View {
+        Image(systemName: "tshirt.fill")
+            .font(.system(size: 21, weight: .semibold))
+            .foregroundStyle(nxSkinEnabled ? Color.purple : Color.gray)
+            .frame(width: 50, height: 50)
+            .background(Circle().fill(buttonSurface))
+            .contentShape(Circle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.55)
+                    .exclusively(before: TapGesture())
+                    .onEnded { result in
+                        switch result {
+                        case .first(let didHold):
+                            if didHold { openNxSkinSettings() }
+                        case .second:
+                            nxSkinEnabled.toggle()
+                        }
+                    }
+            )
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(nxSkinEnabled
+                ? "NxNative controller skin on. Tap to disable; hold for settings"
+                : "NxNative controller skin off. Tap to enable; hold for settings")
+            .accessibilityAction { nxSkinEnabled.toggle() }
+            .accessibilityAction(named: Text("Open NxNative Controller Skin Settings")) {
+                openNxSkinSettings()
+            }
+    }
+    private func openNxSkinSettings() {
+        controller.stop()
+        NotificationCenter.default.post(name: .strataOpenNxNativeSkinSettings, object: nil)
+    }
+
     private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 21, weight: .semibold)).foregroundStyle(tint)
