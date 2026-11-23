@@ -32,7 +32,7 @@ struct StrataSettingsApp: View {
     @AppStorage("StrataKeepGuestAlive", store: LCUtils.appGroupUserDefault) private var keepGuestAlive = false
     @AppStorage("StrataSeamlessSwitching", store: LCUtils.appGroupUserDefault) private var seamlessSwitching = true
     @AppStorage(StrataMemoryOverlay.key, store: LCUtils.appGroupUserDefault) private var memoryOverlay = false
-    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = false
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
 
     private struct Entry: Identifiable {
         let id: String
@@ -53,7 +53,7 @@ struct StrataSettingsApp: View {
             Entry(id: "framegen", title: "Frame Generation", symbol: "square.3.layers.3d", tint: .purple, section: "Performance", keywords: "fps frame generation metal 120hz") { AnyView(StrataFrameGenSettings(apps: sharedModel.apps)) },
             Entry(id: "storage", title: "Storage", symbol: "internaldrive", tint: .gray, section: "Performance", keywords: "storage space size cache data") { AnyView(LCStorageManagementView()) },
             Entry(id: "switcher", title: "App Switcher", symbol: "rectangle.stack", tint: .indigo, section: "Interface", keywords: "switcher three finger multitask pinned running cards") { AnyView(StrataSwitcherSettings(apps: allApps)) },
-            Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape white shell controller skin jpg png import nxnative touch feedback") { AnyView(StrataNxPortraitSkinSettings()) },
+            Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape pearl light amoled dark black graphite glass built-in nxnative controller skin") { AnyView(StrataNxPortraitSkinSettings()) },
             Entry(id: "iphone", title: "iPhone Apps", symbol: "iphone", tint: .blue, section: "Apps", keywords: "iphone native ios apps shortcut url add") { AnyView(StrataPhoneAppsView()) },
             Entry(id: "extensions", title: "App Extensions", symbol: "puzzlepiece.extension", tint: .teal, section: "Apps", keywords: "extensions share widgets plugins helper") { AnyView(StrataExtensionsView(apps: sharedModel.apps)) },
             Entry(id: "sources", title: "Sources", symbol: "books.vertical", tint: .orange, section: "Apps", keywords: "sources repositories install altstore") { AnyView(LCSourcesView()) },
@@ -252,164 +252,185 @@ final class StrataSettingsAppInfo: StrataPhoneAppInfo {
 }
 
  
-/// Imports a transparent portrait controller frame for Strata's own cosmetic
-/// NxNative overlay. No game IPA modification, JIT change or input remapping.
+// Built-in skin variants are available without importing a portrait or landscape PNG.
 private struct StrataNxPortraitSkinSettings: View {
-    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var enabled = false
-    @State private var picking = false
-    @State private var pickingLandscape = false
-    @State private var imported: UIImage?
-    @State private var importedLandscape: UIImage?
-    @State private var notice: String?
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault)
+    private var enabled = true
+    @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault)
+    private var style = "pearl"
 
-    private var assetURL: URL? {
-        LCSharedUtils.appGroupPath()?
-            .appendingPathComponent("Strata3/Skins/NxNativePortrait.png")
-    }
-    private var landscapeAssetURL: URL? {
-        LCSharedUtils.appGroupPath()?
-            .appendingPathComponent("Strata3/Skins/NxNativeLandscape.png")
-    }
+    private var dark: Bool { style == "amoled" }
 
     var body: some View {
         Form {
             Section {
                 Toggle("Enable NxNative Skin", isOn: $enabled)
+                    .accessibilityIdentifier("settings.nxnative.skinEnabled")
             } footer: {
-                Text("Experimental: Skin button touches are mapped to NxNative’s existing input targets. Pressed-button and analog feedback are drawn on the artwork. Restart the game after any change; turn Skin OFF if a game has touch issues.")
+                Text("Both styles are built into Strata. No PNG import, download, or separate game IPA is needed. Restart a running NxNative game after changing skin settings.")
             }
+
             Section {
-                if let imported {
-                    Image(uiImage: imported)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .frame(maxHeight: 350)
-                        .background(Color.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                } else {
-                    Label("Default white handheld frame", systemImage: "gamecontroller")
-                        .foregroundStyle(.secondary)
+                Picker("Controller Skin", selection: $style) {
+                    Text("Pearl Light").tag("pearl")
+                    Text("AMOLED Dark").tag("amoled")
                 }
-                Button("Import White Portrait PNG", systemImage: "photo.badge.plus") {
-                    picking = true
-                }
-                .accessibilityIdentifier("settings.nxnative.portraitImport")
-                if imported != nil {
-                    Button("Restore Default White Skin", systemImage: "arrow.uturn.backward") {
-                        guard let assetURL else { notice = "App Group unavailable"; return }
-                        do {
-                            try FileManager.default.removeItem(at: assetURL)
-                            imported = nil
-                        } catch { notice = error.localizedDescription }
-                    }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.nxnative.builtinStyle")
+
+                HStack(spacing: 10) {
+                    skinStyleCard(name: "Pearl Light", value: "pearl",
+                                  detail: "Pearl white · warm silver")
+                    skinStyleCard(name: "AMOLED Dark", value: "amoled",
+                                  detail: "Wii U graphite · smoked glass")
                 }
             } header: {
-                Text("Portrait Artwork")
+                Text("Built-in Skins")
             } footer: {
-                Text("Import a portrait PNG with a transparent display opening. Strata aspect-fits the live game inside the artwork's black screen and maps the printed buttons to NxNative's actual input. Restart the game to apply changes.")
+                Text("A single choice applies to both Portrait and Landscape. AMOLED Dark uses a nearly black shell and translucent-looking graphite buttons; Pearl Light uses a white pearl shell and metallic trim.")
             }
-            Section {
-                if let importedLandscape {
-                    Image(uiImage: importedLandscape)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .frame(maxHeight: 220)
-                        .background(Color.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                } else {
-                    Label("Default red / cyan background", systemImage: "gamecontroller")
-                        .foregroundStyle(.secondary)
-                }
-                Button("Import White Landscape Artwork", systemImage: "photo.badge.plus") {
-                    pickingLandscape = true
-                }
-                .accessibilityIdentifier("settings.nxnative.landscapeImport")
-                if importedLandscape != nil {
-                    Button("Restore Default Landscape", systemImage: "arrow.uturn.backward") {
-                        guard let landscapeAssetURL else { notice = "App Group unavailable"; return }
-                        do {
-                            try FileManager.default.removeItem(at: landscapeAssetURL)
-                            importedLandscape = nil
-                        } catch { notice = error.localizedDescription }
+
+            Section("Portrait & Landscape") {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(spacing: 6) {
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false)
+                            .frame(width: 96, height: 208)
+                        Text("Portrait")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    VStack(spacing: 6) {
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true)
+                            .frame(maxWidth: 232)
+                            .aspectRatio(1792.0/1008.0, contentMode: .fit)
+                        Text("Landscape")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-            } header: {
-                Text("Landscape Artwork")
+                .padding(.vertical, 6)
+            }
+
+            Section {
+                Label("Touch mapping, low-latency pearl/graphite press feedback and the small ZN logo are included with both styles.",
+                      systemImage: "gamecontroller.fill")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             } footer: {
-                Text("Import a landscape JPG or PNG. The artwork fills the screen while the live game aspect-fits inside its black display opening. Skin buttons and sticks use the imported layout; restart the game to apply changes.")
+                Text("Existing imported artwork files, if any, are left untouched on disk. These two built-in styles do not require them.")
             }
         }
         .navigationTitle("NxNative Controller Skins")
-        .onAppear(perform: load)
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.png]) { result in
-            do {
-                let url = try result.get()
-                let granted = url.startAccessingSecurityScopedResource()
-                defer { if granted { url.stopAccessingSecurityScopedResource() } }
-                let data = try Data(contentsOf: url)
-                guard data.count <= 8 * 1024 * 1024,
-                      let image = UIImage(data: data),
-                      image.size.width <= 2048,
-                      image.size.height <= 4096,
-                      image.size.height > image.size.width,
-                      image.cgImage?.alphaInfo != .none
-                else { throw NSError(domain: "StrataPortraitSkin", code: 1,
-                                    userInfo: [NSLocalizedDescriptionKey: "Choose a portrait PNG with transparency, under 8 MB (max 2048×4096)."]) }
-                guard let assetURL else {
-                    throw NSError(domain: "StrataPortraitSkin", code: 2,
-                                  userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable."])
-                }
-                try FileManager.default.createDirectory(
-                    at: assetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: assetURL, options: .atomic)
-                imported = image
-                enabled = true
-                notice = "Portrait artwork saved. Restart the NxNative game to apply it."
-            } catch { notice = error.localizedDescription }
-        }
-        .fileImporter(isPresented: $pickingLandscape, allowedContentTypes: [.png, .jpeg]) { result in
-            do {
-                let url = try result.get()
-                let granted = url.startAccessingSecurityScopedResource()
-                defer { if granted { url.stopAccessingSecurityScopedResource() } }
-                let bytes = try Data(contentsOf: url)
-                guard bytes.count <= 12 * 1024 * 1024,
-                      let image = UIImage(data: bytes),
-                      image.size.width > image.size.height,
-                      image.size.width <= 4096,
-                      image.size.height <= 2048,
-                      let png = image.pngData(),
-                      png.count <= 24 * 1024 * 1024
-                else {
-                    throw NSError(domain: "StrataLandscapeSkin", code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "Choose a landscape JPG/PNG under 12 MB (max 4096×2048)."])
-                }
-                guard let landscapeAssetURL else {
-                    throw NSError(domain: "StrataLandscapeSkin", code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable."])
-                }
-                try FileManager.default.createDirectory(
-                    at: landscapeAssetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try png.write(to: landscapeAssetURL, options: .atomic)
-                importedLandscape = image
-                enabled = true
-                notice = "Landscape artwork saved. Restart the NxNative game to apply it."
-            } catch { notice = error.localizedDescription }
-        }
-        .alert("Controller Skin", isPresented: Binding(
-            get: { notice != nil },
-            set: { if !$0 { notice = nil } }
-        )) {
-            Button("OK") { notice = nil }
-        } message: {
-            Text(notice ?? "")
-        }
     }
 
-    private func load() {
-        imported = assetURL.flatMap { UIImage(contentsOfFile: $0.path) }
-        importedLandscape = landscapeAssetURL.flatMap { UIImage(contentsOfFile: $0.path) }
+    @ViewBuilder
+    private func skinStyleCard(name: String, value: String, detail: String) -> some View {
+        Button {
+            style = value
+            enabled = true
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: style == value ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(style == value ? Color.accentColor : Color.secondary)
+                    Spacer()
+                    Circle()
+                        .fill(value == "amoled" ? Color(white: 0.13) : Color(white: 0.94))
+                        .frame(width: 23, height: 23)
+                        .overlay(Circle().strokeBorder(Color.gray.opacity(0.5)))
+                }
+                Text(name).font(.subheadline.bold()).foregroundStyle(.primary)
+                Text(detail).font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(style == value ? Color.accentColor : Color.gray.opacity(0.19),
+                              lineWidth: style == value ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.nxnative.style." + value)
+    }
+}
+
+// Preview is deliberately drawn in SwiftUI; the guest has a cached native
+// vector implementation using matching coordinates, and never decodes PNGs.
+private struct StrataNxBuiltInSkinPreview: View {
+    let dark: Bool
+    let landscape: Bool
+
+    private var shell: Color {
+        dark ? Color(red: 0.008, green: 0.010, blue: 0.014)
+             : Color(red: 0.973, green: 0.973, blue: 0.956)
+    }
+    private var button: Color {
+        dark ? Color(red: 0.27, green: 0.31, blue: 0.36)
+             : Color(red: 0.91, green: 0.92, blue: 0.90)
+    }
+    private var contrast: Color { dark ? .white.opacity(0.82) : .black.opacity(0.45) }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            ZStack {
+                RoundedRectangle(cornerRadius: landscape ? 13 : 17)
+                    .fill(shell)
+                    .overlay(RoundedRectangle(cornerRadius: landscape ? 13 : 17)
+                        .strokeBorder(dark ? Color.white.opacity(0.2) : Color.gray.opacity(0.4)))
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.black)
+                    .overlay(RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(dark ? Color.gray : Color(white: 0.25), lineWidth: 2))
+                    .frame(width: w*(landscape ? 0.482 : 0.917),
+                           height: h*(landscape ? 0.569 : 0.331))
+                    .position(x:w*0.50, y:h*(landscape ? 0.453 : 0.234))
+
+                controlCircle(w: w, h: h, x: landscape ? 0.159 : 0.249,
+                              y: landscape ? 0.362 : 0.646, name: "+")
+                controlCircle(w: w, h: h, x: landscape ? 0.159 : 0.244,
+                              y: landscape ? 0.616 : 0.838, name: "")
+                controlCircle(w: w, h: h, x: landscape ? 0.840 : 0.747,
+                              y: landscape ? 0.361 : 0.645, name: "")
+                // Final physical layout: ABXY BELOW the right look stick.
+                controlCircle(w: w, h: h, x: landscape ? 0.838 : 0.747,
+                              y: landscape ? 0.618 : 0.836, name: "ABXY")
+
+                Text("L  ZL")
+                    .font(.system(size: landscape ? 5 : 7, weight: .semibold))
+                    .foregroundStyle(contrast)
+                    .position(x:w*0.17, y:h*(landscape ? 0.18 : 0.50))
+                Text("R  ZR")
+                    .font(.system(size: landscape ? 5 : 7, weight: .semibold))
+                    .foregroundStyle(contrast)
+                    .position(x:w*0.84, y:h*(landscape ? 0.18 : 0.50))
+                Text("ZN")
+                    .font(.system(size: landscape ? 9 : 11, weight: .black, design: .serif))
+                    .foregroundStyle(Color(red: 0.73, green: 0.53, blue: 0.18))
+                    .position(x:w*0.13, y:h*(landscape ? 0.80 : 0.94))
+            }
+            .frame(width:w,height:h)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(dark ? "AMOLED Dark controller skin preview" : "Pearl Light controller skin preview")
+    }
+
+    private func controlCircle(w: CGFloat, h: CGFloat, x: CGFloat, y: CGFloat,
+                               name: String) -> some View {
+        Circle()
+            .fill(LinearGradient(colors: [
+                dark ? Color(red: 0.43, green: 0.47, blue: 0.51) : .white,
+                button
+            ], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(Circle().strokeBorder(dark ? Color.gray.opacity(0.7) : Color.gray.opacity(0.5)))
+            .frame(width: landscape ? w*0.078 : w*0.23)
+            .overlay(Text(name)
+                .font(.system(size: landscape ? 6 : 8, weight: .medium))
+                .foregroundStyle(contrast))
+            .position(x:w*x,y:h*y)
     }
 }
