@@ -12,19 +12,19 @@ struct HandheldSkinView: View {
     // Measured from the uploaded images
     private var screenRel: (x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat) {
         if isLandscape {
-            // From IMG_7623.jpg (1500x844)
-            return (0.2587, 0.1682, 0.4813, 0.5687)
+            // IMG_7623 original: 1792x1008, game window at (463,169) size 863x574.
+            return (463.0/1792.0, 169.0/1008.0, 863.0/1792.0, 574.0/1008.0)
         } else {
-            // From IMG_7621.jpg (1500x3251)
-            return (0.0400, 0.0692, 0.9180, 0.3301)
+            // IMG_7621 original: 923x2000, game window at (37,138) size 847x661.
+            return (37.0/923.0, 138.0/2000.0, 847.0/923.0, 661.0/2000.0)
         }
     }
 
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
-            let baseW: CGFloat = 1500
-            let baseH: CGFloat = isLandscape ? 844 : 3251
+            let baseW: CGFloat = isLandscape ? 1792 : 923
+            let baseH: CGFloat = isLandscape ? 1008 : 2000
             let scale = min(size.width / baseW, size.height / baseH)
             let skinW = baseW * scale
             let skinH = baseH * scale
