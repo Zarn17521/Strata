@@ -74,14 +74,15 @@ static void StrataNxBuiltKey(CGPoint p, CGSize s, NSString *label, BOOL dark, BO
 static void StrataNxBuiltAnalog(CGPoint p, CGFloat radius, BOOL dark) {
     CGRect ring=CGRectMake(p.x-radius,p.y-radius,radius*2,radius*2);
     UIBezierPath *outer=[UIBezierPath bezierPathWithOvalInRect:ring];
-    [dark ? [UIColor colorWithWhite:0.04 alpha:1]
-          : [UIColor colorWithWhite:0.67 alpha:1] setFill];
+    UIColor *outerFill = dark ? [UIColor colorWithWhite:0.04 alpha:1]
+                               : [UIColor colorWithWhite:0.67 alpha:1];
+    [outerFill setFill];
     [outer fill];
     outer.lineWidth = 3;
     [StrataNxBuiltEdge(dark) setStroke];[outer stroke];
     UIBezierPath *inner=[UIBezierPath bezierPathWithOvalInRect:CGRectInset(ring,radius*0.16,radius*0.16)];
     StrataNxBuiltGradient(inner,
-        dark ? [UIColor colorWithRed:0.43 green:0.47 blue:0.53 alpha:1] : UIColor.whiteColor,
+        dark ? [UIColor colorWithRed:0.43 green:0.47 blue:0.53 alpha:1] : [UIColor whiteColor],
         dark ? [UIColor colorWithRed:0.16 green:0.19 blue:0.23 alpha:1] : [UIColor colorWithWhite:0.79 alpha:1]);
     inner.lineWidth = 1.8;
     [StrataNxBuiltEdge(dark) setStroke];[inner stroke];
@@ -108,7 +109,7 @@ static void StrataNxBuiltDPad(CGPoint p, CGFloat unit, BOOL dark) {
     [cross addLineToPoint:CGPointMake(p.x-a,p.y-a)];
     [cross closePath];
     StrataNxBuiltGradient(cross,
-        dark ? [UIColor colorWithRed:0.39 green:0.42 blue:0.47 alpha:1] : UIColor.whiteColor,
+        dark ? [UIColor colorWithRed:0.39 green:0.42 blue:0.47 alpha:1] : [UIColor whiteColor],
         dark ? [UIColor colorWithRed:0.16 green:0.18 blue:0.21 alpha:1] : [UIColor colorWithWhite:0.82 alpha:1]);
     cross.lineWidth=2.5;
     [StrataNxBuiltEdge(dark) setStroke];[cross stroke];
