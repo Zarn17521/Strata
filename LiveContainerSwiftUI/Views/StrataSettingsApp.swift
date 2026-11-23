@@ -267,12 +267,18 @@ final class StrataSettingsAppInfo: StrataPhoneAppInfo {
 private struct StrataNxPortraitSkinSettings: View {
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var enabled = false
     @State private var picking = false
+    @State private var pickingLandscape = false
     @State private var imported: UIImage?
+    @State private var importedLandscape: UIImage?
     @State private var notice: String?
 
     private var assetURL: URL? {
         LCSharedUtils.appGroupPath()?
             .appendingPathComponent("Strata3/Skins/NxNativePortrait.png")
+    }
+    private var landscapeAssetURL: URL? {
+        LCSharedUtils.appGroupPath()?
+            .appendingPathComponent("Strata3/Skins/NxNativeLandscape.png")
     }
 
     var body: some View {
@@ -313,9 +319,36 @@ private struct StrataNxPortraitSkinSettings: View {
             } footer: {
                 Text("Import a transparent PNG with a clear game-screen window. The supplied silver/white controller artwork is supported. The image is drawn behind the original touch controller, so artwork labels may not exactly match the live touch targets.")
             }
-            Section("Landscape Skin") {
-                Text("Existing red/cyan theme remains unchanged.")
-                    .foregroundStyle(.secondary)
+            Section {
+                if let importedLandscape {
+                    Image(uiImage: importedLandscape)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 220)
+                        .background(Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else {
+                    Label("Default red / cyan background", systemImage: "gamecontroller")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Import White Landscape Artwork", systemImage: "photo.badge.plus") {
+                    pickingLandscape = true
+                }
+                .accessibilityIdentifier("settings.nxnative.landscapeImport")
+                if importedLandscape != nil {
+                    Button("Restore Default Landscape", systemImage: "arrow.uturn.backward") {
+                        guard let landscapeAssetURL else { notice = "App Group unavailable"; return }
+                        do {
+                            try FileManager.default.removeItem(at: landscapeAssetURL)
+                            importedLandscape = nil
+                        } catch { notice = error.localizedDescription }
+                    }
+                }
+            } header: {
+                Text("Landscape Artwork")
+            } footer: {
+                Text("Use your white landscape controller image. The game image remains visible because Strata clips skin artwork outside the live game viewport. Native button controls are preserved.")
             }
         }
         .navigationTitle("NxNative Portrait Skin")
@@ -346,7 +379,36 @@ private struct StrataNxPortraitSkinSettings: View {
                 notice = "Portrait artwork saved. Restart the NxNative game to apply it."
             } catch { notice = error.localizedDescription }
         }
-        .alert("Portrait Skin", isPresented: Binding(
+        .fileImporter(isPresented: $pickingLandscape, allowedContentTypes: [.png, .jpeg]) { result in
+            do {
+                let url = try result.get()
+                let granted = url.startAccessingSecurityScopedResource()
+                defer { if granted { url.stopAccessingSecurityScopedResource() } }
+                let bytes = try Data(contentsOf: url)
+                guard bytes.count <= 12 * 1024 * 1024,
+                      let image = UIImage(data: bytes),
+                      image.size.width > image.size.height,
+                      image.size.width <= 4096,
+                      image.size.height <= 2048,
+                      let png = image.pngData(),
+                      png.count <= 24 * 1024 * 1024
+                else {
+                    throw NSError(domain: "StrataLandscapeSkin", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Choose a landscape JPG/PNG under 12 MB (max 4096×2048)."])
+                }
+                guard let landscapeAssetURL else {
+                    throw NSError(domain: "StrataLandscapeSkin", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable."])
+                }
+                try FileManager.default.createDirectory(
+                    at: landscapeAssetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try png.write(to: landscapeAssetURL, options: .atomic)
+                importedLandscape = image
+                enabled = true
+                notice = "Landscape artwork saved. Restart the NxNative game to apply it."
+            } catch { notice = error.localizedDescription }
+        }
+        .alert("Controller Skin", isPresented: Binding(
             get: { notice != nil },
             set: { if !$0 { notice = nil } }
         )) {
@@ -358,5 +420,6 @@ private struct StrataNxPortraitSkinSettings: View {
 
     private func load() {
         imported = assetURL.flatMap { UIImage(contentsOfFile: $0.path) }
+        importedLandscape = landscapeAssetURL.flatMap { UIImage(contentsOfFile: $0.path) }
     }
 }
