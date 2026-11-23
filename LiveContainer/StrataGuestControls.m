@@ -705,6 +705,99 @@ static UIView *StrataFindNxPadHost(UIView *view, NSUInteger depth) {
     return nil;
 }
 
+// The skin's black screen opening is not the default NxNative picture frame.
+// Apply the original game aspect FIT inside the measured artwork opening AFTER
+// DmRootVC lays out the scene; do not change render scale or Metal resources.
+static char StrataNxSkinRootGroupKey;
+static void (*StrataNxOriginalRootDidLayout)(id, SEL) = NULL;
+
+static UIView *StrataNxChildOfClass(UIView *host, NSString *name) {
+    for (UIView *v in host.subviews) if ([NSStringFromClass(v.class) isEqualToString:name]) return v;
+    return nil;
+}
+
+static void StrataNxEnableNative3DPadForSkin(UIView *pad) {
+    if (!pad || objc_getAssociatedObject(pad, @selector(StrataNxEnableNative3DPadForSkin))) return;
+    // NxNative's 2D layout lacks both the D-pad and right stick. Turn on its
+    // existing 3D touch parser for this session only; don't save DmPadLayout.
+    @try {
+        BOOL full = [[pad valueForKey:@"full"] boolValue];
+        BOOL tap = [[pad valueForKey:@"tap"] boolValue];
+        if (!full || tap) {
+            if ([pad respondsToSelector:@selector(reset)])
+                ((void (*)(id, SEL))[pad methodForSelector:@selector(reset)])(pad, @selector(reset));
+            [pad setValue:@YES forKey:@"full"];
+            [pad setValue:@NO forKey:@"tap"];
+            if ([pad respondsToSelector:@selector(applyLayout)])
+                ((void (*)(id, SEL))[pad methodForSelector:@selector(applyLayout)])(pad, @selector(applyLayout));
+            [pad setNeedsLayout];
+        }
+        objc_setAssociatedObject(pad, @selector(StrataNxEnableNative3DPadForSkin),
+                                @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } @catch (NSException *e) {
+        NSLog(@"[Strata][NxSkin] Native 3D pad unavailable; retaining game controls: %@", e.reason);
+    }
+}
+
+static void StrataNxFitGameToImportedArt(UIViewController *root) {
+    NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
+    if (!group || ![[[NSUserDefaults alloc] initWithSuiteName:group]
+                    boolForKey:StrataNxSkinToggleKey]) return;
+    UIView *host = root.view;
+    UIView *skinView = [host viewWithTag:StrataNxSkinViewTag];
+    if (![skinView isKindOfClass:StrataNxSkinView.class]) return;
+    StrataNxSkinView *skin = (StrataNxSkinView *)skinView;
+    BOOL portrait = host.bounds.size.height > host.bounds.size.width;
+    UIImage *img = portrait ? skin.portraitArtwork : skin.landscapeArtwork;
+    if (!img) return;  // leave native size if no artwork was imported
+    UIView *game = StrataNxChildOfClass(host, @"DmGameView");
+    UIView *pad = StrataNxChildOfClass(host, @"DmGamepad");
+    if (!game || game.superview != host || !pad) return;
+
+    CGRect frame = StrataNxArtworkFrame(host.bounds,img);
+    CGRect hole = portrait
+        ? CGRectMake(CGRectGetMinX(frame)+frame.size.width*0.039,
+                     CGRectGetMinY(frame)+frame.size.height*0.064,
+                     frame.size.width*0.923,frame.size.height*0.295)
+        : CGRectMake(CGRectGetMinX(frame)+frame.size.width*0.238,
+                     CGRectGetMinY(frame)+frame.size.height*0.155,
+                     frame.size.width*0.442,frame.size.height*0.525);
+    if (hole.size.width < 80 || hole.size.height < 50 ||
+        game.frame.size.width < 1 || game.frame.size.height < 1) return;
+    // DmRootVC's original layout was just calculated, including game aspect.
+    CGFloat aspect = game.frame.size.width / game.frame.size.height;
+    CGFloat width = MIN(hole.size.width,hole.size.height*aspect);
+    CGFloat height = width/aspect;
+    CGRect fitted = CGRectIntegral(CGRectMake(CGRectGetMidX(hole)-width/2,
+                                               CGRectGetMidY(hole)-height/2,width,height));
+    if (!CGRectEqualToRect(game.frame,fitted)) {
+        game.frame = fitted;
+        [skin setNeedsDisplay];
+    }
+    // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
+    StrataNxKeepNativeInputButHideDrawing(pad);
+    @try {
+        UILabel *fps = [root valueForKey:@"fps"];
+        if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
+            fps.frame = CGRectMake(CGRectGetMinX(fitted)+5,CGRectGetMinY(fitted)+5,64,22);
+    } @catch (__unused NSException *e) {}
+}
+static void StrataNxRootDidLayout(id root, SEL sel) {
+    if (StrataNxOriginalRootDidLayout) StrataNxOriginalRootDidLayout(root,sel);
+    StrataNxFitGameToImportedArt((UIViewController *)root);
+}
+static void StrataNxHookRootLayout(UIViewController *root, NSString *group) {
+    if (!root || ![NSStringFromClass(root.class) isEqualToString:@"DmRootVC"]) return;
+    objc_setAssociatedObject(root, &StrataNxSkinRootGroupKey,group,OBJC_ASSOCIATION_COPY_NONATOMIC);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Method method = class_getInstanceMethod(root.class,@selector(viewDidLayoutSubviews));
+        if (!method) return;
+        StrataNxOriginalRootDidLayout = (void *)method_getImplementation(method);
+        method_setImplementation(method,(IMP)StrataNxRootDidLayout);
+    });
+}
+
 static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if (!window || window.isHidden || ![NSUserDefaults.lcGuestAppId.lowercaseString hasPrefix:@"org.nxnative"]) return;
     if (![[[NSUserDefaults alloc] initWithSuiteName:group] boolForKey:StrataNxSkinToggleKey]) return;
@@ -725,9 +818,17 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if (landscapePNG) skin.landscapeArtwork = [UIImage imageWithContentsOfFile:landscapePNG.path];
     if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
     [host insertSubview:skin belowSubview:pad];
-    StrataNxKeepNativeInputButHideDrawing(pad);
+    if (skin.portraitArtwork || skin.landscapeArtwork) {
+        StrataNxEnableNative3DPadForSkin(pad);
+        StrataNxKeepNativeInputButHideDrawing(pad);
+        StrataNxHookRootLayout(window.rootViewController, group);
+        [host setNeedsLayout];
+        [host layoutIfNeeded];
+        StrataNxFitGameToImportedArt(window.rootViewController);
+    }
     [skin setNeedsDisplay];
-    NSLog(@"[Strata] Optional NxNative white handheld portrait / red-cyan landscape skin enabled (cosmetic only)");
+    NSLog(@"[Strata][NxSkin] imported portrait=%@ landscape=%@; viewport fit and input mapping",
+          skin.portraitArtwork ? @"YES":@"NO", skin.landscapeArtwork ? @"YES":@"NO");
 }
 
 // Apply the Switchboard's portrait/landscape choice to the NxNative guest,
