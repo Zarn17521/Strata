@@ -11,6 +11,20 @@ final class LiveBoardControllerInput: ObservableObject {
     @Published private(set) var confirmSymbol = "a.circle"
     @Published private(set) var detailsSymbol = "x.circle"
     var onCommand: ((Command) -> Void)?
+
+    // Visual feedback states for custom skin overlay
+    @Published var aPressed = false
+    @Published var bPressed = false
+    @Published var xPressed = false
+    @Published var yPressed = false
+    @Published var lPressed = false
+    @Published var rPressed = false
+    @Published var zlPressed = false
+    @Published var zrPressed = false
+    @Published var leftStick = CGPoint.zero
+    @Published var rightStick = CGPoint.zero
+    @Published var dpad = CGPoint.zero
+
     private static let owners = NSMapTable<GCExtendedGamepad, LiveBoardControllerInput>.weakToWeakObjects()
     private var active = false
     private var observers: [NSObjectProtocol] = []
@@ -84,6 +98,21 @@ final class LiveBoardControllerInput: ObservableObject {
     }
     private func handle(_ profile: GCExtendedGamepad, element: GCControllerElement) {
         guard active else { return }
+
+        // Update visual states for skin
+        leftStick = CGPoint(x: CGFloat(profile.leftThumbstick.xAxis.value), y: CGFloat(profile.leftThumbstick.yAxis.value))
+        rightStick = CGPoint(x: CGFloat(profile.rightThumbstick.xAxis.value), y: CGFloat(profile.rightThumbstick.yAxis.value))
+        dpad = CGPoint(x: CGFloat(profile.dpad.xAxis.value), y: CGFloat(profile.dpad.yAxis.value))
+
+        aPressed = profile.buttonA.isPressed
+        bPressed = profile.buttonB.isPressed
+        xPressed = profile.buttonX.isPressed
+        yPressed = profile.buttonY.isPressed
+        lPressed = profile.leftShoulder.isPressed
+        rPressed = profile.rightShoulder.isPressed
+        zlPressed = profile.leftTrigger.value > 0.15
+        zrPressed = profile.rightTrigger.value > 0.15
+
         if element === profile.dpad || element === profile.leftThumbstick {
             let pad = element === profile.dpad ? profile.dpad : profile.leftThumbstick
             updateDirection(x: pad.xAxis.value, y: pad.yAxis.value)
