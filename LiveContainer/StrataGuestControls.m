@@ -1382,8 +1382,18 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
     NSInteger orientation = [orientationSetting respondsToSelector:@selector(integerValue)]
         ? [orientationSetting integerValue] : 0;
     if (orientation != 1 && orientation != 2) {
-        // Disabled/Auto: leave the guest's native orientation handling alone.
-        // IMPORTANT: do not read obsolete StrataNxGuestLandscape here.
+        // Disabled/Auto: do not force rotation, but CLEAR the launcher's
+        // portrait-only supported-orientation mask. Otherwise Auto stays
+        // portrait-locked in the same process even with device rotation on.
+        Class bridge = NSClassFromString(@"StrataNxGameOrientationBridge");
+        SEL restoreAuto = NSSelectorFromString(@"applyAuto");
+        if (bridge && [bridge respondsToSelector:restoreAuto]) {
+            void (*call)(id, SEL) = (void *)[bridge methodForSelector:restoreAuto];
+            call(bridge, restoreAuto);
+            [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+            if (window.rootViewController != root)
+                [root setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
         return;
     }
     BOOL landscape = orientation == 1;
