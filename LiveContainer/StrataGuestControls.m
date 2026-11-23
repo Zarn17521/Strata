@@ -1061,6 +1061,14 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
 // Settings uses the exact same cached photograph and the very same
 // Look/ABXY, R/ZR and ZN transforms as the running NxNative game. A vector
 // mockup would give the user a misleading preview of the shipped skin.
+BOOL StrataNxPhotoSkinsBundled(void) {
+#if __has_include("StrataNxPhotoData.h")
+    return YES;
+#else
+    return NO;
+#endif
+}
+
 UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     static NSCache<NSString *, UIImage *> *previewCache;
     static dispatch_once_t once;
