@@ -1314,10 +1314,11 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
           skin.portraitArtwork ? @"YES":@"NO", skin.landscapeArtwork ? @"YES":@"NO");
 }
 
-// Apply the Switchboard's portrait/landscape choice to the NxNative guest,
-// never to Strata's launcher. The existing NxNative DmRootVC supports both
-// orientations, so the native game will relayout its own picture and gamepad.
-static NSString * const StrataNxGuestLandscapeKey = @"StrataNxGuestLandscape";
+// Apply the PER-APP Orientation Lock selected in App Settings or the
+// Switchboard Rotation shortcut. This is read directly from the guest's
+// LCAppInfo.plist (NSUserDefaults.guestAppInfo), not from a global preference.
+// Values: 0 = Disabled / system default, 1 = Landscape, 2 = Portrait.
+// Do not rotate the launcher or interfere with another game's preference.
 static char StrataNxOrientationRequestKey;
 
 static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
@@ -1328,12 +1329,19 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
     UIViewController *root = StrataNxFindGameController(window.rootViewController, 0);
     if (!root) return;
 
-    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
-    id stored = [prefs objectForKey:StrataNxGuestLandscapeKey];
-    // Match the Switchboard @AppStorage default: Landscape is selected
-    // until the user explicitly chooses Portrait.
-    BOOL landscape = [stored respondsToSelector:@selector(boolValue)]
-        ? [stored boolValue] : YES;
+    // LCAppModel.uiOrientationLock writes LCOrientationLock into the app's
+    // LCAppInfo.plist. LCBootstrap loads that exact plist for the current guest.
+    // Therefore Settings Picker and Rotation shortcut always agree, even
+    // when multiple NxNative games have different orientation preferences.
+    id orientationSetting = NSUserDefaults.guestAppInfo[@"LCOrientationLock"];
+    NSInteger orientation = [orientationSetting respondsToSelector:@selector(integerValue)]
+        ? [orientationSetting integerValue] : 0;
+    if (orientation != 1 && orientation != 2) {
+        // Disabled/Auto: leave the guest's native orientation handling alone.
+        // IMPORTANT: do not read obsolete StrataNxGuestLandscape here.
+        return;
+    }
+    BOOL landscape = orientation == 1;
 
     // AppDelegate supportedInterfaceOrientationsForWindow reads the shared
     // LiveBoardOrientation mask. Clear the launcher's portrait lock only for
