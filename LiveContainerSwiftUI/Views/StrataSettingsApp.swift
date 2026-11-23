@@ -13,6 +13,8 @@ enum StrataVersion {
 extension Notification.Name {
     /// Any interface posts this to open the Settings app.
     static let strataOpenSettings = Notification.Name("StrataOpenSettings")
+    /// Switchboard skin long-press opens the actual NxNative Skin settings page.
+    static let strataOpenNxNativeSkinSettings = Notification.Name("StrataOpenNxNativeSkinSettings")
     /// Settings posts this to show the app-management list.
     static let strataOpenAppManagement = Notification.Name("StrataOpenAppManagement")
 }
@@ -22,6 +24,7 @@ extension Notification.Name {
 struct StrataSettingsApp: View {
     let openInterface: () -> Void
     let close: () -> Void
+    var initialDestination: String? = nil
     @EnvironmentObject private var sharedModel: SharedModel
     @State private var query = ""
     @State private var errorInfo: String?
@@ -89,6 +92,20 @@ struct StrataSettingsApp: View {
             NavigationStack(path: $path) {
                 content.navigationDestination(for: String.self) { id in destination(id) }
             }
+            .onAppear {
+                if let initialDestination, path.isEmpty { path = [initialDestination] }
+            }
+        } else if initialDestination == "portraitskin" {
+            // iOS 15 fallback: open the requested detail screen directly.
+            NavigationView {
+                StrataNxPortraitSkinSettings()
+                    .navigationTitle("NxNative Controller Skins")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { close() }
+                        }
+                    }
+            }.navigationViewStyle(.stack)
         } else {
             NavigationView { content }.navigationViewStyle(.stack)
         }
@@ -137,7 +154,7 @@ struct StrataSettingsApp: View {
         } header: {
             Text("Interface")
         } footer: {
-            Text("NxNative Skin decorates unused space: white handheld artwork in portrait (optional PNG import), red/cyan in landscape. Native game view and touch mapping stay unchanged. Enable Skin and relaunch the game to apply changes.")
+            Text("NxNative Controller Skin uses the imported portrait/landscape artwork and maps its buttons to NxNative touch controls. Enable or disable here or by tapping the launcher shirt icon. Relaunch the game to apply the change.")
         }
         Section("Apps") {
             actionRow("Manage Apps", symbol: "square.stack.3d.up", tint: .blue, id: "settings.manage") { openManagement() }
