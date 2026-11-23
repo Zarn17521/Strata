@@ -279,7 +279,9 @@ private struct StrataNxPortraitSkinSettings: View {
                 Toggle("Enable NxNative Skin", isOn: $enabled)
                     .accessibilityIdentifier("settings.nxnative.skinEnabled")
             } footer: {
-                Text("Both styles are built into Strata. No PNG import, download, or separate game IPA is needed. Restart a running NxNative game after changing skin settings.")
+                Text(StrataNxPhotoSkinsBundled()
+                     ? "Exact photo-based Pearl Light and AMOLED Dark skins are packaged in this build. Restart NxNative to apply."
+                     : "Photo assets are not yet embedded in this build. The previous vector fallback is temporary until all four skin images are added to the repository and rebuilt.")
             }
 
             Section {
@@ -299,7 +301,7 @@ private struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Built-in Skins")
             } footer: {
-                Text("A single choice applies to both Portrait and Landscape. AMOLED Dark uses a nearly black shell and translucent-looking graphite buttons; Pearl Light uses a white pearl shell and metallic trim.")
+                Text("Both styles use the user's original portrait and landscape photo geometry. AMOLED Dark keeps the same controls, with OLED black and graphite buttons plus white glyphs. The input remapping and lower-left ZN logo are identical.")
             }
 
             Section("Portrait & Landscape") {
