@@ -411,7 +411,10 @@ static void StrataNxKeepNativeInputButHideDrawing(UIView *pad) {
             NSLog(@"[Strata Skin] kept original input layout: %@", e.reason);
         }
     }
-    controls.hidden = image != nil;
+    BOOL physicalPad = NO;
+    @try { physicalPad = [[pad valueForKey:@"padOff"] boolValue]; }
+    @catch (__unused NSException *e) {}
+    controls.hidden = image != nil || physicalPad;
     // The gear is a separate UIButton (outside _controls): remove its native
     // drawing but leave the real UIButton and its menu actions intact.
     UIView *menu = nil;
@@ -457,6 +460,15 @@ static void StrataNxPrimeArtTouchRoles(UIView *pad, NSSet<UITouch *> *touches) {
         NSInteger role = StrataNxArtRole(p, landscape);
         objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
                                 @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        // Bounded diagnostics: useful if one particular on-screen key still
+        // fails, without creating a per-frame or unbounded verbose log.
+        static NSUInteger reported = 0;
+        if (role != StrataArtNoMapping && reported < 20) {
+            reported++;
+            NSLog(@"[Strata][NxSkin] %@ button=%ld art=(%.3f,%.3f) nativeTouch=(%.0f,%.0f)",
+                  landscape ? @"landscape" : @"portrait", (long)role,
+                  p.x, p.y, native.x, native.y);
+        }
     }
 }
 static void StrataNxTouchBegan(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
