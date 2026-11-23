@@ -430,6 +430,13 @@ static void StrataNxKeepNativeInputButHideDrawing(UIView *pad) {
             menu.tintColor = UIColor.clearColor;
             menu.layer.sublayers.firstObject.opacity = 0;
         } else {
+            // Moving from an imported skin to an orientation without artwork
+            // must restore the original native gear appearance and hit target.
+            menu.backgroundColor = [UIColor colorWithWhite:1 alpha:0.14];
+            menu.layer.borderWidth = 1.5;
+            menu.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.38].CGColor;
+            menu.layer.shadowOpacity = 0.2;
+            menu.tintColor = [UIColor colorWithWhite:1 alpha:0.6];
             menu.layer.sublayers.firstObject.opacity = 1;
         }
     }
@@ -801,7 +808,16 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     StrataNxSkinView *skin = (StrataNxSkinView *)skinView;
     BOOL portrait = host.bounds.size.height > host.bounds.size.width;
     UIImage *img = portrait ? skin.portraitArtwork : skin.landscapeArtwork;
-    if (!img) return;  // leave native size if no artwork was imported
+    if (!img) {
+        // The opposite orientation may have artwork while this one does not.
+        // Restore the standard controls and menu; preserve the default picture.
+        UIView *pad = StrataNxChildOfClass(host, @"DmGamepad");
+        if (pad) {
+            StrataNxKeepNativeInputButHideDrawing(pad);
+            StrataNxUpdateGameMenuButton(pad);
+        }
+        return;
+    }
     UIView *game = StrataNxChildOfClass(host, @"DmGameView");
     UIView *pad = StrataNxChildOfClass(host, @"DmGamepad");
     if (!game || game.superview != host || !pad) return;
