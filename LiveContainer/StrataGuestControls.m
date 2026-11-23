@@ -104,10 +104,10 @@ static void StrataNxDrawPortraitHandheld(CGRect bounds, CGRect game) {
     CGFloat shouldersY=bottom+remaining*0.14;
     CGFloat shoulderH=MAX(19,42*unit);
     CGFloat gap=4*unit;
-    StrataNxDrawBevel(CGRectMake(w*0.045,shouldersY,w*0.16,shoulderH),10*unit,@"L",18*unit);
-    StrataNxDrawBevel(CGRectMake(w*0.045+w*0.16+gap,shouldersY,w*0.16,shoulderH),10*unit,@"ZL",15*unit);
-    StrataNxDrawBevel(CGRectMake(w*0.63,shouldersY,w*0.16,shoulderH),10*unit,@"ZR",15*unit);
-    StrataNxDrawBevel(CGRectMake(w*0.63+w*0.16+gap,shouldersY,w*0.16,shoulderH),10*unit,@"R",18*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.045,shouldersY,w*0.16,shoulderH),10*unit,@"L",MAX(13,18*unit));
+    StrataNxDrawBevel(CGRectMake(w*0.045+w*0.16+gap,shouldersY,w*0.16,shoulderH),10*unit,@"ZL",MAX(12,15*unit));
+    StrataNxDrawBevel(CGRectMake(w*0.63,shouldersY,w*0.16,shoulderH),10*unit,@"ZR",MAX(12,15*unit));
+    StrataNxDrawBevel(CGRectMake(w*0.63+w*0.16+gap,shouldersY,w*0.16,shoulderH),10*unit,@"R",MAX(13,18*unit));
 
     // Centre speaker perforations echo the reference image.
     [[UIColor colorWithWhite:0.36 alpha:0.85] setFill];
@@ -122,13 +122,13 @@ static void StrataNxDrawPortraitHandheld(CGRect bounds, CGRect game) {
     StrataNxDrawDPad(CGPointMake(w*0.25,controlsY),dpadUnit);
     CGFloat keyRadius=MIN(w*0.078,remaining*0.086);
     StrataNxDrawBevel(CGRectMake(w*0.75-keyRadius,controlsY-dpadUnit*0.94-keyRadius,
-                               2*keyRadius,2*keyRadius),keyRadius,@"X",22*unit);
+                               2*keyRadius,2*keyRadius),keyRadius,@"X",MAX(16,22*unit));
     StrataNxDrawBevel(CGRectMake(w*0.75-keyRadius*2.05-keyRadius,controlsY-keyRadius,
-                               2*keyRadius,2*keyRadius),keyRadius,@"Y",22*unit);
+                               2*keyRadius,2*keyRadius),keyRadius,@"Y",MAX(16,22*unit));
     StrataNxDrawBevel(CGRectMake(w*0.75+keyRadius*2.05-keyRadius,controlsY-keyRadius,
-                               2*keyRadius,2*keyRadius),keyRadius,@"A",22*unit);
+                               2*keyRadius,2*keyRadius),keyRadius,@"A",MAX(16,22*unit));
     StrataNxDrawBevel(CGRectMake(w*0.75-keyRadius,controlsY+dpadUnit*0.94-keyRadius,
-                               2*keyRadius,2*keyRadius),keyRadius,@"B",22*unit);
+                               2*keyRadius,2*keyRadius),keyRadius,@"B",MAX(16,22*unit));
     CGFloat analogRadius=MIN(w*0.115,remaining*0.115);
     CGFloat analogY=bottom+remaining*0.79;
     StrataNxDrawAnalog(CGPointMake(w*0.25,analogY),analogRadius);
