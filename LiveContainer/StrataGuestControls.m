@@ -135,6 +135,186 @@ static void StrataNxDrawPortraitHandheld(CGRect bounds, CGRect game) {
     StrataNxDrawAnalog(CGPointMake(w*0.75,analogY),analogRadius);
 }
 
+// Optional touch-coordinate bridge for the imported white-shell artwork.
+// UIKit still routes the real UITouch to the game's DmGamepad (not a fake pad).
+// Only the location reported TO THAT SPECIFIC pad is translated. This leaves
+// the original engine's multi-touch, haptics, drag ownership and HID handling
+// responsible for the actual input; no game binary or C input hooks required.
+static char StrataNxPadArtTouchEnabledKey;
+static char StrataNxTouchArtRoleKey;
+static CGPoint (*StrataOriginalLocationInView)(id, SEL, UIView *) = NULL;
+
+enum {
+    StrataArtNoMapping = 0, StrataArtFace = 1, StrataArtDpad,
+    StrataArtLeftStick, StrataArtRightStick, StrataArtL, StrataArtZL,
+    StrataArtZR, StrataArtR, StrataArtMinus, StrataArtPlus
+};
+
+static BOOL StrataArtNear(CGPoint point, CGFloat x, CGFloat y, CGFloat rx, CGFloat ry) {
+    CGFloat dx = (point.x - x) / rx, dy = (point.y - y) / ry;
+    return dx * dx + dy * dy <= 1.0;
+}
+
+// These are the measured button centres in the user-supplied 923 x 2000 skin.
+// Coordinates remain normalized so iPhone 15 resolution changes do not matter.
+static NSInteger StrataNxArtRole(CGPoint p) {
+    if (StrataArtNear(p, 0.106, 0.451, 0.073, 0.029)) return StrataArtL;
+    if (StrataArtNear(p, 0.254, 0.451, 0.078, 0.029)) return StrataArtZL;
+    if (StrataArtNear(p, 0.748, 0.451, 0.078, 0.029)) return StrataArtZR;
+    if (StrataArtNear(p, 0.901, 0.451, 0.073, 0.029)) return StrataArtR;
+    if (StrataArtNear(p, 0.309, 0.842, 0.058, 0.033)) return StrataArtMinus;
+    if (StrataArtNear(p, 0.599, 0.842, 0.058, 0.033)) return StrataArtPlus;
+    if (StrataArtNear(p, 0.675, 0.524, 0.070, 0.036) ||
+        StrataArtNear(p, 0.551, 0.575, 0.070, 0.036) ||
+        StrataArtNear(p, 0.797, 0.575, 0.070, 0.036) ||
+        StrataArtNear(p, 0.675, 0.632, 0.070, 0.036)) return StrataArtFace;
+    if (StrataArtNear(p, 0.225, 0.577, 0.173, 0.096)) return StrataArtDpad;
+    if (StrataArtNear(p, 0.224, 0.756, 0.147, 0.085)) return StrataArtLeftStick;
+    if (StrataArtNear(p, 0.698, 0.756, 0.147, 0.085)) return StrataArtRightStick;
+    return StrataArtNoMapping;
+}
+
+static CGPoint StrataArtNativePoint(id pad, SEL sel) {
+    if (![pad respondsToSelector:sel]) return CGPointMake(NAN, NAN);
+    CGPoint (*imp)(id, SEL) = (void *)[pad methodForSelector:sel];
+    return imp(pad, sel);
+}
+static CGPoint StrataArtNativeButton(id pad, SEL sel, int b) {
+    if (![pad respondsToSelector:sel]) return CGPointMake(NAN, NAN);
+    CGPoint (*imp)(id, SEL, int) = (void *)[pad methodForSelector:sel];
+    return imp(pad, sel, b);
+}
+static CGRect StrataArtNativePill(id pad, int b) {
+    SEL sel = @selector(pillRect:);
+    if (![pad respondsToSelector:sel]) return CGRectNull;
+    CGRect (*imp)(id, SEL, int) = (void *)[pad methodForSelector:sel];
+    return imp(pad, sel, b);
+}
+static CGFloat StrataArtNativeRadius(id pad, int index) {
+    SEL sel = @selector(stickR:);
+    if (![pad respondsToSelector:sel]) return 0;
+    CGFloat (*imp)(id, SEL, int) = (void *)[pad methodForSelector:sel];
+    return imp(pad, sel, index);
+}
+
+static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view) {
+    CGPoint original = StrataOriginalLocationInView(touch, command, view);
+    // Absolutely no touch mapping outside an explicitly opted-in NxNative pad.
+    if (!view || ![NSStringFromClass(view.class) isEqualToString:@"DmGamepad"] ||
+        !objc_getAssociatedObject(view, &StrataNxPadArtTouchEnabledKey) ||
+        view.bounds.size.width <= 0 || view.bounds.size.height <= view.bounds.size.width)
+        return original;
+
+    CGPoint p = CGPointMake(original.x / view.bounds.size.width,
+                            original.y / view.bounds.size.height);
+    NSNumber *selected = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
+    NSInteger role = selected ? selected.integerValue : StrataArtNoMapping;
+    if (!selected) {
+        if (((UITouch *)touch).phase != UITouchPhaseBegan) return original;
+        role = StrataNxArtRole(p);
+        objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
+                                @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (role == StrataArtNoMapping || role == StrataArtRightStick) return original;
+
+    // Source NxNative DmGamepad.m button identifiers. These are only used
+    // to ask DmGamepad for its OWN current interactive target centres.
+    // A B X Y L3 R3 L R ZL ZR + -
+    switch (role) {
+        case StrataArtL: return StrataArtNativeButton(view, @selector(dropCenter:), 6);
+        case StrataArtZL: return StrataArtNativeButton(view, @selector(dropCenter:), 8);
+        case StrataArtZR: return StrataArtNativeButton(view, @selector(dropCenter:), 9);
+        case StrataArtR: return StrataArtNativeButton(view, @selector(dropCenter:), 7);
+        case StrataArtMinus: {
+            CGRect r = StrataArtNativePill(view, 11);
+            return CGRectIsNull(r) ? original : CGPointMake(CGRectGetMidX(r), CGRectGetMidY(r));
+        }
+        case StrataArtPlus: {
+            CGRect r = StrataArtNativePill(view, 10);
+            return CGRectIsNull(r) ? original : CGPointMake(CGRectGetMidX(r), CGRectGetMidY(r));
+        }
+        case StrataArtFace: {
+            // Sliding between the four image buttons stays a native face drag.
+            const CGFloat px[] = {0.797, 0.675, 0.675, 0.551};
+            const CGFloat py[] = {0.575, 0.632, 0.524, 0.575};
+            int closest = 0; CGFloat best = CGFLOAT_MAX;
+            for (int i = 0; i < 4; i++) {
+                CGFloat dx = (p.x - px[i]) / 0.072, dy = (p.y - py[i]) / 0.038;
+                CGFloat score = dx * dx + dy * dy;
+                if (score < best) { best = score; closest = i; }
+            }
+            CGPoint pos = StrataArtNativeButton(view, @selector(facePos:), closest);
+            return (isfinite(pos.x) && isfinite(pos.y)) ? pos : original;
+        }
+        case StrataArtDpad: {
+            CGPoint c = StrataArtNativePoint(view, @selector(dpadCenter));
+            // D-pad chooses direction continuously from the native touch point.
+            CGFloat radius = 0;
+            if ([view respondsToSelector:@selector(dpadR)]) {
+                CGFloat (*imp)(id, SEL) = (void *)[view methodForSelector:@selector(dpadR)];
+                radius = imp(view, @selector(dpadR));
+            }
+            if (!isfinite(c.x) || radius <= 0) return original;
+            CGFloat dx = fmax(-1, fmin(1, (p.x - 0.225) / 0.135));
+            CGFloat dy = fmax(-1, fmin(1, (p.y - 0.577) / 0.071));
+            return CGPointMake(c.x + dx * radius * 0.90, c.y + dy * radius * 0.90);
+        }
+        case StrataArtLeftStick: {
+            CGPoint c = StrataArtNativePoint(view, @selector(stickHome));
+            CGFloat radius = StrataArtNativeRadius(view, 0);
+            if (!isfinite(c.x) || radius <= 0) return original;
+            CGFloat dx = fmax(-1, fmin(1, (p.x - 0.224) / 0.122));
+            CGFloat dy = fmax(-1, fmin(1, (p.y - 0.756) / 0.070));
+            return CGPointMake(c.x + dx * radius * 0.85, c.y + dy * radius * 0.85);
+        }
+        default: return original;
+    }
+}
+
+@interface StrataNxArtMenuBridge : NSObject <UIGestureRecognizerDelegate>
+@property(nonatomic, weak) UIView *pad;
+@end
+@implementation StrataNxArtMenuBridge
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+    CGPoint p = [touch locationInView:self.pad];
+    CGSize b = self.pad.bounds.size;
+    return b.width > 0 && b.height > b.width &&
+        StrataArtNear(CGPointMake(p.x/b.width, p.y/b.height), 0.453, 0.842, 0.052, 0.035);
+}
+- (void)openMenu:(UITapGestureRecognizer *)tap {
+    if (tap.state != UIGestureRecognizerStateRecognized) return;
+    for (UIView *v in self.pad.subviews) {
+        if ([NSStringFromClass(v.class) isEqualToString:@"DmMenuButton"] &&
+            [v isKindOfClass:UIControl.class]) {
+            [(UIControl *)v sendActionsForControlEvents:UIControlEventTouchUpInside];
+            return;
+        }
+    }
+}
+@end
+
+static void StrataEnableNxSkinTouchMapping(UIView *pad) {
+    if (!pad || objc_getAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey)) return;
+    SEL sel = @selector(locationInView:);
+    if (!StrataOriginalLocationInView) {
+        Method method = class_getInstanceMethod(UITouch.class, sel);
+        if (!method) return;
+        StrataOriginalLocationInView = (void *)method_getImplementation(method);
+        method_setImplementation(method, (IMP)StrataNxRemappedTouchLocation);
+    }
+    objc_setAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey,
+                            @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    StrataNxArtMenuBridge *target = [StrataNxArtMenuBridge new];
+    target.pad = pad;
+    UITapGestureRecognizer *menuTap = [[UITapGestureRecognizer alloc]
+                                      initWithTarget:target action:@selector(openMenu:)];
+    menuTap.delegate = target;
+    menuTap.cancelsTouchesInView = NO;
+    [pad addGestureRecognizer:menuTap];
+    objc_setAssociatedObject(pad, @selector(openMenu:), target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSLog(@"[Strata] NxNative white art touch targets mapped to native DmGamepad");
+}
+
 static NSString * const StrataNxSkinToggleKey = @"StrataNxSkinEnabled";
 static const NSInteger StrataNxSkinViewTag = 877144;
 
@@ -258,6 +438,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     NSURL *groupURL = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:group];
     NSURL *portraitPNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativePortrait.png"];
     if (portraitPNG) skin.portraitArtwork = [UIImage imageWithContentsOfFile:portraitPNG.path];
+    if (skin.portraitArtwork) StrataEnableNxSkinTouchMapping(pad);
     [host insertSubview:skin belowSubview:pad];
     [skin setNeedsDisplay];
     NSLog(@"[Strata] Optional NxNative white handheld portrait / red-cyan landscape skin enabled (cosmetic only)");
