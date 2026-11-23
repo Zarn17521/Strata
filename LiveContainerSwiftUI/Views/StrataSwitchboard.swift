@@ -54,6 +54,21 @@ struct StrataSwitchboard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     statusBar.padding(.horizontal, margin).padding(.top, 10)
                     categoryStrip.padding(.horizontal, margin).padding(.top, 4)
+                    // Keep the AMOLED toggle under "All", separate from game controls.
+                    Button {
+                        darkMode.toggle()
+                    } label: {
+                        Image(systemName: darkMode ? "moon.fill" : "moon")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.cyan)
+                            .frame(width: 42, height: 42)
+                            .background(Circle().fill(buttonSurface))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode")
+                    .accessibilityIdentifier("switchboard.toggle.darkMode")
+                    .padding(.horizontal, margin)
+                    .padding(.top, 8)
                     Spacer(minLength: 4)
                     TabView(selection: $selectedKey) {
                         ForEach(items, id: \.self) { app in
@@ -177,9 +192,9 @@ struct StrataSwitchboard: View {
         }
     }
     private var shortcutButtons: some View {
-        // Five evenly spaced shortcuts. Only the NxNative guest orientation is
-        // stored; the Switchboard itself always remains in portrait orientation.
-        HStack(spacing: 14) {
+        // Four equally-sized shortcuts below the cover. The fifth (AMOLED)
+        // lives below "All". Guest orientation never rotates the Switchboard.
+        HStack(spacing: 18) {
             roundButton("square.grid.2x2.fill", label: "Manage apps", tint: .red) {
                 controller.stop(); openManagement()
             }
@@ -198,13 +213,6 @@ struct StrataSwitchboard: View {
                 gameLandscape.toggle()
             }
             .accessibilityIdentifier("switchboard.toggle.gameOrientation")
-
-            roundButton(darkMode ? "moon.fill" : "moon",
-                        label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
-                        tint: .cyan) {
-                darkMode.toggle()
-            }
-            .accessibilityIdentifier("switchboard.toggle.darkMode")
 
             roundButton("slider.horizontal.3", label: "Interface settings", tint: .purple) {
                 controller.stop(); openInterface()
