@@ -4,6 +4,7 @@
 #import "utils.h"
 #import <UIKit/UIKit.h>
 #import <unistd.h>
+#import <math.h>
 
 // Optional NxNative appearance-only bezel. This is a transparent touch-through
 // decoration that lives between the Metal picture and the original gamepad.
