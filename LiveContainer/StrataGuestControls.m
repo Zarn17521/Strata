@@ -1028,8 +1028,10 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
 
     NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
     id stored = [prefs objectForKey:StrataNxGuestLandscapeKey];
-    if (![stored respondsToSelector:@selector(boolValue)]) return; // no override selected
-    BOOL landscape = [stored boolValue];
+    // Match the Switchboard @AppStorage default: Landscape is selected
+    // until the user explicitly chooses Portrait.
+    BOOL landscape = [stored respondsToSelector:@selector(boolValue)]
+        ? [stored boolValue] : YES;
 
     // AppDelegate supportedInterfaceOrientationsForWindow reads the shared
     // LiveBoardOrientation mask. Clear the launcher's portrait lock only for
