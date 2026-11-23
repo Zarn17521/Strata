@@ -37,7 +37,6 @@ struct AppReplaceOption : Hashable {
 }
 
 struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
-    @AppStorage("LiveBoardMode", store: LCUtils.appGroupUserDefault) private var liveBoardMode = "switchboard"
     @State private var manageLibrary = false
     private var builtInSideStore: LCAppModel? { LiveBoardBundledApps.sideStore }
     @State var didAppear = false
@@ -160,33 +159,12 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         NavigationView {
             ZStack {
                 NavigationLink(destination: navigateTo, isActive: $isNavigationActive) { EmptyView() }.hidden()
-                if liveBoardMode == "switchboard" && !manageLibrary {
+                // Strata is a dedicated Switchboard launcher. All former
+                // iOS Home, Cinematic, Big Picture, Shelf and Arcade modes
+                // are retired from the active route. Keep the standard
+                // management flow for installing and configuring apps.
+                if !manageLibrary {
                     StrataSwitchboard(apps: launcherApps, launch: { app in Task { await launchFromLiveBoard(app) } }, manage: manageLauncherApp, openInterface: openInterface, openManagement: { manageLibrary = true }, launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true) } }, launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true) } }, launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true) } }, launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true) } })
-                } else if let style = StrataGalleryStyle(rawValue: liveBoardMode), !manageLibrary {
-                    StrataGalleryScreen(style: style, apps: launcherApps, launch: { app in Task { await launchFromLiveBoard(app) } }, manage: manageLauncherApp, openInterface: openInterface, openManagement: { manageLibrary = true }, launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true) } }, launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true) } }, launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true) } }, launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true) } })
-                        .id(style.rawValue)
-                } else if liveBoardMode == "ios" && !manageLibrary {
-                    LiveBoardHomeScreen(apps: launcherApps,
-                                        launch: { app in Task { await launchFromLiveBoard(app) } },
-                                        manage: manageLauncherApp,
-                                        openInterface: openInterface,
-                                        openManagement: { manageLibrary = true },
-                                        openTab: { sharedModel.selectedTab = $0 },
-                                        secondaryInstance: sharedModel.multiLCStatus == 2,
-                                        launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true) } },
-                                        launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true) } },
-                                        launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true) } },
-                                        launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true) } })
-                } else if !manageLibrary {
-                    LiveBoardConsoleScreen(apps: launcherApps, mode: liveBoardMode,
-                                           launch: { app in await launchFromLiveBoard(app) },
-                                           manage: manageLauncherApp,
-                                           openInterface: openInterface,
-                                           openManagement: { manageLibrary = true },
-                                           launchWithJIT: { app in await launchFromLiveBoard(app, forceJIT: true) },
-                                           launchInGameMode: { app in await launchFromLiveBoard(app, gameMode: true) },
-                                           launchWithMetalHUD: { app in await launchFromLiveBoard(app, metalHUD: true) },
-                                           launchMultitask: { app in await launchFromLiveBoard(app, multitask: true) })
                 } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
