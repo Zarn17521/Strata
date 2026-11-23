@@ -334,7 +334,7 @@ private struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Portrait Artwork")
             } footer: {
-                Text("Import your white portrait PNG. Strata draws it outside the current game viewport and maps common buttons through NxNative’s original touch input. The displayed screen is not resized to the decorative frame.")
+                Text("Import a portrait PNG with a transparent display opening. Strata aspect-fits the live game inside the artwork's black screen and maps the printed buttons to NxNative's actual input. Restart the game to apply changes.")
             }
             Section {
                 if let importedLandscape {
@@ -365,7 +365,7 @@ private struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Landscape Artwork")
             } footer: {
-                Text("Import the white landscape JPG or PNG. Button feedback and stick movement are experimental, and the original game viewport is kept unchanged. Parts overlapping the live game remain hidden to avoid cropping gameplay.")
+                Text("Import a landscape JPG or PNG. The artwork fills the screen while the live game aspect-fits inside its black display opening. Skin buttons and sticks use the imported layout; restart the game to apply changes.")
             }
         }
         .navigationTitle("NxNative Controller Skins")
