@@ -703,6 +703,138 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     // Redraw only when input changes, never on an idle 60 FPS timer.
     [self setNeedsDisplay];
 }
+// All rectangles below use the SAME normalized artwork coordinates as the
+// actual DmGamepad touch map, not physical iPhone point coordinates.
+static CGRect StrataNxArtRect(CGRect art, CGRect n) {
+    return CGRectMake(art.origin.x + n.origin.x * art.size.width,
+                      art.origin.y + n.origin.y * art.size.height,
+                      n.size.width * art.size.width,
+                      n.size.height * art.size.height);
+}
+static CGRect StrataNxArtOffset(CGRect n, CGPoint shift) {
+    return CGRectOffset(n, shift.x, shift.y);
+}
+
+// Draw a small crop of the ORIGINAL imported image at its new location.
+// Do not overwrite or mutate the user's imported JPG/PNG on disk.
+static void StrataNxDrawArtCrop(UIImage *image, CGRect sourceNorm,
+                                 CGRect destinationNorm, CGRect art) {
+    CGImageRef original = image.CGImage;
+    if (!original) return;
+    size_t pxW = CGImageGetWidth(original), pxH = CGImageGetHeight(original);
+    CGRect sourcePx = CGRectIntegral(CGRectMake(sourceNorm.origin.x * pxW,
+                                               sourceNorm.origin.y * pxH,
+                                               sourceNorm.size.width * pxW,
+                                               sourceNorm.size.height * pxH));
+    CGRect imageBounds = CGRectMake(0, 0, pxW, pxH);
+    sourcePx = CGRectIntersection(sourcePx,imageBounds);
+    if (CGRectIsNull(sourcePx) || CGRectIsEmpty(sourcePx)) return;
+    CGImageRef crop = CGImageCreateWithImageInRect(original,sourcePx);
+    if (!crop) return;
+    UIImage *patch = [UIImage imageWithCGImage:crop scale:image.scale
+                                  orientation:UIImageOrientationUp];
+    CGRect dest = StrataNxArtRect(art,destinationNorm);
+    CGContextSaveGState(UIGraphicsGetCurrentContext());
+    [[UIBezierPath bezierPathWithRoundedRect:dest
+                              cornerRadius:MIN(dest.size.width,dest.size.height)*0.18] addClip];
+    [patch drawInRect:dest];
+    CGContextRestoreGState(UIGraphicsGetCurrentContext());
+    CGImageRelease(crop);
+}
+
+static void StrataNxDrawRearrangedArtwork(UIImage *image, CGRect art,
+                                           BOOL landscape) {
+    if (!image || !image.CGImage) return;
+    // Face diamond and right thumbstick from the supplied white-shell art.
+    // Portrait and landscape both move actual art, not just invisible hitboxes.
+    CGRect face = landscape ? CGRectMake(0.751,0.215,0.178,0.280)
+                            : CGRectMake(0.532,0.540,0.416,0.209);
+    CGRect look = landscape ? CGRectMake(0.768,0.510,0.145,0.228)
+                            : CGRectMake(0.591,0.764,0.308,0.153);
+    CGPoint from = StrataArtOriginalFaceGroupCentre(landscape);
+    CGPoint to = StrataArtOriginalRightStickCentre(landscape);
+    CGPoint delta = CGPointMake(to.x-from.x,to.y-from.y);
+    CGRect destFace = StrataNxArtOffset(face,delta);
+    CGRect destLook = StrataNxArtOffset(look,CGPointMake(-delta.x,-delta.y));
+
+    // Clear the two original positions first, otherwise both controls remain
+    // visible under the newly repositioned artwork.
+    UIColor *shell = [UIColor colorWithWhite:0.970 alpha:1];
+    [shell setFill];
+    for (NSValue *v in @[[NSValue valueWithCGRect:StrataNxArtRect(art,face)],
+                        [NSValue valueWithCGRect:StrataNxArtRect(art,look)]]) {
+        CGRect r = v.CGRectValue;
+        [[UIBezierPath bezierPathWithRoundedRect:CGRectInset(r,-1,-1)
+                                   cornerRadius:MIN(r.size.width,r.size.height)*0.18] fill];
+    }
+    // Draw from the unmodified file, so the patches never recursively copy
+    // an earlier swap. The original artwork remains available in Settings.
+    StrataNxDrawArtCrop(image,look,destLook,art);
+    StrataNxDrawArtCrop(image,face,destFace,art);
+
+    // R and ZR are the RIGHT-hand shoulder pair visible in the example;
+    // swap the printed glyphs to match their swapped native touch roles.
+    const CGFloat leftX = landscape ? 0.8126 : 0.7190;
+    const CGFloat rightX = landscape ? 0.8628 : 0.8790;
+    const CGFloat y = landscape ? 0.1827 : 0.5040;
+    CGFloat size = MIN(art.size.width*(landscape ? 0.013 : 0.038),
+                       art.size.height*(landscape ? 0.036 : 0.019));
+    UIFont *font = [UIFont systemFontOfSize:MAX(8,size) weight:UIFontWeightMedium];
+    NSArray<NSString *> *labels = @[@"R",@"ZR"];
+    for (int i=0; i<2; i++) {
+        CGPoint centre = CGPointMake(art.origin.x+(i ? rightX:leftX)*art.size.width,
+                                    art.origin.y+y*art.size.height);
+        CGRect erase = CGRectMake(centre.x - size*1.02,centre.y-size*0.66,
+                                  size*2.04,size*1.32);
+        [[UIColor colorWithWhite:0.965 alpha:1] setFill];
+        [[UIBezierPath bezierPathWithRoundedRect:erase cornerRadius:size*0.2] fill];
+        NSString *label = labels[i];
+        CGSize textSize = [label sizeWithAttributes:@{NSFontAttributeName:font}];
+        [label drawAtPoint:CGPointMake(centre.x-textSize.width*0.5,
+                                      centre.y-textSize.height*0.5)
+           withAttributes:@{NSFontAttributeName:font,
+                            NSForegroundColorAttributeName:[UIColor colorWithWhite:0.43 alpha:1]}];
+    }
+}
+
+// Small ZN's LIBRARY motif on the LOWER LEFT of the shell, matching the
+// launcher's gold Z, jade N and green tilted Link cap. Kept away from D-pad,
+// sticks and menu hitboxes. It is purely artwork, never an input target.
+static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
+    CGFloat x = CGRectGetMinX(art)+art.size.width*(portrait ? 0.075 : 0.088);
+    CGFloat y = CGRectGetMinY(art)+art.size.height*(portrait ? 0.931 : 0.811);
+    CGFloat fs = MIN(art.size.width*(portrait ? 0.058 : 0.034),
+                      art.size.height*(portrait ? 0.028 : 0.061));
+    UIFont *font = [UIFont fontWithName:@"Georgia-BoldItalic" size:fs];
+    if (!font) font = [UIFont boldSystemFontOfSize:fs];
+    NSDictionary *gold = @{NSFontAttributeName:font,
+      NSForegroundColorAttributeName:[UIColor colorWithRed:0.70 green:0.43 blue:0.10 alpha:1]};
+    NSDictionary *jade = @{NSFontAttributeName:font,
+      NSForegroundColorAttributeName:[UIColor colorWithRed:0.10 green:0.51 blue:0.35 alpha:1]};
+    [@"Z" drawAtPoint:CGPointMake(x,y+fs*0.14) withAttributes:gold];
+    CGFloat nX = x + [@"Z" sizeWithAttributes:gold].width*0.76;
+    [@"N" drawAtPoint:CGPointMake(nX,y+fs*0.14) withAttributes:jade];
+
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+    // Slanted floppy emerald hat over the first initial.
+    CGContextSaveGState(ctx);
+    CGContextTranslateCTM(ctx,x+fs*0.06,y-fs*0.04);
+    CGContextRotateCTM(ctx,(CGFloat)(-M_PI/18.0));
+    UIBezierPath *hat = [UIBezierPath bezierPath];
+    [hat moveToPoint:CGPointMake(fs*0.02,fs*0.40)];
+    [hat addQuadCurveToPoint:CGPointMake(fs*0.43,fs*0.03)
+               controlPoint:CGPointMake(fs*0.06,fs*0.04)];
+    [hat addQuadCurveToPoint:CGPointMake(fs*0.73,fs*0.37)
+               controlPoint:CGPointMake(fs*0.69,fs*0.03)];
+    [hat addQuadCurveToPoint:CGPointMake(fs*0.03,fs*0.41)
+               controlPoint:CGPointMake(fs*0.43,fs*0.34)];
+    [hat closePath];
+    [[UIColor colorWithRed:0.10 green:0.56 blue:0.23 alpha:1] setFill];
+    [hat fill];
+    CGContextRestoreGState(ctx);
+}
+
 static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait,
                                     NSDictionary<NSValue *, NSValue *> *touches,
                                     NSDictionary<NSValue *, NSNumber *> *roles) {
@@ -799,7 +931,11 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
         // aperture, and the clip above also protects ALL live game pixels.
         // This is only visual: no game aspect ratio or DmGamepad input changes.
         UIImage *image = portrait ? self.portraitArtwork : self.landscapeArtwork;
-        [image drawInRect:StrataNxArtworkFrame(bounds, image)];
+        CGRect art = StrataNxArtworkFrame(bounds, image);
+        [image drawInRect:art];
+        // Only the shell pixels outside the live aperture are repainted.
+        StrataNxDrawRearrangedArtwork(image,art,!portrait);
+        StrataNxDrawZNBrand(art,portrait);
     } else {
         if (grad) {
             CGContextDrawLinearGradient(ctx, grad,
