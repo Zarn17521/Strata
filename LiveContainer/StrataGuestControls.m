@@ -367,6 +367,27 @@ static void StrataNxKeepNativeInputButHideDrawing(UIView *pad) {
         NSLog(@"[Strata Skin] NxNative control-layer lookup failed: %@", e.reason);
     }
     if (!controls) return;  // safest fallback: use the original native controls.
+    if (image) {
+        // White skin needs D-pad + right stick. Enable the existing 3D handler
+        // in memory only; do not change saved gamepad preferences or profiles.
+        @try {
+            BOOL full = [[pad valueForKey:@"full"] boolValue];
+            BOOL tap = [[pad valueForKey:@"tap"] boolValue];
+            if (!full || tap) {
+                [pad setValue:@NO forKey:@"tap"];
+                [pad setValue:@YES forKey:@"full"];
+                SEL apply = NSSelectorFromString(@"applyLayout");
+                if ([pad respondsToSelector:apply]) {
+                    void (*call)(id, SEL) = (void *)[pad methodForSelector:apply];
+                    call(pad, apply);
+                }
+                [pad setNeedsLayout];
+                NSLog(@"[Strata Skin] enabled NxNative 3D touch layout in memory only");
+            }
+        } @catch (NSException *e) {
+            NSLog(@"[Strata Skin] kept original input layout: %@", e.reason);
+        }
+    }
     controls.hidden = image != nil;
     // The gear is a separate UIButton (outside _controls): remove its native
     // drawing but leave the real UIButton and its menu actions intact.
@@ -493,6 +514,7 @@ static const NSInteger StrataNxSkinViewTag = 877144;
 @property(nonatomic, strong) UIImage *portraitArtwork;
 @property(nonatomic, strong) UIImage *landscapeArtwork;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, NSValue *> *artTouches;
+@property(nonatomic, strong) NSMutableDictionary<NSValue *, NSNumber *> *artRoles;
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending;
 @end
 @implementation StrataNxSkinView
@@ -505,6 +527,7 @@ static const NSInteger StrataNxSkinViewTag = 877144;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.tag = StrataNxSkinViewTag;
         self.artTouches = [NSMutableDictionary new];
+        self.artRoles = [NSMutableDictionary new];
         self.accessibilityIdentifier = @"strata.nxnative.cosmetic-skin";
     }
     return self;
@@ -521,7 +544,12 @@ static const NSInteger StrataNxSkinViewTag = 877144;
         NSValue *key = [NSValue valueWithNonretainedObject:touch];
         if (ending) {
             [self.artTouches removeObjectForKey:key];
+            [self.artRoles removeObjectForKey:key];
         } else {
+            if (!self.artRoles[key]) {
+                NSNumber *role = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
+                if (role) self.artRoles[key] = role;
+            }
             UIView *pad = nil;
             for (UIView *v in self.superview.subviews)
                 if ([NSStringFromClass(v.class) isEqualToString:@"DmGamepad"]) { pad = v; break; }
@@ -537,13 +565,15 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     [self setNeedsDisplay];
 }
 static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait,
-                                    NSDictionary<NSValue *, NSValue *> *touches) {
+                                    NSDictionary<NSValue *, NSValue *> *touches,
+                                    NSDictionary<NSValue *, NSNumber *> *roles) {
     CGFloat w = area.size.width, h = area.size.height;
-    for (NSValue *entry in touches.allValues) {
-        CGPoint raw = entry.CGPointValue;
+    for (NSValue *key in touches) {
+        CGPoint raw = touches[key].CGPointValue;
         CGPoint norm = CGPointMake((raw.x-area.origin.x) / MAX(w,1),
                                    (raw.y-area.origin.y) / MAX(h,1));
-        NSInteger role = StrataNxArtRole(norm, !portrait);
+        NSNumber *fixedRole = roles[key];
+        NSInteger role = fixedRole ? fixedRole.integerValue : StrataNxArtRole(norm, !portrait);
         if (role == StrataArtNoMapping) continue;
         CGFloat x = raw.x, y = raw.y;
         if (role == StrataArtLeftStick || role == StrataArtRightStick) {
@@ -644,7 +674,7 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
     if ((portrait ? self.portraitArtwork : self.landscapeArtwork) && self.artTouches.count)
         StrataNxDrawArtFeedback(ctx,
                                 StrataNxArtworkFrame(bounds,portrait ? self.portraitArtwork : self.landscapeArtwork),
-                                portrait,self.artTouches);
+                                portrait,self.artTouches,self.artRoles);
     CGContextRestoreGState(ctx);
 
     // A subtle screen edge, without a big opaque cover over the game content.
