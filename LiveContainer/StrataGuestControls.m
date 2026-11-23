@@ -903,20 +903,42 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
                      CGRectGetMinY(frame) + frame.size.height * (169.0/1008.0),
                      frame.size.width * (863.0/1792.0),
                      frame.size.height * (574.0/1008.0));
-    if (hole.size.width < 80 || hole.size.height < 50 ||
-        game.frame.size.width < 1 || game.frame.size.height < 1) return;
-    // DmRootVC's original layout was just calculated, including game aspect.
+    // The landscape artwork is aspect-FILL (cropped at the physical screen).
+    // Constrain the BLACK APERTURE to the visible screen first; never let the
+    // guest's CAMetalLayer draw beyond it, even at fractional point scales.
+    CGRect visibleHole = CGRectIntersection(hole, host.bounds);
+    if (CGRectIsNull(visibleHole) || CGRectIsEmpty(visibleHole) ||
+        visibleHole.size.width < 80 || visibleHole.size.height < 50 ||
+        game.frame.size.width <= 0 || game.frame.size.height <= 0) return;
+
+    // Keep a one-point inset from the artwork's printed bezel. This avoids
+    // antialiasing / pixel-rounding bleed along all four aperture edges.
+    CGRect safeHole = CGRectInset(visibleHole, 1.0, 1.0);
+    if (CGRectIsEmpty(safeHole)) return;
+
+    // DmRootVC just laid out the game's actual aspect. Aspect-FIT, not FILL:
+    // preserve the whole image and centre it within the black opening.
     CGFloat aspect = game.frame.size.width / game.frame.size.height;
-    CGFloat width = MIN(hole.size.width,hole.size.height*aspect);
-    CGFloat height = width/aspect;
-    CGRect fitted = CGRectIntegral(CGRectMake(CGRectGetMidX(hole)-width/2,
-                                               CGRectGetMidY(hole)-height/2,width,height));
-    if (!CGRectEqualToRect(game.frame,fitted)) {
+    if (!isfinite(aspect) || aspect <= 0) return;
+    CGFloat width = MIN(safeHole.size.width, safeHole.size.height * aspect);
+    CGFloat height = width / aspect;
+    CGRect fitted = CGRectMake(CGRectGetMidX(safeHole) - width / 2.0,
+                               CGRectGetMidY(safeHole) - height / 2.0,
+                               width, height);
+
+    // Unlike CGRectIntegral, fractional UIKit coordinates must NOT expand
+    // outward beyond the printed window. Clamp to its interior as a guard.
+    fitted = CGRectIntersection(fitted, safeHole);
+    if (CGRectIsNull(fitted) || CGRectIsEmpty(fitted)) return;
+    // The game view owns a CAMetalLayer; clip any oversized drawable content
+    // to its new bounds without an expensive additional mask/offscreen layer.
+    game.clipsToBounds = YES;
+    if (!CGRectEqualToRect(game.frame, fitted)) {
         game.frame = fitted;
         [skin setNeedsDisplay];
-        NSLog(@"[Strata][NxSkin] %@ picture fitted %@ in artwork aperture %@",
-              portrait ? @"portrait":@"landscape",
-              NSStringFromCGRect(fitted),NSStringFromCGRect(hole));
+        NSLog(@"[Strata][NxSkin] %@ game aspect-FIT %@ inside black opening %@",
+              portrait ? @"portrait" : @"landscape",
+              NSStringFromCGRect(fitted), NSStringFromCGRect(visibleHole));
     }
     // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
     StrataNxKeepNativeInputButHideDrawing(pad);
