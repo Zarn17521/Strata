@@ -214,6 +214,16 @@ static CGFloat StrataArtNativeRadius(id pad, int index) {
     return imp(pad, sel, index);
 }
 
+static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
+    if (!image || image.size.width <= 0 || image.size.height <= 0 ||
+        bounds.size.width <= 0 || bounds.size.height <= 0) return bounds;
+    CGFloat scale = MIN(bounds.size.width / image.size.width,
+                        bounds.size.height / image.size.height);
+    CGSize fit = CGSizeMake(image.size.width*scale, image.size.height*scale);
+    return CGRectMake(CGRectGetMidX(bounds)-fit.width/2,
+                      CGRectGetMidY(bounds)-fit.height/2,fit.width,fit.height);
+}
+
 static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view) {
     CGPoint original = StrataOriginalLocationInView(touch, command, view);
     // Absolutely no touch mapping outside an explicitly opted-in NxNative pad.
@@ -225,8 +235,9 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     UIView *art = [view.superview viewWithTag:877144];
     id activeImage = [art valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
     if (!activeImage) return original;
-    CGPoint p = CGPointMake(original.x / view.bounds.size.width,
-                            original.y / view.bounds.size.height);
+    CGRect artFrame = StrataNxArtworkFrame(view.bounds, (UIImage *)activeImage);
+    CGPoint p = CGPointMake((original.x - artFrame.origin.x) / MAX(artFrame.size.width,1),
+                            (original.y - artFrame.origin.y) / MAX(artFrame.size.height,1));
     NSNumber *selected = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
     NSInteger role = selected ? selected.integerValue : StrataArtNoMapping;
     if (!selected) {
@@ -310,7 +321,11 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     CGSize b = self.pad.bounds.size;
     if (b.width <= 0 || b.height <= 0) return NO;
     BOOL landscape = b.width > b.height;
-    CGPoint normalized = CGPointMake(p.x/b.width, p.y/b.height);
+    UIView *skin = [self.pad.superview viewWithTag:877144];
+    UIImage *image = [skin valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
+    CGRect artFrame = StrataNxArtworkFrame(self.pad.bounds, image);
+    CGPoint normalized = CGPointMake((p.x-artFrame.origin.x)/MAX(artFrame.size.width,1),
+                                      (p.y-artFrame.origin.y)/MAX(artFrame.size.height,1));
     return landscape
         ? StrataArtNear(normalized, 0.460, 0.734, 0.030, 0.042)
         : StrataArtNear(normalized, 0.453, 0.842, 0.052, 0.035);
@@ -460,15 +475,16 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
     CGFloat w = area.size.width, h = area.size.height;
     for (NSValue *entry in touches.allValues) {
         CGPoint raw = entry.CGPointValue;
-        CGPoint norm = CGPointMake(raw.x / w, raw.y / h);
+        CGPoint norm = CGPointMake((raw.x-area.origin.x) / MAX(w,1),
+                                   (raw.y-area.origin.y) / MAX(h,1));
         NSInteger role = StrataNxArtRole(norm, !portrait);
         if (role == StrataArtNoMapping) continue;
         CGFloat x = raw.x, y = raw.y;
         if (role == StrataArtLeftStick || role == StrataArtRightStick) {
             BOOL right = role == StrataArtRightStick;
             CGPoint centre = portrait
-                ? CGPointMake(w*(right ? 0.698 : 0.224), h*0.756)
-                : CGPointMake(w*(right ? 0.776 : 0.147), h*0.570);
+                ? CGPointMake(area.origin.x+w*(right ? 0.698 : 0.224), area.origin.y+h*0.756)
+                : CGPointMake(area.origin.x+w*(right ? 0.776 : 0.147), area.origin.y+h*0.570);
             CGFloat radius = MIN(w*(portrait ? 0.100 : 0.038), h*(portrait ? 0.047 : 0.067));
             CGFloat dx = MAX(-1.0, MIN(1.0, (x-centre.x)/MAX(radius,1)));
             CGFloat dy = MAX(-1.0, MIN(1.0, (y-centre.y)/MAX(radius,1)));
@@ -546,7 +562,8 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
         // Exact imported white-shell artwork. The imported PNG has a transparent
         // aperture, and the clip above also protects ALL live game pixels.
         // This is only visual: no game aspect ratio or DmGamepad input changes.
-        [(portrait ? self.portraitArtwork : self.landscapeArtwork) drawInRect:bounds];
+        UIImage *image = portrait ? self.portraitArtwork : self.landscapeArtwork;
+        [image drawInRect:StrataNxArtworkFrame(bounds, image)];
     } else {
         if (grad) {
             CGContextDrawLinearGradient(ctx, grad,
@@ -559,7 +576,9 @@ static void StrataNxDrawArtFeedback(CGContextRef ctx, CGRect area, BOOL portrait
     CGColorSpaceRelease(space);
     // Draw the visual pressed states above the imported art but never over game pixels.
     if ((portrait ? self.portraitArtwork : self.landscapeArtwork) && self.artTouches.count)
-        StrataNxDrawArtFeedback(ctx,bounds,portrait,self.artTouches);
+        StrataNxDrawArtFeedback(ctx,
+                                StrataNxArtworkFrame(bounds,portrait ? self.portraitArtwork : self.landscapeArtwork),
+                                portrait,self.artTouches);
     CGContextRestoreGState(ctx);
 
     // A subtle screen edge, without a big opaque cover over the game content.
