@@ -24,6 +24,7 @@ struct StrataSwitchboard: View {
     @State private var coverKey = ""
     @State private var artworkError: String?
     @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var libraries: [String: LiveBoardModeLibrary] { LiveBoardLibraryCache.decode(savedLibrary) }
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
@@ -144,6 +145,13 @@ struct StrataSwitchboard: View {
                                             .overlay(RoundedRectangle(cornerRadius: radius + 5, style: .continuous)
                                                 .strokeBorder(foreground, lineWidth: isSelected ? 3 : 0))
                                             .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                                            // Page swipe already slides via TabView. Add a
+                                            // gentle spring zoom/fade when selection changes.
+                                            // Animate only the artwork: keep the bold title
+                                            // readable and page geometry unchanged.
+                                            .scaleEffect(isSelected ? 1.0 : 0.93)
+                                            .opacity(isSelected ? 1.0 : 0.80)
+                                            .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
                                         }.frame(width: tile + 10)
                                     }.buttonStyle(.plain).id(key)
                                     // Drag-to-reorder omitted to keep swipe navigation responsive.
@@ -232,8 +240,17 @@ struct StrataSwitchboard: View {
                 .accessibilityIdentifier("switchboard.toggle.darkMode")
             }
         }
-        .padding(.horizontal, 12)
+        // ONE continuous outline around all five icon+label columns.
+        // The stroke and captions share the dark/light foreground.
+        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(foreground, lineWidth: 1.5)
+                .allowsHitTesting(false)
+        )
+        .padding(.horizontal, 12)
         .buttonStyle(.plain)
     }
 
@@ -248,12 +265,6 @@ struct StrataSwitchboard: View {
                 .minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(foreground, lineWidth: 1.3)
-                .allowsHitTesting(false)
-        )
     }
     // Two mutually exclusive gestures: a short tap updates the shared
     // NxNative guest skin setting; holding never accidentally toggles it.
