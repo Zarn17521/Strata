@@ -187,53 +187,67 @@ struct StrataSwitchboard: View {
         }
     }
     private var shortcutButtons: some View {
-        // Five real actions across the bottom rail. Put the moon at the
-        // trailing edge with equal flexible gaps that fit compact iPhones.
-        // Guest orientation never rotates the Switchboard.
+        // Keep each real action within an equally wide column. The small
+        // captions are visual labels only; tap and long-press actions stay on
+        // their existing icon controls.
         HStack(spacing: 0) {
-            roundButton("plus", label: "Manage apps", tint: .red) {
-                controller.stop(); openManagement()
+            shortcutCell("Apps") {
+                roundButton("plus", label: "Manage apps", tint: .red) {
+                    controller.stop(); openManagement()
+                }
+                .accessibilityIdentifier("switchboard.manageApps")
             }
-            .accessibilityIdentifier("switchboard.manageApps")
 
-            Spacer(minLength: 0)
-
-            skinShortcut
-                .accessibilityIdentifier("switchboard.toggle.skin")
-
-            Spacer(minLength: 0)
-
-            roundButton(gameLandscape ? "iphone.landscape" : "iphone",
-                        label: gameLandscape
-                            ? "NxNative game orientation: Landscape. Tap to use Portrait next launch"
-                            : "NxNative game orientation: Portrait. Tap to use Landscape next launch",
-                        tint: .orange) {
-                // This exact App Group key is read by StrataApplyNxGameOrientation
-                // inside the NxNative guest, not by the cosmetic skin preview.
-                gameLandscape.toggle()
+            shortcutCell("Skin") {
+                skinShortcut
+                    .accessibilityIdentifier("switchboard.toggle.skin")
             }
-            .accessibilityIdentifier("switchboard.toggle.gameOrientation")
 
-            Spacer(minLength: 0)
-
-            roundButton("slider.horizontal.3", label: "Strata settings", tint: .purple) {
-                controller.stop()
-                NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
+            shortcutCell("Rotation") {
+                roundButton(gameLandscape ? "iphone.landscape" : "iphone",
+                            label: gameLandscape
+                                ? "NxNative game orientation: Landscape. Tap to use Portrait next launch"
+                                : "NxNative game orientation: Portrait. Tap to use Landscape next launch",
+                            tint: .orange) {
+                    // NxNative reads this App Group key at game launch.
+                    gameLandscape.toggle()
+                }
+                .accessibilityIdentifier("switchboard.toggle.gameOrientation")
             }
-            .accessibilityIdentifier("switchboard.interfaceSettings")
 
-            Spacer(minLength: 0)
-
-            roundButton(darkMode ? "moon.fill" : "moon",
-                        label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
-                        tint: .cyan) {
-                darkMode.toggle()
+            shortcutCell("Settings") {
+                roundButton("slider.horizontal.3", label: "Strata settings", tint: .purple) {
+                    controller.stop()
+                    NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
+                }
+                .accessibilityIdentifier("switchboard.interfaceSettings")
             }
-            .accessibilityIdentifier("switchboard.toggle.darkMode")
+
+            shortcutCell("Dark") {
+                roundButton(darkMode ? "moon.fill" : "moon",
+                            label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
+                            tint: .cyan) {
+                    darkMode.toggle()
+                }
+                .accessibilityIdentifier("switchboard.toggle.darkMode")
+            }
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
+    }
+
+    private func shortcutCell<Content: View>(_ caption: String,
+                                             @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 5) {
+            content()
+            Text(caption)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(foreground.opacity(0.58))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity)
     }
     // Two mutually exclusive gestures: a short tap updates the shared
     // NxNative guest skin setting; holding never accidentally toggles it.
