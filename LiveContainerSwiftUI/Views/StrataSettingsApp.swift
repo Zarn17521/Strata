@@ -27,7 +27,6 @@ struct StrataSettingsApp: View {
     @EnvironmentObject private var sharedModel: SharedModel
     @State private var query = ""
     @State private var errorInfo: String?
-    @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("StrataResumeAfterSystemClose", store: LCUtils.appGroupUserDefault) private var resumeAfterSystemClose = false
     @AppStorage("StrataKeepGuestAlive", store: LCUtils.appGroupUserDefault) private var keepGuestAlive = false
@@ -136,7 +135,6 @@ struct StrataSettingsApp: View {
 
     @ViewBuilder private var mainSections: some View {
         Section {
-            Toggle(isOn: Binding(get: { universalCategories }, set: { LiveBoardSharedCategories.setEnabled($0); universalCategories = $0 })) { row("Same categories everywhere", symbol: "tag.fill", tint: .orange) }
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
