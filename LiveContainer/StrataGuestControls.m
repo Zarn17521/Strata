@@ -565,26 +565,22 @@ static void StrataNxPrimeArtTouchRoles(UIView *pad, NSSet<UITouch *> *touches) {
         NSInteger role = StrataNxArtRole(p, landscape);
         objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
                                 @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        // Bounded diagnostics: useful if one particular on-screen key still
-        // fails, without creating a per-frame or unbounded verbose log.
-        static NSUInteger reported = 0;
-        if (role != StrataArtNoMapping && reported < 20) {
-            reported++;
-            NSLog(@"[Strata][NxSkin] %@ button=%ld art=(%.3f,%.3f) nativeTouch=(%.0f,%.0f)",
-                  landscape ? @"landscape" : @"portrait", (long)role,
-                  p.x, p.y, native.x, native.y);
-        }
+        // No synchronous NSLog in the touch hot path: first-frame input
+        // must not stall for console I/O on memory-constrained iPhones.
     }
 }
 static void StrataNxTouchBegan(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
-    StrataNxKeepNativeInputButHideDrawing((UIView *)pad);
+    // Prime touch mapping before the guest reads UITouch, then dispatch to
+    // the original HID handler IMMEDIATELY. Artwork feedback comes after.
+    // Do not repeat expensive KVC / applyLayout on every single tap.
     StrataNxPrimeArtTouchRoles((UIView *)pad, touches);
-    StrataNxSkinTouchVisual(pad, touches, NO);
     if (StrataOldNxTouchesBegan) StrataOldNxTouchesBegan(pad, selector, touches, event);
+    StrataNxSkinTouchVisual(pad, touches, NO);
 }
 static void StrataNxTouchMoved(id pad, SEL selector, NSSet<UITouch *> *touches, UIEvent *event) {
-    StrataNxSkinTouchVisual(pad, touches, NO);
+    // Motion input takes priority over visual tracking.
     if (StrataOldNxTouchesMoved) StrataOldNxTouchesMoved(pad, selector, touches, event);
+    StrataNxSkinTouchVisual(pad, touches, NO);
 }
 static void StrataNxClearArtTouchRoles(NSSet<UITouch *> *touches) {
     for (UITouch *touch in touches)
