@@ -369,148 +369,31 @@ private struct StrataNxPortraitSkinSettings: View {
     }
 }
 
-// Faithful SwiftUI preview: same normalized portrait / landscape centers as
-// the zero-download Core Graphics built-in skins. It never draws game content.
+// The preview is rendered by the same Core Graphics photo pipeline as
+// the NxNative overlay. This prevents Settings from showing the obsolete
+// synthetic vector-controller design when bundled user images are available.
 private struct StrataNxBuiltInSkinPreview: View {
     let dark: Bool
     let landscape: Bool
 
-    private var shell: Color {
-        dark ? Color(red: 0.008, green: 0.010, blue: 0.014)
-             : Color(red: 0.973, green: 0.973, blue: 0.956)
-    }
-    private var keyTop: Color {
-        dark ? Color(red: 0.37, green: 0.41, blue: 0.46) : .white
-    }
-    private var keyBottom: Color {
-        dark ? Color(red: 0.13, green: 0.16, blue: 0.20)
-             : Color(red: 0.82, green: 0.84, blue: 0.82)
-    }
-    private var labelColor: Color { dark ? .white : Color(white: 0.35) }
-
-    private var facePoints: [(String, CGFloat, CGFloat)] {
-        landscape
-        ? [("A", 0.8836, 0.6185), ("B", 0.8381, 0.6983),
-           ("X", 0.8381, 0.5376), ("Y", 0.7925, 0.6185)]
-        : [("A", 0.8746, 0.8371), ("B", 0.7472, 0.8953),
-           ("X", 0.7485, 0.7729), ("Y", 0.6172, 0.8371)]
-    }
-    private var shoulderPoints: [(String, CGFloat)] {
-        landscape
-        ? [("L", 0.1430), ("ZL", 0.2146), ("R", 0.8126), ("ZR", 0.8628)]
-        : [("L", 0.119), ("ZL", 0.283), ("R", 0.719), ("ZR", 0.879)]
-    }
-
     var body: some View {
         GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            ZStack {
-                RoundedRectangle(cornerRadius: landscape ? 13 : 17)
-                    .fill(shell)
-                    .overlay(RoundedRectangle(cornerRadius: landscape ? 13 : 17)
-                        .strokeBorder(dark ? Color.white.opacity(0.23) : Color.gray.opacity(0.40)))
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.black)
-                    .overlay(RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(dark ? Color(white: 0.34) : Color(white: 0.3), lineWidth: 1.5))
-                    .frame(width: w * (landscape ? 863.0/1792.0 : 847.0/923.0),
-                           height: h * (landscape ? 574.0/1008.0 : 661.0/2000.0))
-                    .position(x: w * 0.50, y: h * (landscape ? 456.0/1008.0 : 468.5/2000.0))
-
-                // Correct left D-pad, left stick and RIGHT look stick above ABXY.
-                dpad(w: w, h: h)
-                    .position(x: w * (landscape ? 0.1590 : 0.2490),
-                              y: h * (landscape ? 0.3620 : 0.6460))
-                analog(w: w)
-                    .position(x: w * (landscape ? 0.1590 : 0.2438),
-                              y: h * (landscape ? 0.6161 : 0.8379))
-                analog(w: w)
-                    .position(x: w * (landscape ? 0.8401 : 0.7466),
-                              y: h * (landscape ? 0.3613 : 0.6449))
-
-                ForEach(facePoints.indices, id: \.self) { index in
-                    let point = facePoints[index]
-                    key(point.0, w: w, h: h)
-                        .position(x: w * point.1, y: h * point.2)
-                }
-                ForEach(shoulderPoints.indices, id: \.self) { index in
-                    let item = shoulderPoints[index]
-                    shoulder(item.0, w: w, h: h)
-                        .position(x: w * item.1,
-                                  y: h * (landscape ? 0.1827 : 0.504))
-                }
-                key("−", w: w, h: h, small: true)
-                    .position(x: w * (landscape ? 0.4122 : 0.3452),
-                              y: h * (landscape ? 0.7982 : 0.9363))
-                key("⚙", w: w, h: h, small: true)
-                    .position(x: w * 0.4999, y: h * (landscape ? 0.7982 : 0.9363))
-                key("+", w: w, h: h, small: true)
-                    .position(x: w * (landscape ? 0.5869 : 0.6559),
-                              y: h * (landscape ? 0.7982 : 0.9363))
-                // Reuse the *real* gold-Z / green-N / Link-cap artwork.
-                // Avoid a misleading text-only 'ZN' mock preview.
-                ZNInitials(darkMode: dark)
-                    .scaleEffect(landscape ? 0.22 : 0.16)
-                    .frame(width: landscape ? 17 : 12,
-                           height: landscape ? 10 : 8)
-                    .position(x: w * 0.12,
-                              y: h * (landscape ? 0.80 : 0.94))
+            if let image = StrataNxSkinPreviewImage(!landscape, dark) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(dark ? Color.black : Color(white: 0.96))
+                    .overlay(Text("Skin image unavailable")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary))
             }
-            .frame(width: w, height: h)
-            .clipped()
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(dark ? "AMOLED Dark controller skin preview" : "Pearl Light controller skin preview")
-    }
-
-    private func surface() -> LinearGradient {
-        LinearGradient(colors: [keyTop, keyBottom],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-    private func key(_ title: String, w: CGFloat, h: CGFloat, small: Bool = false) -> some View {
-        let diameter = w * (landscape ? (small ? 0.026 : 0.040) : (small ? 0.068 : 0.095))
-        return Circle()
-            .fill(surface())
-            .overlay(Circle().strokeBorder(dark ? Color.gray.opacity(0.65) : Color.gray.opacity(0.4),
-                                            lineWidth: 0.75))
-            .frame(width: diameter, height: diameter)
-            .overlay(Text(title)
-                .font(.system(size: max(4, diameter * 0.42), weight: .semibold))
-                .foregroundStyle(labelColor))
-    }
-    private func shoulder(_ title: String, w: CGFloat, h: CGFloat) -> some View {
-        let width = w * (landscape ? 0.044 : 0.126)
-        let height = h * (landscape ? 0.036 : 0.022)
-        return RoundedRectangle(cornerRadius: 2)
-            .fill(surface())
-            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.gray.opacity(0.5)))
-            .frame(width: width, height: height)
-            .overlay(Text(title).font(.system(size: max(4, height * 0.67), weight: .semibold))
-                .foregroundStyle(labelColor))
-    }
-    private func analog(w: CGFloat) -> some View {
-        let diameter = w * (landscape ? 114.0/1792.0 : 140.0/923.0)
-        return Circle()
-            .fill(keyBottom)
-            .overlay(Circle().strokeBorder(dark ? Color.gray : Color(white: 0.5), lineWidth: 1))
-            .frame(width: diameter, height: diameter)
-            .overlay(Circle().fill(surface())
-                .frame(width: diameter * 0.68, height: diameter * 0.68)
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.27))))
-    }
-    private func dpad(w: CGFloat, h: CGFloat) -> some View {
-        let width = w * (landscape ? 130.0/1792.0 : 182.0/923.0)
-        return ZStack {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(surface())
-                .frame(width: width * 0.40, height: width)
-            RoundedRectangle(cornerRadius: 3)
-                .fill(surface())
-                .frame(width: width, height: width * 0.40)
-        }
-        .overlay(Circle().fill(keyBottom).frame(width: width * 0.13))
-        .frame(width: width, height: width)
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.gray.opacity(0.25)))
+        .accessibilityLabel(dark ? "AMOLED Dark controller skin preview"
+                                 : "Pearl Light controller skin preview")
     }
 }
