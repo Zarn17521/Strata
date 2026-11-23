@@ -125,51 +125,85 @@ struct StrataSwitchboard: View {
         let key = liveBoardAppKey(app)
         let isSelected = key == liveBoardAppKey(selected ?? app)
         let radius = tile * 0.035
-        return Button {
-                                        if selectedKey == key { activate(app) } else { selectedKey = key }
-                                    } label: {
-                                        VStack(spacing: 8) {
-                                            // Name sits above the selected tile only; space is reserved so the row never jumps.
-                                            Text(customization.name(app)).font(.system(size: max(15, tile * 0.075), weight: .bold))
-                                                .foregroundStyle(foreground).lineLimit(1)
-                                                .minimumScaleFactor(0.6).frame(width: tile + 10).opacity(isSelected ? 1 : 0)
-                                            ZStack {
-                                                tilePlaceholder
-                                                if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
-                                                    Image(uiImage: cover).resizable().scaledToFill()
-                                                } else { LiveBoardIconImage(app: app, dark: darkMode).scaledToFit() }
-                                            }
-                                            .frame(width: tile, height: tile)
-                                            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-                                            .padding(5)
-                                            .overlay(RoundedRectangle(cornerRadius: radius + 5, style: .continuous)
-                                                .strokeBorder(foreground, lineWidth: isSelected ? 3 : 0))
-                                            .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
-                                            // Page swipe already slides via TabView. Add a
-                                            // gentle spring zoom/fade when selection changes.
-                                            // Animate only the artwork: keep the bold title
-                                            // readable and page geometry unchanged.
-                                            .scaleEffect(isSelected ? 1.0 : 0.93)
-                                            .opacity(isSelected ? 1.0 : 0.80)
-                                            .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
-                                        }.frame(width: tile + 10)
-                                    }.buttonStyle(.plain).id(key)
-                                    // Drag-to-reorder omitted to keep swipe navigation responsive.
-                                    .accessibilityLabel(customization.name(app))
-                                    .accessibilityIdentifier("switchboard.tile." + key)
-                                    .contextMenu {
-                                        Button("Launch", systemImage: "play.fill") { activate(app) }
-                                        if !(app.appInfo is StrataPhoneAppInfo) && !(app.appInfo is BuiltInSideStoreAppInfo) {
-                                            if let launchWithJIT { Button("Launch with JIT", systemImage: "bolt.fill") { controller.stop(); launchWithJIT(app) } }
-                                            if let launchMultitask { Button("Multitask", systemImage: "rectangle.on.rectangle") { controller.stop(); launchMultitask(app) } }
-                                            if let launchInGameMode { Button("Request Game Mode", systemImage: "gamecontroller.fill") { controller.stop(); launchInGameMode(app) } }
-                                            if let launchWithMetalHUD { Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") { controller.stop(); launchWithMetalHUD(app) } }
-                                        }
-                                        Button("App settings", systemImage: "gearshape") { controller.stop(); manage(app) }
-                                        Button("Choose cover artwork", systemImage: "photo") { coverKey = key; choosingCover = true; controller.stop() }
-                                        StrataArrangeMenus(app: app, visible: filtered, all: apps, categories: library.categories, current: library.assignments[key]) { value in update { $0.assignments[key] = value } }
-                                        Button("Hide", systemImage: "eye.slash") { update { _ = $0.hidden.insert(key) } }
-                                    }
+
+        // The title must stay outside the context-menu source view.
+        // Otherwise UIKit lifts the title together with the artwork, causing
+        // the duplicated title to overlap STRATA during a long press.
+        return VStack(spacing: 8) {
+            Text(customization.name(app))
+                .font(.system(size: max(15, tile * 0.075), weight: .bold))
+                .foregroundStyle(foreground)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(width: tile + 10)
+                .opacity(isSelected ? 1 : 0)
+
+            // Long press raises only this cover button (including its border).
+            Button {
+                if selectedKey == key { activate(app) } else { selectedKey = key }
+            } label: {
+                ZStack {
+                    tilePlaceholder
+                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
+                        Image(uiImage: cover).resizable().scaledToFill()
+                    } else {
+                        LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
+                    }
+                }
+                .frame(width: tile, height: tile)
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .padding(5)
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius + 5, style: .continuous)
+                        .strokeBorder(foreground, lineWidth: isSelected ? 3 : 0)
+                )
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                .scaleEffect(isSelected ? 1.0 : 0.93)
+                .opacity(isSelected ? 1.0 : 0.80)
+                .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(customization.name(app))
+            .accessibilityIdentifier("switchboard.tile." + key)
+            .contextMenu {
+                Button("Launch", systemImage: "play.fill") { activate(app) }
+                if !(app.appInfo is StrataPhoneAppInfo) && !(app.appInfo is BuiltInSideStoreAppInfo) {
+                    if let launchWithJIT {
+                        Button("Launch with JIT", systemImage: "bolt.fill") {
+                            controller.stop(); launchWithJIT(app)
+                        }
+                    }
+                    if let launchMultitask {
+                        Button("Multitask", systemImage: "rectangle.on.rectangle") {
+                            controller.stop(); launchMultitask(app)
+                        }
+                    }
+                    if let launchInGameMode {
+                        Button("Request Game Mode", systemImage: "gamecontroller.fill") {
+                            controller.stop(); launchInGameMode(app)
+                        }
+                    }
+                    if let launchWithMetalHUD {
+                        Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") {
+                            controller.stop(); launchWithMetalHUD(app)
+                        }
+                    }
+                }
+                Button("App settings", systemImage: "gearshape") { controller.stop(); manage(app) }
+                Button("Choose cover artwork", systemImage: "photo") {
+                    coverKey = key; choosingCover = true; controller.stop()
+                }
+                StrataArrangeMenus(
+                    app: app, visible: filtered, all: apps,
+                    categories: library.categories, current: library.assignments[key]
+                ) { value in update { $0.assignments[key] = value } }
+                Button("Hide", systemImage: "eye.slash") {
+                    update { _ = $0.hidden.insert(key) }
+                }
+            }
+        }
+        .frame(width: tile + 10)
+        .id(key)
     }
 
     // The system status bar already displays time, Wi-Fi and battery.
