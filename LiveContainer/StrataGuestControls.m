@@ -424,12 +424,16 @@ static void StrataNxKeepNativeInputButHideDrawing(UIView *pad) {
         }
     if (menu) {
         if (image) {
+            // A UIButton's imageView can use more than one layer; hide all
+            // native gear artwork, not its UIKit touch system.
+            menu.layer.opacity = 0;
             menu.backgroundColor = UIColor.clearColor;
             menu.layer.borderWidth = 0;
             menu.layer.shadowOpacity = 0;
             menu.tintColor = UIColor.clearColor;
             menu.layer.sublayers.firstObject.opacity = 0;
         } else {
+            menu.layer.opacity = 1;
             // Moving from an imported skin to an orientation without artwork
             // must restore the original native gear appearance and hit target.
             menu.backgroundColor = [UIColor colorWithWhite:1 alpha:0.14];
