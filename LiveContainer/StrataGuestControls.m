@@ -739,29 +739,6 @@ static UIView *StrataNxChildOfClass(UIView *host, NSString *name) {
     return nil;
 }
 
-static void StrataNxEnableNative3DPadForSkin(UIView *pad) {
-    if (!pad || objc_getAssociatedObject(pad, @selector(StrataNxEnableNative3DPadForSkin))) return;
-    // NxNative's 2D layout lacks both the D-pad and right stick. Turn on its
-    // existing 3D touch parser for this session only; don't save DmPadLayout.
-    @try {
-        BOOL full = [[pad valueForKey:@"full"] boolValue];
-        BOOL tap = [[pad valueForKey:@"tap"] boolValue];
-        if (!full || tap) {
-            if ([pad respondsToSelector:@selector(reset)])
-                ((void (*)(id, SEL))[pad methodForSelector:@selector(reset)])(pad, @selector(reset));
-            [pad setValue:@YES forKey:@"full"];
-            [pad setValue:@NO forKey:@"tap"];
-            if ([pad respondsToSelector:@selector(applyLayout)])
-                ((void (*)(id, SEL))[pad methodForSelector:@selector(applyLayout)])(pad, @selector(applyLayout));
-            [pad setNeedsLayout];
-        }
-        objc_setAssociatedObject(pad, @selector(StrataNxEnableNative3DPadForSkin),
-                                @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } @catch (NSException *e) {
-        NSLog(@"[Strata][NxSkin] Native 3D pad unavailable; retaining game controls: %@", e.reason);
-    }
-}
-
 static void StrataNxFitGameToImportedArt(UIViewController *root) {
     NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
     if (!group || ![[[NSUserDefaults alloc] initWithSuiteName:group]
@@ -842,7 +819,6 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
     [host insertSubview:skin belowSubview:pad];
     if (skin.portraitArtwork || skin.landscapeArtwork) {
-        StrataNxEnableNative3DPadForSkin(pad);
         StrataNxKeepNativeInputButHideDrawing(pad);
         StrataNxHookRootLayout(window.rootViewController, group);
         [host setNeedsLayout];
