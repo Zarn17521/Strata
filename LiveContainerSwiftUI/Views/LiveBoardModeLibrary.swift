@@ -54,23 +54,23 @@ struct LiveBoardModeLibrary: Codable, Equatable {
         for name in Array(all.keys) where name != sharedKey { all[name]?.hidden = [] }
         mirrorToHome(shared)
     }
-    /// Union of every mode's categories; assignments prefer Cinematic, then Big Picture, Switchboard, iOS Home.
+    /// Compatibility migration: prefer the active Switchboard assignments, then older modes.
     static func seed(_ all: [String: LiveBoardModeLibrary]) -> LiveBoardModeLibrary {
         var result = LiveBoardModeLibrary(); result.categories = []; result.assignments = [:]
         let home = homeLibrary()
-        for state in ["cinematic", "bigPicture", "switchboard"].compactMap({ all[$0] }) + [home] {
+        for state in ["switchboard", "cinematic", "bigPicture"].compactMap({ all[$0] }) + [home] {
             for name in state.categories where !result.categories.contains(name) { result.categories.append(name) }
             for (key, value) in state.assignments where result.assignments[key] == nil { result.assignments[key] = value }
         }
         if result.categories.isEmpty { result.categories = LiveBoardModeLibrary().categories }
         return result
     }
-    /// Category for automatic Game Mode and other mode-independent decisions.
+    /// Category for automatic Game Mode: Switchboard is now the ONLY active
+    /// launcher. Never prefer a stale Cinematic/Big Picture category, which
+    /// could override a changed or removed Switchboard assignment.
     static func category(forKey key: String) -> String? {
         let all = LiveBoardLibraryCache.decode(defaults.string(forKey: "LiveBoardModeLibraries") ?? "{}")
-        if enabled { return library(all, mode: "cinematic").assignments[key] }
-        for mode in ["cinematic", "bigPicture", "switchboard"] { if let value = all[mode]?.assignments[key] { return value } }
-        return homeLibrary().assignments[key]
+        return library(all, mode: "switchboard").assignments[key]
     }
     static func setEnabled(_ value: Bool) {
         if value {
