@@ -157,7 +157,24 @@ static BOOL StrataArtNear(CGPoint point, CGFloat x, CGFloat y, CGFloat rx, CGFlo
 
 // These are the measured button centres in the user-supplied 923 x 2000 skin.
 // Coordinates remain normalized so iPhone 15 resolution changes do not matter.
-static NSInteger StrataNxArtRole(CGPoint p) {
+static NSInteger StrataNxArtRole(CGPoint p, BOOL landscape) {
+    if (landscape) {
+        // Normalized centres measured from the supplied 1792x1008 artwork.
+        if (StrataArtNear(p, 0.121, 0.168, 0.030, 0.025)) return StrataArtL;
+        if (StrataArtNear(p, 0.188, 0.168, 0.030, 0.025)) return StrataArtZL;
+        if (StrataArtNear(p, 0.736, 0.168, 0.031, 0.025)) return StrataArtZR;
+        if (StrataArtNear(p, 0.806, 0.168, 0.030, 0.025)) return StrataArtR;
+        if (StrataArtNear(p, 0.380, 0.733, 0.024, 0.038)) return StrataArtMinus;
+        if (StrataArtNear(p, 0.541, 0.733, 0.024, 0.038)) return StrataArtPlus;
+        const CGFloat faceX[] = {0.815, 0.779, 0.779, 0.731};
+        const CGFloat faceY[] = {0.340, 0.418, 0.255, 0.340};
+        for (int i = 0; i < 4; i++)
+            if (StrataArtNear(p, faceX[i], faceY[i], 0.028, 0.047)) return StrataArtFace;
+        if (StrataArtNear(p, 0.148, 0.333, 0.060, 0.101)) return StrataArtDpad;
+        if (StrataArtNear(p, 0.147, 0.570, 0.050, 0.079)) return StrataArtLeftStick;
+        if (StrataArtNear(p, 0.776, 0.570, 0.050, 0.079)) return StrataArtRightStick;
+        return StrataArtNoMapping;
+    }
     if (StrataArtNear(p, 0.106, 0.451, 0.073, 0.029)) return StrataArtL;
     if (StrataArtNear(p, 0.254, 0.451, 0.078, 0.029)) return StrataArtZL;
     if (StrataArtNear(p, 0.748, 0.451, 0.078, 0.029)) return StrataArtZR;
@@ -202,16 +219,19 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     // Absolutely no touch mapping outside an explicitly opted-in NxNative pad.
     if (!view || ![NSStringFromClass(view.class) isEqualToString:@"DmGamepad"] ||
         !objc_getAssociatedObject(view, &StrataNxPadArtTouchEnabledKey) ||
-        view.bounds.size.width <= 0 || view.bounds.size.height <= view.bounds.size.width)
+        view.bounds.size.width <= 0 || view.bounds.size.height <= 0)
         return original;
-
+    BOOL landscape = view.bounds.size.width > view.bounds.size.height;
+    UIView *art = [view.superview viewWithTag:877144];
+    id activeImage = [art valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
+    if (!activeImage) return original;
     CGPoint p = CGPointMake(original.x / view.bounds.size.width,
                             original.y / view.bounds.size.height);
     NSNumber *selected = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
     NSInteger role = selected ? selected.integerValue : StrataArtNoMapping;
     if (!selected) {
         if (((UITouch *)touch).phase != UITouchPhaseBegan) return original;
-        role = StrataNxArtRole(p);
+        role = StrataNxArtRole(p, landscape);
         objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
                                 @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -240,11 +260,16 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
         }
         case StrataArtFace: {
             // Sliding between the four image buttons stays a native face drag.
-            const CGFloat px[] = {0.797, 0.675, 0.675, 0.551};
-            const CGFloat py[] = {0.575, 0.632, 0.524, 0.575};
+            const CGFloat portraitX[] = {0.797, 0.675, 0.675, 0.551};
+            const CGFloat portraitY[] = {0.575, 0.632, 0.524, 0.575};
+            const CGFloat landscapeX[] = {0.815, 0.779, 0.779, 0.731};
+            const CGFloat landscapeY[] = {0.340, 0.418, 0.255, 0.340};
+            const CGFloat *px = landscape ? landscapeX : portraitX;
+            const CGFloat *py = landscape ? landscapeY : portraitY;
             int closest = 0; CGFloat best = CGFLOAT_MAX;
             for (int i = 0; i < 4; i++) {
-                CGFloat dx = (p.x - px[i]) / 0.072, dy = (p.y - py[i]) / 0.038;
+                CGFloat dx = (p.x - px[i]) / (landscape ? 0.029 : 0.072);
+                CGFloat dy = (p.y - py[i]) / (landscape ? 0.048 : 0.038);
                 CGFloat score = dx * dx + dy * dy;
                 if (score < best) { best = score; closest = i; }
             }
@@ -260,16 +285,16 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
                 radius = imp(view, @selector(dpadR));
             }
             if (!isfinite(c.x) || radius <= 0) return original;
-            CGFloat dx = fmax(-1, fmin(1, (p.x - 0.225) / 0.135));
-            CGFloat dy = fmax(-1, fmin(1, (p.y - 0.577) / 0.071));
+            CGFloat dx = fmax(-1, fmin(1, (p.x - (landscape ? 0.148 : 0.225)) / (landscape ? 0.055 : 0.135)));
+            CGFloat dy = fmax(-1, fmin(1, (p.y - (landscape ? 0.333 : 0.577)) / (landscape ? 0.093 : 0.071)));
             return CGPointMake(c.x + dx * radius * 0.90, c.y + dy * radius * 0.90);
         }
         case StrataArtLeftStick: {
             CGPoint c = StrataArtNativePoint(view, @selector(stickHome));
             CGFloat radius = StrataArtNativeRadius(view, 0);
             if (!isfinite(c.x) || radius <= 0) return original;
-            CGFloat dx = fmax(-1, fmin(1, (p.x - 0.224) / 0.122));
-            CGFloat dy = fmax(-1, fmin(1, (p.y - 0.756) / 0.070));
+            CGFloat dx = fmax(-1, fmin(1, (p.x - (landscape ? 0.147 : 0.224)) / (landscape ? 0.043 : 0.122)));
+            CGFloat dy = fmax(-1, fmin(1, (p.y - (landscape ? 0.570 : 0.756)) / (landscape ? 0.067 : 0.070)));
             return CGPointMake(c.x + dx * radius * 0.85, c.y + dy * radius * 0.85);
         }
         default: return original;
@@ -283,8 +308,12 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
     CGPoint p = [touch locationInView:self.pad];
     CGSize b = self.pad.bounds.size;
-    return b.width > 0 && b.height > b.width &&
-        StrataArtNear(CGPointMake(p.x/b.width, p.y/b.height), 0.453, 0.842, 0.052, 0.035);
+    if (b.width <= 0 || b.height <= 0) return NO;
+    BOOL landscape = b.width > b.height;
+    CGPoint normalized = CGPointMake(p.x/b.width, p.y/b.height);
+    return landscape
+        ? StrataArtNear(normalized, 0.460, 0.734, 0.030, 0.042)
+        : StrataArtNear(normalized, 0.453, 0.842, 0.052, 0.035);
 }
 - (void)openMenu:(UITapGestureRecognizer *)tap {
     if (tap.state != UIGestureRecognizerStateRecognized) return;
@@ -325,6 +354,9 @@ static const NSInteger StrataNxSkinViewTag = 877144;
 
 @interface StrataNxSkinView : UIView
 @property(nonatomic, strong) UIImage *portraitArtwork;
+@property(nonatomic, strong) UIImage *landscapeArtwork;
+@property(nonatomic, strong) NSMutableDictionary<NSValue *, NSValue *> *artTouches;
+- (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending;
 @end
 @implementation StrataNxSkinView
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -335,6 +367,7 @@ static const NSInteger StrataNxSkinViewTag = 877144;
         self.contentMode = UIViewContentModeRedraw;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.tag = StrataNxSkinViewTag;
+        self.artTouches = [NSMutableDictionary new];
         self.accessibilityIdentifier = @"strata.nxnative.cosmetic-skin";
     }
     return self;
@@ -382,11 +415,11 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     CGFloat stopsLandscape[] = {0.0, 0.49, 0.51, 1.0};
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGGradientRef grad = CGGradientCreateWithColors(space, (__bridge CFArrayRef)colors, portrait ? stopsPortrait : stopsLandscape);
-    if (portrait && self.portraitArtwork) {
+    if ((portrait && self.portraitArtwork) || (!portrait && self.landscapeArtwork)) {
         // Exact imported white-shell artwork. The imported PNG has a transparent
         // aperture, and the clip above also protects ALL live game pixels.
         // This is only visual: no game aspect ratio or DmGamepad input changes.
-        [self.portraitArtwork drawInRect:bounds];
+        [(portrait ? self.portraitArtwork : self.landscapeArtwork) drawInRect:bounds];
     } else {
         if (grad) {
             CGContextDrawLinearGradient(ctx, grad,
@@ -443,7 +476,9 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     NSURL *groupURL = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:group];
     NSURL *portraitPNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativePortrait.png"];
     if (portraitPNG) skin.portraitArtwork = [UIImage imageWithContentsOfFile:portraitPNG.path];
-    if (skin.portraitArtwork) StrataEnableNxSkinTouchMapping(pad);
+    NSURL *landscapePNG = [groupURL URLByAppendingPathComponent:@"Strata3/Skins/NxNativeLandscape.png"];
+    if (landscapePNG) skin.landscapeArtwork = [UIImage imageWithContentsOfFile:landscapePNG.path];
+    if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
     [host insertSubview:skin belowSubview:pad];
     [skin setNeedsDisplay];
     NSLog(@"[Strata] Optional NxNative white handheld portrait / red-cyan landscape skin enabled (cosmetic only)");
