@@ -1390,9 +1390,13 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
         if (bridge && [bridge respondsToSelector:restoreAuto]) {
             void (*call)(id, SEL) = (void *)[bridge methodForSelector:restoreAuto];
             call(bridge, restoreAuto);
-            [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
-            if (window.rootViewController != root)
-                [root setNeedsUpdateOfSupportedInterfaceOrientations];
+            if (@available(iOS 16.0, *)) {
+                [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+                if (window.rootViewController != root)
+                    [root setNeedsUpdateOfSupportedInterfaceOrientations];
+            } else {
+                [UIViewController attemptRotationToDeviceOrientation];
+            }
         }
         return;
     }
