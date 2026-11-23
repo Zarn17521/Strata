@@ -1066,8 +1066,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         previewCache = [NSCache new];
-        previewCache.countLimit = 4;
-        previewCache.totalCostLimit = 32 * 1024 * 1024;
+        previewCache.countLimit = 2;
+        previewCache.totalCostLimit = 3 * 1024 * 1024;
     });
     NSString *key = [NSString stringWithFormat:@"photo-preview-%@-%@",
                      portrait ? @"portrait" : @"landscape",
@@ -1078,11 +1078,15 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     UIImage *source = StrataNxBuiltinArtwork(portrait,dark);
     if (!source) return nil;
     CGSize size = source.size;
+    // Keep Settings snapshots at one-third resolution: the real native
+    // skins still render at full source resolution for gameplay.
+    CGSize previewSize = CGSizeMake(MAX(1,round(size.width/3.0)),
+                                    MAX(1,round(size.height/3.0)));
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
     format.opaque = YES;
     format.scale = 1;
     UIGraphicsImageRenderer *renderer =
-        [[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
+        [[UIGraphicsImageRenderer alloc] initWithSize:previewSize format:format];
     UIImage *result = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *r) {
         CGRect art = CGRectMake(0,0,size.width,size.height);
         [StrataNxBuiltShell(dark) setFill];
@@ -1090,6 +1094,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         CGContextRef ctx=UIGraphicsGetCurrentContext();
         if (!ctx) return;
         CGContextSaveGState(ctx);
+        CGContextScaleCTM(ctx,previewSize.width/size.width,
+                          previewSize.height/size.height);
         if (!StrataNxIsBuiltinImage(source)) {
             CGRect body=StrataNxArtRect(art,
                  portrait ? CGRectMake(0.025,0.015,0.950,0.970)
