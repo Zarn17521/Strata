@@ -221,10 +221,15 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     // to ask DmGamepad for its OWN current interactive target centres.
     // A B X Y L3 R3 L R ZL ZR + -
     switch (role) {
-        case StrataArtL: return StrataArtNativeButton(view, @selector(dropCenter:), 6);
-        case StrataArtZL: return StrataArtNativeButton(view, @selector(dropCenter:), 8);
-        case StrataArtZR: return StrataArtNativeButton(view, @selector(dropCenter:), 9);
-        case StrataArtR: return StrataArtNativeButton(view, @selector(dropCenter:), 7);
+        case StrataArtL:
+        case StrataArtZL:
+        case StrataArtZR:
+        case StrataArtR: {
+            int button = role == StrataArtL ? 6 : role == StrataArtZL ? 8 :
+                         role == StrataArtZR ? 9 : 7;
+            CGPoint c = StrataArtNativeButton(view, @selector(dropCenter:), button);
+            return (isfinite(c.x) && isfinite(c.y)) ? c : original;
+        }
         case StrataArtMinus: {
             CGRect r = StrataArtNativePill(view, 11);
             return CGRectIsNull(r) ? original : CGPointMake(CGRectGetMidX(r), CGRectGetMidY(r));
