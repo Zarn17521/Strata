@@ -21,6 +21,18 @@ import UIKit
     }
 }
 
+// Called only while an NxNative guest is being installed in the active
+// UIWindow. This updates the orientation mask used by AppDelegate before
+// UIKit processes the window-scene geometry request. The launcher remains
+// portrait; it restores its own lock when presented again.
+@objc(StrataNxGameOrientationBridge)
+@MainActor final class StrataNxGameOrientationBridge: NSObject {
+    @objc class func apply(_ landscape: NSNumber) {
+        LiveBoardOrientation.owner = nil
+        LiveBoardOrientation.mask = landscape.boolValue ? .landscapeRight : .portrait
+    }
+}
+
 struct LiveBoardOrientationLock: UIViewRepresentable {
     let mask: UIInterfaceOrientationMask
     final class WindowObserver: UIView {
