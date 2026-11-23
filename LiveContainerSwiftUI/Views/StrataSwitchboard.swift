@@ -209,10 +209,24 @@ struct StrataSwitchboard: View {
     // The system status bar already displays time, Wi-Fi and battery.
     // Keep only Strata's wordmark to avoid a duplicated status bar.
     private var statusBar: some View {
-        Text("STRATA")
-            .font(.headline.weight(.semibold))
-            .tracking(1.5)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        // Personalized fantasy wordmark: a gold angular Z with a green,
+        // slanted Link-style cap, followed by a carved jade N.
+        HStack(alignment: .bottom, spacing: 3) {
+            ZNInitials(darkMode: darkMode)
+                .frame(width: 74, height: 43)
+            Text("’s")
+                .font(.system(size: 20, weight: .bold, design: .serif))
+                .padding(.bottom, 2)
+            Text("LIBRARY")
+                .font(.system(size: 15, weight: .bold, design: .serif))
+                .tracking(1.25)
+                .padding(.leading, 3)
+                .padding(.bottom, 4)
+        }
+        .foregroundStyle(foreground)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("ZN's Library")
     }
     private var categoryStrip: some View {
         // Categories have the whole top row; AMOLED controls live on the
@@ -362,5 +376,133 @@ struct StrataSwitchboard: View {
             default: break
             }
         }; controller.start()
+    }
+}
+
+
+// MARK: - ZN's Library hand-drawn vector initials
+private func znScaledPath(_ p: Path, in rect: CGRect) -> Path {
+    p.applying(CGAffineTransform(a: rect.width / 100, b: 0, c: 0,
+                                d: rect.height / 100, tx: rect.minX, ty: rect.minY))
+}
+
+private struct ZNInitials: View {
+    let darkMode: Bool
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 1) {
+            ZStack(alignment: .topLeading) {
+                ZNFantasyZ()
+                    .fill(LinearGradient(
+                        colors: darkMode
+                            ? [Color(red: 1, green: 0.90, blue: 0.61),
+                               Color(red: 0.85, green: 0.58, blue: 0.20)]
+                            : [Color(red: 0.76, green: 0.45, blue: 0.09),
+                               Color(red: 0.51, green: 0.29, blue: 0.06)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: FillStyle(eoFill: true))
+                    .frame(width: 32, height: 30)
+                    .offset(x: 3, y: 12)
+                ZNLinkCap()
+                    .fill(LinearGradient(
+                        colors: [Color(red: 0.32, green: 0.82, blue: 0.30),
+                                 Color(red: 0.07, green: 0.42, blue: 0.18)],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: 30, height: 19)
+                    .rotationEffect(.degrees(-10))
+                    .offset(x: -1, y: 0)
+                Capsule()
+                    .fill(Color(red: 0.95, green: 0.76, blue: 0.30))
+                    .frame(width: 21, height: 2.5)
+                    .rotationEffect(.degrees(-10))
+                    .offset(x: 6, y: 14)
+            }
+            .frame(width: 38, height: 43, alignment: .topLeading)
+            ZNFantasyN()
+                .fill(LinearGradient(
+                    colors: darkMode
+                        ? [Color(red: 0.59, green: 0.96, blue: 0.78),
+                           Color(red: 0.16, green: 0.67, blue: 0.46)]
+                        : [Color(red: 0.11, green: 0.55, blue: 0.40),
+                           Color(red: 0.04, green: 0.34, blue: 0.23)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 32, height: 30)
+                .padding(.bottom, 1)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ZNFantasyZ: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 5, y: 36))
+        p.addQuadCurve(to: CGPoint(x: 20, y: 6), control: CGPoint(x: 14, y: 25))
+        p.addLine(to: CGPoint(x: 91, y: 6))
+        p.addLine(to: CGPoint(x: 100, y: 0))
+        p.addLine(to: CGPoint(x: 91, y: 29))
+        p.addLine(to: CGPoint(x: 85, y: 29))
+        p.addLine(to: CGPoint(x: 87, y: 18))
+        p.addLine(to: CGPoint(x: 77, y: 18))
+        p.addLine(to: CGPoint(x: 28, y: 87))
+        p.addLine(to: CGPoint(x: 91, y: 87))
+        p.addLine(to: CGPoint(x: 99, y: 74))
+        p.addLine(to: CGPoint(x: 97, y: 100))
+        p.addLine(to: CGPoint(x: 4, y: 100))
+        p.addLine(to: CGPoint(x: 11, y: 86))
+        p.addLine(to: CGPoint(x: 66, y: 18))
+        p.addLine(to: CGPoint(x: 29, y: 18))
+        p.closeSubpath()
+        // Small carved cuts like the supplied angular Z reference.
+        p.move(to: CGPoint(x: 63, y: 51))
+        p.addLine(to: CGPoint(x: 70, y: 45))
+        p.addLine(to: CGPoint(x: 66, y: 59))
+        p.closeSubpath()
+        p.move(to: CGPoint(x: 50, y: 71))
+        p.addLine(to: CGPoint(x: 56, y: 63))
+        p.addLine(to: CGPoint(x: 55, y: 76))
+        p.closeSubpath()
+        return znScaledPath(p, in: rect)
+    }
+}
+
+private struct ZNFantasyN: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.addRect(CGRect(x: 10, y: 10, width: 14, height: 80))
+        p.addRect(CGRect(x: 76, y: 10, width: 14, height: 80))
+        p.move(to: CGPoint(x: 19, y: 10))
+        p.addLine(to: CGPoint(x: 35, y: 10))
+        p.addLine(to: CGPoint(x: 83, y: 89))
+        p.addLine(to: CGPoint(x: 66, y: 89))
+        p.closeSubpath()
+        p.addRect(CGRect(x: 2, y: 5, width: 31, height: 8))
+        p.addRect(CGRect(x: 3, y: 88, width: 31, height: 9))
+        p.addRect(CGRect(x: 67, y: 5, width: 31, height: 8))
+        p.addRect(CGRect(x: 67, y: 88, width: 31, height: 9))
+        return znScaledPath(p, in: rect)
+    }
+}
+
+private struct ZNLinkCap: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 14, y: 69))
+        p.addCurve(to: CGPoint(x: 57, y: 18),
+                   control1: CGPoint(x: 23, y: 38),
+                   control2: CGPoint(x: 43, y: 14))
+        p.addCurve(to: CGPoint(x: 92, y: 63),
+                   control1: CGPoint(x: 73, y: 19),
+                   control2: CGPoint(x: 89, y: 46))
+        p.addQuadCurve(to: CGPoint(x: 73, y: 77),
+                       control: CGPoint(x: 90, y: 78))
+        p.addQuadCurve(to: CGPoint(x: 21, y: 78),
+                       control: CGPoint(x: 44, y: 68))
+        p.addQuadCurve(to: CGPoint(x: 4, y: 34),
+                       control: CGPoint(x: 5, y: 65))
+        p.addQuadCurve(to: CGPoint(x: 28, y: 52),
+                       control: CGPoint(x: 18, y: 41))
+        p.addLine(to: CGPoint(x: 14, y: 69))
+        p.closeSubpath()
+        return znScaledPath(p, in: rect)
     }
 }
