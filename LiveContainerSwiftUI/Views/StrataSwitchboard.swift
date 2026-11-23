@@ -430,7 +430,7 @@ private func znScaledPath(_ p: Path, in rect: CGRect) -> Path {
                                 d: rect.height / 100, tx: rect.minX, ty: rect.minY))
 }
 
-private struct ZNInitials: View {
+struct ZNInitials: View {
     let darkMode: Bool
     var body: some View {
         HStack(alignment: .bottom, spacing: 1) {
