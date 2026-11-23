@@ -680,16 +680,27 @@ static const NSInteger StrataNxSkinViewTag = 877144;
     if (!self.superview) return;
     BOOL landscape = self.bounds.size.width > self.bounds.size.height;
     if (!(landscape ? self.landscapeArtwork : self.portraitArtwork)) return;
+    BOOL needsVisualUpdate = NO;
     for (UITouch *touch in touches) {
         NSValue *key = [NSValue valueWithNonretainedObject:touch];
+        NSNumber *role = self.artRoles[key];
         if (ending) {
+            NSInteger roleID = role ? role.integerValue : StrataArtNoMapping;
+            if (roleID == StrataArtLeftStick || roleID == StrataArtRightStick)
+                needsVisualUpdate = YES;
             [self.artTouches removeObjectForKey:key];
             [self.artRoles removeObjectForKey:key];
         } else {
-            if (!self.artRoles[key]) {
-                NSNumber *role = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
+            if (!role) {
+                role = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
                 if (role) self.artRoles[key] = role;
             }
+            NSInteger roleID = role ? role.integerValue : StrataArtNoMapping;
+            // A/B/X/Y, D-pad and shoulders no longer draw opaque press rings.
+            // Don't redraw a full 1792x1008 image for every digital button hit.
+            if (roleID != StrataArtLeftStick && roleID != StrataArtRightStick)
+                continue;
+            needsVisualUpdate = YES;
             UIView *pad = nil;
             for (UIView *v in self.superview.subviews)
                 if ([NSStringFromClass(v.class) isEqualToString:@"DmGamepad"]) { pad = v; break; }
@@ -702,8 +713,8 @@ static const NSInteger StrataNxSkinViewTag = 877144;
                                        [self convertPoint:point fromView:pad]];
         }
     }
-    // Redraw only when input changes, never on an idle 60 FPS timer.
-    [self setNeedsDisplay];
+    // Only the two moving stick knobs need live artwork redraw.
+    if (needsVisualUpdate) [self setNeedsDisplay];
 }
 // All rectangles below use the SAME normalized artwork coordinates as the
 // actual DmGamepad touch map, not physical iPhone point coordinates.
