@@ -21,6 +21,8 @@ final class LiveBoardControllerInput: ObservableObject {
     @Published var rPressed = false
     @Published var zlPressed = false
     @Published var zrPressed = false
+    @Published var l3Pressed = false
+    @Published var r3Pressed = false
     @Published var leftStick = CGPoint.zero
     @Published var rightStick = CGPoint.zero
     @Published var dpad = CGPoint.zero
@@ -112,6 +114,8 @@ final class LiveBoardControllerInput: ObservableObject {
         rPressed = profile.rightShoulder.isPressed
         zlPressed = profile.leftTrigger.value > 0.15
         zrPressed = profile.rightTrigger.value > 0.15
+        l3Pressed = profile.leftThumbstickButton?.isPressed ?? false
+        r3Pressed = profile.rightThumbstickButton?.isPressed ?? false
 
         if element === profile.dpad || element === profile.leftThumbstick {
             let pad = element === profile.dpad ? profile.dpad : profile.leftThumbstick
