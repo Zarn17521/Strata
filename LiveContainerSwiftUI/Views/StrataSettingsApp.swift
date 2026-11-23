@@ -19,10 +19,9 @@ extension Notification.Name {
     static let strataOpenAppManagement = Notification.Name("StrataOpenAppManagement")
 }
 
-/// One place for every Strata setting: quick tiles (the same ones as the iOS Home tools page), search,
-/// and grouped sections that open the existing settings screens.
+/// One place for Strata settings: search and grouped sections that open
+/// the existing settings screens, without an intermediate Interface page.
 struct StrataSettingsApp: View {
-    let openInterface: () -> Void
     let close: () -> Void
     var initialDestination: String? = nil
     @EnvironmentObject private var sharedModel: SharedModel
@@ -76,7 +75,6 @@ struct StrataSettingsApp: View {
         } catch { errorInfo = error.localizedDescription } } }, manage: { _ in openManagement() })
     }
 
-    private var quickTiles: [Entry] { ["jit", "memory", "storage", "refresh", "framegen", "switcher", "iphone", "runtime"].compactMap { id in entries.first { $0.id == id } } }
     private var matches: [Entry] {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return entries }
@@ -138,13 +136,6 @@ struct StrataSettingsApp: View {
 
     @ViewBuilder private var mainSections: some View {
         Section {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(quickTiles) { entry in tile(entry) }
-            }
-            .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
-        } header: { Text("Quick Settings") }
-        Section {
-            actionRow("Choose Interface", symbol: "square.grid.3x3.fill", tint: .indigo, id: "settings.interface") { close(); openInterface() }
             Toggle(isOn: Binding(get: { universalCategories }, set: { LiveBoardSharedCategories.setEnabled($0); universalCategories = $0 })) { row("Same categories everywhere", symbol: "tag.fill", tint: .orange) }
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
@@ -220,22 +211,6 @@ struct StrataSettingsApp: View {
                 .frame(width: 29, height: 29).background(tint, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             Text(title).foregroundStyle(.primary)
         }
-    }
-    private func tile(_ entry: Entry) -> some View {
-        Button {
-            if #available(iOS 16.0, *) { open(entry.id) }
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: entry.symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 36, height: 36).background(entry.tint, in: Circle())
-                Text(entry.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.75)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("settings.tile." + entry.id)
     }
 }
 
