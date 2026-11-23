@@ -8,6 +8,132 @@
 // Optional NxNative appearance-only bezel. This is a transparent touch-through
 // decoration that lives between the Metal picture and the original gamepad.
 // It never resizes the picture, creates touch controls or changes guest input.
+
+/* White plastic handheld artwork, modelled on the supplied portrait skin.
+   These are cosmetic shapes only: DmGamepad remains responsible for ALL input. */
+static void StrataNxDrawBevel(CGRect frame, CGFloat radius, NSString *label, CGFloat font) {
+    UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:frame cornerRadius:radius];
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextSaveGState(ctx);
+    CGContextSetShadowWithColor(ctx, CGSizeMake(0, 2.3), 3, UIColor.blackColor.CGColor);
+    [[UIColor colorWithWhite:0.95 alpha:1] setFill];
+    [shape fill];
+    CGContextRestoreGState(ctx);
+    shape.lineWidth = 1.7;
+    [[UIColor colorWithWhite:0.14 alpha:1] setStroke];
+    [shape stroke];
+    UIBezierPath *lip = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(frame, 2.5, 2.5)
+                                                  cornerRadius:MAX(1, radius - 2.5)];
+    lip.lineWidth = 1;
+    [[UIColor colorWithWhite:1 alpha:0.9] setStroke]; [lip stroke];
+    if (label.length) {
+        NSDictionary *attrs = @{
+            NSFontAttributeName: [UIFont systemFontOfSize:font weight:UIFontWeightMedium],
+            NSForegroundColorAttributeName: [UIColor colorWithWhite:0.36 alpha:1]
+        };
+        CGSize text = [label sizeWithAttributes:attrs];
+        CGRect pos = CGRectMake(CGRectGetMidX(frame) - text.width/2,
+                                CGRectGetMidY(frame) - text.height/2,
+                                text.width, text.height);
+        [label drawInRect:pos withAttributes:attrs];
+    }
+}
+static void StrataNxDrawAnalog(CGPoint c, CGFloat radius) {
+    CGRect outside = CGRectMake(c.x-radius,c.y-radius,radius*2,radius*2);
+    UIBezierPath *ring = [UIBezierPath bezierPathWithOvalInRect:outside];
+    [[UIColor colorWithWhite:0.12 alpha:1] setFill]; [ring fill];
+    UIBezierPath *inside = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(outside, 4, 4)];
+    [[UIColor colorWithWhite:0.94 alpha:1] setFill]; [inside fill];
+    inside.lineWidth = 2.0; [[UIColor colorWithWhite:0.58 alpha:1] setStroke]; [inside stroke];
+    UIBezierPath *thumb = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(outside,radius*0.28,radius*0.28)];
+    [[UIColor colorWithWhite:0.88 alpha:1] setFill]; [thumb fill];
+    thumb.lineWidth = 1.0; [[UIColor colorWithWhite:0.67 alpha:1] setStroke]; [thumb stroke];
+}
+static void StrataNxDrawDPad(CGPoint c, CGFloat unit) {
+    CGFloat a=unit*0.36, b=unit;
+    UIBezierPath *p=[UIBezierPath bezierPath];
+    [p moveToPoint:CGPointMake(c.x-a,c.y-b)];
+    [p addLineToPoint:CGPointMake(c.x+a,c.y-b)];
+    [p addLineToPoint:CGPointMake(c.x+a,c.y-a)];
+    [p addLineToPoint:CGPointMake(c.x+b,c.y-a)];
+    [p addLineToPoint:CGPointMake(c.x+b,c.y+a)];
+    [p addLineToPoint:CGPointMake(c.x+a,c.y+a)];
+    [p addLineToPoint:CGPointMake(c.x+a,c.y+b)];
+    [p addLineToPoint:CGPointMake(c.x-a,c.y+b)];
+    [p addLineToPoint:CGPointMake(c.x-a,c.y+a)];
+    [p addLineToPoint:CGPointMake(c.x-b,c.y+a)];
+    [p addLineToPoint:CGPointMake(c.x-b,c.y-a)];
+    [p addLineToPoint:CGPointMake(c.x-a,c.y-a)];
+    [p closePath];
+    CGContextRef ctx=UIGraphicsGetCurrentContext();
+    CGContextSaveGState(ctx);
+    CGContextSetShadowWithColor(ctx,CGSizeMake(0,2),3,[UIColor colorWithWhite:0.1 alpha:0.5].CGColor);
+    [[UIColor colorWithWhite:0.95 alpha:1] setFill]; [p fill];
+    CGContextRestoreGState(ctx);
+    p.lineWidth=2; [[UIColor colorWithWhite:0.13 alpha:1] setStroke]; [p stroke];
+    [[UIColor colorWithWhite:0.52 alpha:1] setStroke];
+    for (NSInteger i=0;i<4;i++) {
+        CGFloat ang=M_PI_2*i;
+        CGFloat dx=cos(ang),dy=sin(ang);
+        UIBezierPath *notch=[UIBezierPath bezierPath];
+        [notch moveToPoint:CGPointMake(c.x+dx*unit*0.65-dy*unit*0.11,c.y+dy*unit*0.65+dx*unit*0.11)];
+        [notch addLineToPoint:CGPointMake(c.x+dx*unit*0.65+dy*unit*0.11,c.y+dy*unit*0.65-dx*unit*0.11)];
+        notch.lineWidth=1.5; [notch stroke];
+    }
+}
+static void StrataNxDrawPortraitHandheld(CGRect bounds, CGRect game) {
+    // Bounds remain those of NxNative's native controller/screen layout.
+    // The GameView is excluded by the caller's even/odd clipping path.
+    CGFloat w=bounds.size.width, h=bounds.size.height;
+    CGFloat bottom=CGRectGetMaxY(game);
+    CGFloat remaining=MAX(180,h-bottom);
+    CGFloat unit=w/923.0;
+    // Display edge just outside the unmodified native picture viewport.
+    CGRect bezel=CGRectInset(game, -MAX(2,8*unit), -MAX(2,8*unit));
+    UIBezierPath *screen=[UIBezierPath bezierPathWithRoundedRect:bezel cornerRadius:13*unit];
+    screen.lineWidth=MAX(2,8*unit);
+    [[UIColor colorWithWhite:0.10 alpha:1] setStroke]; [screen stroke];
+    UIBezierPath *rim=[UIBezierPath bezierPathWithRoundedRect:CGRectInset(bezel,-3*unit,-3*unit)
+                                                 cornerRadius:16*unit];
+    rim.lineWidth=MAX(1,3*unit);
+    [[UIColor colorWithWhite:1 alpha:1] setStroke]; [rim stroke];
+
+    // Place the photographic controls in the unused portrait panel.
+    // Decorative only: the real transparent DmGamepad remains ABOVE this view.
+    CGFloat shouldersY=bottom+remaining*0.14;
+    CGFloat shoulderH=MAX(19,42*unit);
+    CGFloat gap=4*unit;
+    StrataNxDrawBevel(CGRectMake(w*0.045,shouldersY,w*0.16,shoulderH),10*unit,@"L",18*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.045+w*0.16+gap,shouldersY,w*0.16,shoulderH),10*unit,@"ZL",15*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.63,shouldersY,w*0.16,shoulderH),10*unit,@"ZR",15*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.63+w*0.16+gap,shouldersY,w*0.16,shoulderH),10*unit,@"R",18*unit);
+
+    // Centre speaker perforations echo the reference image.
+    [[UIColor colorWithWhite:0.36 alpha:0.85] setFill];
+    for (int row=0;row<3;row++) for (int col=0;col<6;col++) {
+        CGFloat d=4*unit;
+        CGFloat x=w*0.415+col*30*unit, y=shouldersY+shoulderH*0.29+row*12*unit;
+        [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(x,y,d,d)] fill];
+    }
+
+    CGFloat controlsY=bottom+remaining*0.45;
+    CGFloat dpadUnit=MIN(w*0.145,remaining*0.15);
+    StrataNxDrawDPad(CGPointMake(w*0.25,controlsY),dpadUnit);
+    CGFloat keyRadius=MIN(w*0.078,remaining*0.086);
+    StrataNxDrawBevel(CGRectMake(w*0.75-keyRadius,controlsY-dpadUnit*0.94-keyRadius,
+                               2*keyRadius,2*keyRadius),keyRadius,@"X",22*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.75-keyRadius*2.05-keyRadius,controlsY-keyRadius,
+                               2*keyRadius,2*keyRadius),keyRadius,@"Y",22*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.75+keyRadius*2.05-keyRadius,controlsY-keyRadius,
+                               2*keyRadius,2*keyRadius),keyRadius,@"A",22*unit);
+    StrataNxDrawBevel(CGRectMake(w*0.75-keyRadius,controlsY+dpadUnit*0.94-keyRadius,
+                               2*keyRadius,2*keyRadius),keyRadius,@"B",22*unit);
+    CGFloat analogRadius=MIN(w*0.115,remaining*0.115);
+    CGFloat analogY=bottom+remaining*0.79;
+    StrataNxDrawAnalog(CGPointMake(w*0.25,analogY),analogRadius);
+    StrataNxDrawAnalog(CGPointMake(w*0.75,analogY),analogRadius);
+}
+
 static NSString * const StrataNxSkinToggleKey = @"StrataNxSkinEnabled";
 static const NSInteger StrataNxSkinViewTag = 877144;
 
@@ -55,9 +181,9 @@ static const NSInteger StrataNxSkinViewTag = 877144;
 
     NSArray *colors = portrait
         ? @[
-            (__bridge id)[UIColor colorWithRed:0.06 green:0.06 blue:0.09 alpha:1].CGColor,
-            (__bridge id)[UIColor colorWithRed:0.10 green:0.53 blue:0.48 alpha:1].CGColor,
-            (__bridge id)[UIColor colorWithRed:0.30 green:0.12 blue:0.39 alpha:1].CGColor
+            (__bridge id)[UIColor colorWithWhite:0.98 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithWhite:0.94 alpha:1].CGColor,
+            (__bridge id)[UIColor colorWithWhite:0.85 alpha:1].CGColor
           ]
         : @[
             (__bridge id)[UIColor colorWithRed:0.20 green:0.72 blue:0.82 alpha:1].CGColor,
@@ -76,6 +202,7 @@ static const NSInteger StrataNxSkinViewTag = 877144;
         CGGradientRelease(grad);
     }
     CGColorSpaceRelease(space);
+    if (portrait) StrataNxDrawPortraitHandheld(bounds, game);
     CGContextRestoreGState(ctx);
 
     // A subtle screen edge, without a big opaque cover over the game content.
@@ -119,7 +246,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
     [host insertSubview:skin belowSubview:pad];
     [skin setNeedsDisplay];
-    NSLog(@"[Strata] Optional NxNative portrait/landscape bezel enabled (cosmetic only)");
+    NSLog(@"[Strata] Optional NxNative white handheld portrait / red-cyan landscape skin enabled (cosmetic only)");
 }
 
 // Apply the Switchboard's portrait/landscape choice to the NxNative guest,
