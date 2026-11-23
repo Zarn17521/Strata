@@ -240,8 +240,14 @@ static CGFloat StrataArtNativeRadius(id pad, int index) {
 static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     if (!image || image.size.width <= 0 || image.size.height <= 0 ||
         bounds.size.width <= 0 || bounds.size.height <= 0) return bounds;
-    CGFloat scale = MIN(bounds.size.width / image.size.width,
-                        bounds.size.height / image.size.height);
+    // Portrait: fit the whole handheld; landscape: cover every screen pixel.
+    // On wide iPhones, the 1792x1008 art is cropped centrally at the top
+    // and bottom (never stretched). The same frame is used by rendering,
+    // the game aperture, input hit-testing and skin touch remapping.
+    BOOL landscapeArtwork = image.size.width > image.size.height;
+    CGFloat sx = bounds.size.width / image.size.width;
+    CGFloat sy = bounds.size.height / image.size.height;
+    CGFloat scale = landscapeArtwork ? MAX(sx, sy) : MIN(sx, sy);
     CGSize fit = CGSizeMake(image.size.width*scale, image.size.height*scale);
     return CGRectMake(CGRectGetMidX(bounds)-fit.width/2,
                       CGRectGetMidY(bounds)-fit.height/2,fit.width,fit.height);
