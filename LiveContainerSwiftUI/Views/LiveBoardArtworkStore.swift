@@ -18,7 +18,7 @@ import ImageIO
     private var activeDecodes = 0
     private var decodeConcurrencyLimit: Int {
         let thermal = ProcessInfo.processInfo.thermalState
-        return thermal == .serious || thermal == .critical || ProcessInfo.processInfo.isLowPowerModeEnabled ? 1 : 2
+        return defaults.bool(forKey: "ZNBetaLowMemory") || thermal == .serious || thermal == .critical || ProcessInfo.processInfo.isLowPowerModeEnabled ? 1 : 2
     }
     private var missing = Set<String>()
     private var mappingCache: [String: String]?
@@ -82,7 +82,10 @@ import ImageIO
         guard !decodingPaused, !missing.contains(id), requests[id] == nil else { return nil }
         guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(id); return nil }
         let token = UUID(); requests[id] = token
-        let maximum = kind == .background ? 1600 : 640
+        let lowMemory = defaults.bool(forKey: "ZNBetaLowMemory")
+        let maximum = kind == .background ? (lowMemory ? 800 : 1600) : (lowMemory ? 320 : 640)
+        cache.totalCostLimit = (lowMemory ? 8 : 16) * 1024 * 1024
+        cache.countLimit = lowMemory ? 8 : 16
         pendingDecodes.append(DecodeJob(id: id, token: token, url: url, maximum: maximum))
         startPendingDecodes()
         return nil
@@ -130,6 +133,7 @@ import ImageIO
     }
     /// Starts background decodes so neighbouring selections are ready before the user reaches them.
     func prefetch(_ keys: [String], kinds: [Kind], mode: String = "bigPicture") {
+        guard !defaults.bool(forKey: "ZNBetaLowMemory") else { return }
         for key in keys { for kind in kinds { _ = image(for: key, kind: kind, mode: mode) } }
     }
 

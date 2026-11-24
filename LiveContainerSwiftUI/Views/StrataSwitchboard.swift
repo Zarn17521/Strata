@@ -29,6 +29,7 @@ struct StrataSwitchboard: View {
     private var libraries: [String: LiveBoardModeLibrary] { LiveBoardLibraryCache.decode(savedLibrary) }
     @AppStorage(LiveBoardSharedCategories.enabledKey, store: LCUtils.appGroupUserDefault) private var universalCategories = true
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
+    @AppStorage("ZNBetaLowMemory", store: LCUtils.appGroupUserDefault) private var lowMemory = false
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
     private var foreground: Color { darkMode ? .white : .black }
@@ -96,6 +97,7 @@ struct StrataSwitchboard: View {
             if value == .active { busy = false; artwork.resumeDecoding(); bind() }
             else { controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
         }
+        .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: false) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             trimPresentationCaches(pause: !visible || phase != .active)
         }
@@ -169,7 +171,7 @@ struct StrataSwitchboard: View {
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
                 .scaleEffect(isSelected ? 1.0 : 0.93)
                 .opacity(isSelected ? 1.0 : 0.80)
-                .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
+                .animation((reduceMotion || lowMemory) ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(customization.name(app))
