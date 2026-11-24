@@ -30,6 +30,8 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     NSTimeInterval startedAt = NSDate.date.timeIntervalSince1970;
     __block uint64_t peakFootprint = 0;
     __block uint64_t minimumAvailable = UINT64_MAX;
+    __block dispatch_source_t diagnosticsTimer = nil;
+    __block uint64_t intervalSeconds = 10;
     void (^sample)(void) = ^{
         @autoreleasepool {
             task_vm_info_data_t vm = {0};
@@ -54,6 +56,13 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
 #if !TARGET_OS_OSX
             minimumAvailable = MIN(minimumAvailable, available);
             record[@"minimumAvailableBytes"] = @(minimumAvailable);
+            uint64_t nextInterval = available < 256ULL * 1024 * 1024 ? 2 : (available < 768ULL * 1024 * 1024 ? 5 : 10);
+            record[@"memoryPressureLevel"] = @(nextInterval == 2 ? 2 : (nextInterval == 5 ? 1 : 0));
+            record[@"sampleIntervalSeconds"] = @(nextInterval);
+            if (diagnosticsTimer && intervalSeconds != nextInterval) {
+                intervalSeconds = nextInterval;
+                dispatch_source_set_timer(diagnosticsTimer, dispatch_time(DISPATCH_TIME_NOW, nextInterval * NSEC_PER_SEC), nextInterval * NSEC_PER_SEC, NSEC_PER_SEC / 2);
+            }
 #endif
             record[@"sessionSeconds"] = @(MAX(0, NSDate.date.timeIntervalSince1970 - startedAt));
             record[@"thermalState"] = @(NSProcessInfo.processInfo.thermalState);
@@ -67,7 +76,9 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     if (timer) dispatch_source_cancel(timer);
     timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
     dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), 10 * NSEC_PER_SEC, 2 * NSEC_PER_SEC);
+    diagnosticsTimer = timer;
     dispatch_source_set_event_handler(timer, sample);
+    dispatch_source_set_cancel_handler(timer, ^{ diagnosticsTimer = nil; });
     dispatch_resume(timer);
 }
 
