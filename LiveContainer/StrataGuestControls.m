@@ -328,13 +328,114 @@ static void StrataNxPaintDisplaySurround(CGRect aperture, CGRect display, BOOL d
     CGContextRestoreGState(ctx);
 }
 
+// Display presets are fixed for a guest launch. No game-side texture or
+// render-scale changes. Wide uses independent uniformly scaled photo panels
+// so circular buttons stay circular and the centre can be much wider.
+static char StrataNxWideSkinKey;
+static char StrataNxFullScreenRootKey;
+static BOOL StrataNxIsWideSkin(UIView *skin) {
+    return [objc_getAssociatedObject(skin,&StrataNxWideSkinKey) boolValue];
+}
+static NSString *StrataNxDisplayMode(NSUserDefaults *prefs) {
+    NSString *mode=[prefs stringForKey:@"StrataNxDisplayLayout"];
+    return [@[@"classic",@"wide",@"full"] containsObject:mode ?: @""] ? mode : @"wide";
+}
+typedef struct {
+    CGRect display;
+    CGRect leftFrame, rightFrame, footerFrame;
+    CGRect leftSource, rightSource, footerSource;
+} StrataNxWideGeometry;
+static CGRect StrataNxImageFrameAt(CGSize size, CGFloat scale, CGPoint sourceCentre, CGPoint targetCentre) {
+    return CGRectMake(targetCentre.x-sourceCentre.x*size.width*scale,
+                      targetCentre.y-sourceCentre.y*size.height*scale,
+                      size.width*scale,size.height*scale);
+}
+static CGRect StrataNxMapNormalizedRect(CGRect art, CGRect n) {
+    return CGRectMake(art.origin.x+n.origin.x*art.size.width,
+                      art.origin.y+n.origin.y*art.size.height,
+                      n.size.width*art.size.width,n.size.height*art.size.height);
+}
+static StrataNxWideGeometry StrataNxWideLayout(CGRect bounds, UIImage *image) {
+    StrataNxWideGeometry l={0};
+    CGSize size=image.size;
+    CGFloat w=bounds.size.width,h=bounds.size.height;
+    l.leftSource=CGRectMake(.068,.135,.179,.620);
+    l.rightSource=CGRectMake(.748,.135,.194,.620);
+    l.footerSource=CGRectMake(.380,.748,.240,.112);
+    CGFloat gw=MIN(w*.66,h*.82*16.0/9.0),gh=gw*9.0/16.0;
+    l.display=CGRectMake(CGRectGetMidX(bounds)-gw*.5,
+                         CGRectGetMinY(bounds)+h*.035,gw,gh);
+    CGFloat side=(w-gw)*.5;
+    CGFloat margin=MIN(7.0,side*.05);
+    CGFloat panelScale=MAX(.01,MIN((side-2*margin)/(size.width*.194),
+                                  h*.73/(size.height*.620)));
+    CGFloat cy=CGRectGetMinY(bounds)+h*.435;
+    l.leftFrame=StrataNxImageFrameAt(size,panelScale,
+        CGPointMake(CGRectGetMidX(l.leftSource),CGRectGetMidY(l.leftSource)),
+        CGPointMake(CGRectGetMinX(bounds)+side*.5,cy));
+    l.rightFrame=StrataNxImageFrameAt(size,panelScale,
+        CGPointMake(CGRectGetMidX(l.rightSource),CGRectGetMidY(l.rightSource)),
+        CGPointMake(CGRectGetMaxX(bounds)-side*.5,cy));
+    CGFloat footerTop=CGRectGetMaxY(l.display)+2;
+    CGFloat footerH=MAX(1,CGRectGetMaxY(bounds)-footerTop-3);
+    CGFloat footerScale=MAX(.01,MIN(panelScale,MIN(w*.40/(size.width*.240),
+                                                   footerH/(size.height*.112))));
+    l.footerFrame=StrataNxImageFrameAt(size,footerScale,
+        CGPointMake(CGRectGetMidX(l.footerSource),CGRectGetMidY(l.footerSource)),
+        CGPointMake(CGRectGetMidX(bounds),footerTop+footerH*.5));
+    return l;
+}
+static CGRect StrataNxDisplayRect(CGRect bounds, UIImage *image, BOOL wide) {
+    if (!wide) return StrataNxFullGameRect(StrataNxArtworkAperture(bounds,image));
+    if (bounds.size.width>bounds.size.height) return StrataNxWideLayout(bounds,image).display;
+    // Portrait: maximize horizontal width, preserve 16:9 and keep the
+    // existing lower controls untouched. The thick photo bezel is omitted.
+    CGFloat w=bounds.size.width;
+    CGFloat h=w*9.0/16.0;
+    return CGRectMake(CGRectGetMinX(bounds),CGRectGetMinY(bounds)+bounds.size.height*.065,w,h);
+}
+static int StrataNxPanelForRole(NSInteger role) {
+    switch (role) {
+        case StrataArtFace: case StrataArtRightStick: case StrataArtR: case StrataArtZR: return 1;
+        case StrataArtDpad: case StrataArtLeftStick: case StrataArtL: case StrataArtZL: return -1;
+        default: return 0;
+    }
+}
+static CGRect StrataNxControlFrame(CGRect bounds, UIImage *image, BOOL wide, CGFloat normalizedX) {
+    if (!wide || bounds.size.height>=bounds.size.width) return StrataNxArtworkFrame(bounds,image);
+    StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
+    return normalizedX<.25 ? l.leftFrame : normalizedX>.745 ? l.rightFrame : l.footerFrame;
+}
+static CGPoint StrataNxNormalizeControlPoint(CGRect bounds, UIImage *image, CGPoint point, BOOL wide, NSInteger role) {
+    CGRect art=StrataNxArtworkFrame(bounds,image);
+    CGRect region=CGRectNull;
+    if (wide && bounds.size.width>bounds.size.height) {
+        StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
+        int panel=role!=StrataArtNoMapping ? StrataNxPanelForRole(role)
+            : point.x<CGRectGetMinX(l.display) ? -1 : point.x>CGRectGetMaxX(l.display) ? 1 : 0;
+        art=panel<0 ? l.leftFrame : panel>0 ? l.rightFrame : l.footerFrame;
+        region=panel<0 ? l.leftSource : panel>0 ? l.rightSource : l.footerSource;
+    }
+    CGPoint p=CGPointMake((point.x-art.origin.x)/MAX(art.size.width,1),
+                          (point.y-art.origin.y)/MAX(art.size.height,1));
+    // A fresh touch on the enlarged game picture cannot hit an invisible
+    // button. Once claimed, the same panel owns the drag until touch-up.
+    if (role==StrataArtNoMapping && !CGRectIsNull(region) && !CGRectContainsPoint(region,p))
+        return CGPointMake(NAN,NAN);
+    return p;
+}
+static CGPoint StrataNxArtPointInPad(UIView *pad, UIImage *image, CGPoint point, NSInteger role) {
+    UIView *skin=[pad.superview viewWithTag:877144];
+    if (!skin) return StrataNxNormalizeControlPoint(pad.bounds,image,point,NO,role);
+    return StrataNxNormalizeControlPoint(skin.bounds,image,[skin convertPoint:point fromView:pad],
+                                         StrataNxIsWideSkin(skin),role);
+}
 static CGRect StrataNxArtworkFrameInPad(UIView *pad, UIImage *image) {
-    UIView *skin = [pad.superview viewWithTag:877144];
-    if (!skin) return StrataNxArtworkFrame(pad.bounds, image);
-    // The artwork belongs to the sibling skin overlay, NOT DmGamepad.
-    // Convert its displayed rect to pad coordinates (handles safe areas,
-    // asymmetric game layouts and any future root-view offsets).
-    return [pad convertRect:StrataNxArtworkFrame(skin.bounds, image) fromView:skin];
+    UIView *skin=[pad.superview viewWithTag:877144];
+    if (!skin) return StrataNxArtworkFrame(pad.bounds,image);
+    // This helper is used by the gear, which always lives in the footer.
+    CGRect frame=StrataNxControlFrame(skin.bounds,image,StrataNxIsWideSkin(skin),.5);
+    return [pad convertRect:frame fromView:skin];
 }
 
 static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view) {
@@ -348,11 +449,9 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     UIView *art = [view.superview viewWithTag:877144];
     id activeImage = [art valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
     if (!activeImage) return original;
-    CGRect artFrame = StrataNxArtworkFrameInPad(view, (UIImage *)activeImage);
-    CGPoint p = CGPointMake((original.x - artFrame.origin.x) / MAX(artFrame.size.width,1),
-                            (original.y - artFrame.origin.y) / MAX(artFrame.size.height,1));
     NSNumber *selected = objc_getAssociatedObject(touch, &StrataNxTouchArtRoleKey);
     NSInteger role = selected ? selected.integerValue : StrataArtNoMapping;
+    CGPoint p=StrataNxArtPointInPad(view,(UIImage *)activeImage,original,role);
     if (!selected) {
         if (((UITouch *)touch).phase != UITouchPhaseBegan) return original;
         role = StrataNxArtRole(p, landscape);
@@ -455,9 +554,8 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     BOOL landscape = b.width > b.height;
     UIView *skin = [self.pad.superview viewWithTag:877144];
     UIImage *image = [skin valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
-    CGRect artFrame = StrataNxArtworkFrameInPad(self.pad, image);
-    CGPoint normalized = CGPointMake((p.x-artFrame.origin.x)/MAX(artFrame.size.width,1),
-                                      (p.y-artFrame.origin.y)/MAX(artFrame.size.height,1));
+    if (!image) return NO;
+    CGPoint normalized=StrataNxArtPointInPad(self.pad,image,p,StrataArtNoMapping);
     CGPoint gear = StrataArtGearCentre(landscape);
     return StrataArtNear(normalized, gear.x, gear.y,
                          landscape ? 0.030 : 0.052,
@@ -491,10 +589,7 @@ static UIView *StrataNxPadHitTest(id pad, SEL selector, CGPoint point, UIEvent *
     UIView *skin = [view.superview viewWithTag:877144];
     UIImage *image = [skin valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
     if (!image) return hit; // no artwork for this orientation: native fallback
-    CGRect artFrame = StrataNxArtworkFrameInPad(view, image);
-    if (CGRectIsEmpty(artFrame)) return hit;
-    CGPoint artPoint = CGPointMake((point.x - artFrame.origin.x)/artFrame.size.width,
-                                  (point.y - artFrame.origin.y)/artFrame.size.height);
+    CGPoint artPoint=StrataNxArtPointInPad(view,image,point,StrataArtNoMapping);
     // No mapping = NO input. In particular, no invisible native buttons
     // underneath the skin's game viewport or in the unused margins.
     if (StrataNxArtRole(artPoint, landscape) == StrataArtNoMapping) return nil;
@@ -596,11 +691,9 @@ static void StrataNxPrimeArtTouchRoles(UIView *pad, NSSet<UITouch *> *touches) {
     BOOL landscape = pad.bounds.size.width > pad.bounds.size.height;
     UIImage *image = [art valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
     if (!image || !StrataOriginalLocationInView) return;
-    CGRect frame = StrataNxArtworkFrameInPad(pad, image);
     for (UITouch *touch in touches) {
         CGPoint native = StrataOriginalLocationInView(touch, @selector(locationInView:), pad);
-        CGPoint p = CGPointMake((native.x-frame.origin.x)/MAX(frame.size.width,1),
-                                (native.y-frame.origin.y)/MAX(frame.size.height,1));
+        CGPoint p=StrataNxArtPointInPad(pad,image,native,StrataArtNoMapping);
         NSInteger role = StrataNxArtRole(p, landscape);
         objc_setAssociatedObject(touch, &StrataNxTouchArtRoleKey,
                                 @(role), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -837,8 +930,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
     BOOL land=self.bounds.size.width>self.bounds.size.height;
     UIImage *image=land?self.landscapeArtwork:self.portraitArtwork;
     if (!image) return;
-    CGRect art=StrataNxArtworkFrame(self.bounds,image);
-    if (CGRectIsEmpty(art)) return;
+    BOOL wide=StrataNxIsWideSkin(self);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     for (UITouch *touch in touches) {
@@ -868,9 +960,10 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
             ? StrataOriginalLocationInView(touch,@selector(locationInView:),pad)
             : [touch locationInView:pad];
         CGPoint local=[self convertPoint:raw fromView:pad];
-        CGPoint norm=CGPointMake((local.x-art.origin.x)/art.size.width,
-                                 (local.y-art.origin.y)/art.size.height);
+        CGPoint norm=StrataNxNormalizeControlPoint(self.bounds,image,local,wide,role);
         if (!isfinite(norm.x)||!isfinite(norm.y)) continue;
+        CGPoint centre=StrataNxPressCentre(norm,role,land);
+        CGRect art=StrataNxControlFrame(self.bounds,image,wide,centre.x);
         CGRect frame=StrataNxPressFrame(art,norm,role,land);
         if (CGRectIsNull(frame)||CGRectIsEmpty(frame)) continue;
         if (!shine) {
@@ -1091,6 +1184,42 @@ static void StrataNxDrawZNBrand(CGRect art, BOOL portrait) {
     CGContextRestoreGState(ctx);
 }
 
+// Crop each complete, prepared photo panel by clipping its original image
+// draw. No duplicate decoded image, temporary bitmap, or per-touch drawing.
+static void StrataNxDrawWidePanel(UIImage *image, CGRect frame, CGRect source) {
+    CGContextRef ctx=UIGraphicsGetCurrentContext();
+    CGContextSaveGState(ctx);
+    CGContextClipToRect(ctx,StrataNxMapNormalizedRect(frame,source));
+    [image drawInRect:frame];
+    CGContextRestoreGState(ctx);
+}
+static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark) {
+    [StrataNxBuiltShell(dark) setFill];
+    UIRectFill(bounds);
+    BOOL portrait=bounds.size.height>=bounds.size.width;
+    CGContextRef ctx=UIGraphicsGetCurrentContext();
+    if (portrait) {
+        CGRect art=StrataNxArtworkFrame(bounds,image);
+        // Keep the entire corrected lower panel; discard the old tall bezel.
+        CGContextSaveGState(ctx);
+        CGContextClipToRect(ctx,StrataNxMapNormalizedRect(art,CGRectMake(0,.435,1,.565)));
+        CGRect body=StrataNxArtRect(art,CGRectMake(.025,.015,.950,.970));
+        if (!StrataNxIsBuiltinImage(image))
+            [[UIBezierPath bezierPathWithRoundedRect:body cornerRadius:MIN(body.size.width,body.size.height)*.055] addClip];
+        [image drawInRect:art];
+        if (!StrataNxIsBuiltinImage(image) && !StrataNxIsPreparedPhoto(image))
+            StrataNxDrawRearrangedArtwork(image,art,NO,dark);
+        CGContextRestoreGState(ctx);
+        StrataNxDrawZNBrand(art,YES);
+    } else {
+        StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
+        StrataNxDrawWidePanel(image,l.leftFrame,l.leftSource);
+        StrataNxDrawWidePanel(image,l.rightFrame,l.rightSource);
+        StrataNxDrawWidePanel(image,l.footerFrame,l.footerSource);
+        StrataNxDrawZNBrand(l.leftFrame,NO);
+    }
+}
+
 // Settings uses the exact same cached photograph and the very same
 // Look/ABXY, R/ZR and ZN transforms as the running NxNative game. A vector
 // mockup would give the user a misleading preview of the shipped skin.
@@ -1102,7 +1231,8 @@ BOOL StrataNxPhotoSkinsBundled(void) {
 #endif
 }
 
-UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
+UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *mode) {
+    BOOL wide=[mode isEqualToString:@"wide"];
     static NSCache<NSString *, UIImage *> *previewCache;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -1110,19 +1240,20 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         previewCache.countLimit = 2;
         previewCache.totalCostLimit = 3 * 1024 * 1024;
     });
-    NSString *key = [NSString stringWithFormat:@"photo-preview-%@-%@",
+    NSString *key = [NSString stringWithFormat:@"photo-preview-%@-%@-%@",
                      portrait ? @"portrait" : @"landscape",
-                     dark ? @"amoled" : @"pearl"];
+                     dark ? @"amoled" : @"pearl",wide ? @"wide" : @"classic"];
     UIImage *cached = [previewCache objectForKey:key];
     if (cached) return cached;
 
     UIImage *source = StrataNxBuiltinArtwork(portrait,dark);
     if (!source) return nil;
-    CGSize size = source.size;
+    CGSize size = wide ? (portrait ? CGSizeMake(393,852) : CGSizeMake(852,393)) : source.size;
     // Keep Settings snapshots at one-third resolution: the real native
     // skins still render at full source resolution for gameplay.
-    CGSize previewSize = CGSizeMake(MAX(1,round(size.width/3.0)),
-                                    MAX(1,round(size.height/3.0)));
+    CGFloat previewScale=wide ? .7 : 1.0/3.0;
+    CGSize previewSize = CGSizeMake(MAX(1,round(size.width*previewScale)),
+                                    MAX(1,round(size.height*previewScale)));
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
     format.opaque = YES;
     format.scale = 1;
@@ -1137,6 +1268,13 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         CGContextSaveGState(ctx);
         CGContextScaleCTM(ctx,previewSize.width/size.width,
                           previewSize.height/size.height);
+        if (wide) {
+            StrataNxDrawWideArtwork(source,art,dark);
+            [UIColor.blackColor setFill];
+            UIRectFill(StrataNxDisplayRect(art,source,YES));
+            CGContextRestoreGState(ctx);
+            return;
+        }
         if (!StrataNxIsBuiltinImage(source)) {
             CGRect body=StrataNxArtRect(art,
                  portrait ? CGRectMake(0.025,0.015,0.950,0.970)
@@ -1157,6 +1295,9 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     if (result) [previewCache setObject:result forKey:key
         cost:(NSUInteger)(result.size.width*result.size.height*4)];
     return result;
+}
+UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
+    return StrataNxSkinPreviewImageForLayout(portrait,dark,@"classic");
 }
 
 - (void)drawRect:(CGRect)rect {
@@ -1179,7 +1320,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     // Keep the full native image visible in both orientations.
     UIImage *artwork = portrait ? self.portraitArtwork : self.landscapeArtwork;
     CGRect aperture = artwork ? StrataNxArtworkAperture(bounds, artwork) : game;
-    CGRect opening = artwork ? StrataNxFullGameRect(aperture) : game;
+    BOOL wide=StrataNxIsWideSkin(self);
+    CGRect opening = artwork ? StrataNxDisplayRect(bounds,artwork,wide) : game;
     if (CGRectIsNull(opening) || CGRectIsEmpty(opening)) return;
     CGContextSaveGState(ctx);
     CGContextAddRect(ctx, bounds);
@@ -1193,6 +1335,12 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         // Metal drawable cannot leak around the handheld artwork.
         CGContextSetFillColorWithColor(ctx, StrataNxBuiltShell(self.darkTheme).CGColor);
         CGContextFillRect(ctx, bounds);
+    }
+
+    if (artwork && wide) {
+        StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme);
+        CGContextRestoreGState(ctx);
+        return;
     }
 
     NSArray *colors = portrait
@@ -1349,6 +1497,26 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
     if (!StrataNxSkinIsEnabled(group)) return;
     UIView *host = root.view;
+    if ([objc_getAssociatedObject(root,&StrataNxFullScreenRootKey) boolValue]) {
+        // Full Screen uses the entire available 16:9 viewport, with the
+        // native NxNative pad above it. No photographic skin or custom hits.
+        UIView *game=StrataNxChildOfClass(host,@"DmGameView");
+        UIView *pad=StrataNxChildOfClass(host,@"DmGamepad");
+        if (!game || !pad || game.superview!=host) return;
+        CGRect picture=StrataNxFullGameRect(host.bounds);
+        if (!CGRectIsNull(picture) && !CGRectIsEmpty(picture)) {
+            game.clipsToBounds=YES;
+            if (!CGRectEqualToRect(game.frame,picture)) game.frame=picture;
+            @try {
+                id controls=[pad valueForKey:@"controls"];
+                if ([controls isKindOfClass:CALayer.class]) ((CALayer *)controls).opacity=.65;
+                UILabel *fps=[root valueForKey:@"fps"];
+                if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
+                    fps.frame=CGRectMake(CGRectGetMinX(picture)+5,CGRectGetMinY(picture)+5,64,22);
+            } @catch (__unused NSException *e) {}
+        }
+        return;
+    }
     UIView *skinView = [host viewWithTag:StrataNxSkinViewTag];
     if (![skinView isKindOfClass:StrataNxSkinView.class]) return;
     StrataNxSkinView *skin = (StrataNxSkinView *)skinView;
@@ -1369,7 +1537,7 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     if (!game || game.superview != host || !pad) return;
 
     CGRect aperture = StrataNxArtworkAperture(host.bounds, img);
-    CGRect hole = StrataNxFullGameRect(aperture);
+    CGRect hole = StrataNxDisplayRect(host.bounds,img,StrataNxIsWideSkin(skin));
     // Preserve the complete native 16:9 image, rather than enlarging it until
     // the skin clips the hearts, map, HUD or other left/right game content.
     // The overlay replaces the unused height with the shell colour.
@@ -1430,12 +1598,25 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
         if ([NSStringFromClass(child.class) isEqualToString:@"DmGamepad"]) { pad = child; break; }
     }
     if (!pad) return;
+    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
+    NSString *mode=StrataNxDisplayMode(prefs);
+    UIViewController *gameRoot=StrataNxFindGameController(window.rootViewController,0);
+    if ([mode isEqualToString:@"full"]) {
+        if (!gameRoot || [objc_getAssociatedObject(gameRoot,&StrataNxFullScreenRootKey) boolValue]) return;
+        objc_setAssociatedObject(gameRoot,&StrataNxFullScreenRootKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        StrataNxHookRootLayout(gameRoot,group);
+        [gameRoot.view setNeedsLayout];
+        [gameRoot.view layoutIfNeeded];
+        StrataNxFitGameToImportedArt(gameRoot);
+        return;
+    }
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
     skin.mappedPad = pad;
+    // The same immutable preset drives drawing, hit testing and press layers.
+    objc_setAssociatedObject(skin,&StrataNxWideSkinKey,@([mode isEqualToString:@"wide"]),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     // Built-in vector skin: every NxNative guest has BOTH orientations
     // without importing or downloading any PNG. The user's old custom
     // artwork files remain untouched on disk for potential future restore.
-    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:group];
     skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
     skin.portraitArtwork = StrataNxBuiltinArtwork(YES, skin.darkTheme);
     skin.landscapeArtwork = StrataNxBuiltinArtwork(NO, skin.darkTheme);
@@ -1447,7 +1628,6 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     else [host insertSubview:skin belowSubview:pad];
     if (skin.portraitArtwork || skin.landscapeArtwork) {
         StrataNxKeepNativeInputButHideDrawing(pad);
-        UIViewController *gameRoot = StrataNxFindGameController(window.rootViewController,0);
         if (gameRoot) {
             StrataNxHookRootLayout(gameRoot, group);
             [gameRoot.view setNeedsLayout];

@@ -10,4 +10,5 @@ void StrataSetSwitcherProviders(UIView *(^live)(NSString *key), NSString *(^fron
 // Cached photo-faithful preview shared by Settings and the NxNative skin.
 @class UIImage;
 UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark);
+UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *mode);
 BOOL StrataNxPhotoSkinsBundled(void);

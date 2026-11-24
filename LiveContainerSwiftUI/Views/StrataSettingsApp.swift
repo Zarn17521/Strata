@@ -270,6 +270,8 @@ private struct StrataNxPortraitSkinSettings: View {
     private var enabled = true
     @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault)
     private var style = "pearl"
+    @AppStorage("StrataNxDisplayLayout", store: LCUtils.appGroupUserDefault)
+    private var displayLayout = "wide"
 
     private var dark: Bool { style == "amoled" }
 
@@ -304,10 +306,28 @@ private struct StrataNxPortraitSkinSettings: View {
                 Text("Both styles use the user's original portrait and landscape photo geometry. AMOLED Dark keeps the same controls, with OLED black and graphite buttons plus white glyphs. The input remapping and lower-left ZN logo are identical.")
             }
 
+            Section {
+                Picker("Display Size", selection: $displayLayout) {
+                    Text("Classic").tag("classic")
+                    Text("Wide").tag("wide")
+                    Text("Full Screen").tag("full")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.nxnative.displayLayout")
+            } header: {
+                Text("Game Display")
+            } footer: {
+                Text("Wide (default) enlarges the 16:9 game area and moves the landscape controls outward. Portrait uses the full screen width. Classic retains the original shell. Full Screen uses the largest uncropped 16:9 viewport with native translucent controls instead of the photo skin. Restart NxNative to apply. Render scale is unchanged.")
+            }
+
             Section("Portrait & Landscape") {
+                if displayLayout == "full" {
+                    Label("Full Screen uses NxNative's own transparent controls; their appearance depends on the game.", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.footnote).foregroundStyle(.secondary)
+                } else {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout)
                             .frame(width: 96, height: 208)
                         Text("Portrait")
                             .font(.caption)
@@ -315,15 +335,16 @@ private struct StrataNxPortraitSkinSettings: View {
                     }
                     Spacer(minLength: 0)
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: displayLayout)
                             .frame(maxWidth: 232)
-                            .aspectRatio(1792.0/1008.0, contentMode: .fit)
+                            .aspectRatio(displayLayout == "wide" ? 852.0/393.0 : 1792.0/1008.0, contentMode: .fit)
                         Text("Landscape")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .padding(.vertical, 6)
+                }
             }
 
             Section {
@@ -377,10 +398,11 @@ private struct StrataNxPortraitSkinSettings: View {
 private struct StrataNxBuiltInSkinPreview: View {
     let dark: Bool
     let landscape: Bool
+    let layout: String
 
     var body: some View {
         GeometryReader { geo in
-            if let image = StrataNxSkinPreviewImage(!landscape, dark) {
+            if let image = StrataNxSkinPreviewImageForLayout(!landscape, dark, layout) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
