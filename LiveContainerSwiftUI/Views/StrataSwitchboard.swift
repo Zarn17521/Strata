@@ -69,7 +69,7 @@ struct StrataSwitchboard: View {
                     .frame(height: tile + 70)
                     .accessibilityIdentifier("switchboard.pages")
                     .onChange(of: selectedKey) { _ in
-                        if sounds && phase == .active { audio.play() }
+                        if sounds && !lowMemory && phase == .active { audio.play() }
                     }
                     if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                     Spacer(minLength: 4)
