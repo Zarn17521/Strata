@@ -158,13 +158,22 @@ struct StrataMemorySettings: View {
                     if sample["footprintReported"] as? Bool == true, let bytes = sample["footprintBytes"] as? NSNumber {
                         Text("Running app memory used at sample: \(bytes.uint64Value / 1_048_576) MB")
                     }
+                    if let peak = sample["peakFootprintBytes"] as? NSNumber {
+                        Text("Peak footprint: \(peak.uint64Value / 1_048_576) MB")
+                    }
+                    if let minimum = sample["minimumAvailableBytes"] as? NSNumber {
+                        Text("Minimum available: \(minimum.uint64Value / 1_048_576) MB")
+                    }
+                    if let seconds = sample["sessionSeconds"] as? NSNumber {
+                        Text("Session: \(seconds.intValue / 60) min")
+                    }
                     Text("Sampled: " + Date(timeIntervalSince1970: timestamp).formatted(date: .abbreviated, time: .standard)).font(.caption)
                     Button("Copy app memory report") {
                         if let data = try? JSONSerialization.data(withJSONObject: sample, options: [.prettyPrinted, .sortedKeys]) {
                             UIPasteboard.general.string = String(data: data, encoding: .utf8)
                         }
                     }
-                    Text("This is a saved sample from the process running the app, not a live reservation or a fixed memory limit. Samples update every five seconds while that process can run.").font(.footnote).foregroundStyle(.secondary)
+                    Text("This is a saved sample from the process running the app, not a live reservation or a fixed memory limit. Samples update approximately every ten seconds while that process can run.").font(.footnote).foregroundStyle(.secondary)
                 } else {
                     Text("Launch an app with R20, let it run briefly, then return here and tap Refresh status. Normal and Launch with JIT launches are both measured.")
                 }
