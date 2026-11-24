@@ -295,6 +295,36 @@ static CGRect StrataNxArtworkAperture(CGRect bounds, UIImage *image) {
                      art.size.height * (574.0/1008.0));
     return CGRectIntersection(hole, bounds);
 }
+
+// NxNative Switch output is 16:9. Retain the ENTIRE picture (including HUD)
+// inside the measured opening, using the maximum available width. Do not
+// zoom/crop horizontally to fill a taller, non-16:9 controller photograph.
+static CGRect StrataNxFullGameRect(CGRect aperture) {
+    if (CGRectIsNull(aperture) || CGRectIsEmpty(aperture)) return CGRectNull;
+    const CGFloat aspect = 16.0 / 9.0;
+    CGFloat w = MIN(aperture.size.width, aperture.size.height * aspect);
+    CGFloat h = w / aspect;
+    return CGRectMake(CGRectGetMidX(aperture) - w * 0.5,
+                      CGRectGetMidY(aperture) - h * 0.5, w, h);
+}
+
+// Replace the unused part of the original photo's tall black screen with
+// the selected shell colour. No additional framebuffer, texture, image
+// allocation or touch mapping change. Draw only outside the live image.
+static void StrataNxPaintDisplaySurround(CGRect aperture, CGRect display, BOOL dark) {
+    if (CGRectIsNull(aperture) || CGRectIsEmpty(aperture) ||
+        CGRectIsNull(display) || CGRectIsEmpty(display)) return;
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+    CGContextSaveGState(ctx);
+    CGContextAddRect(ctx, aperture);
+    CGContextAddRect(ctx, display);
+    CGContextEOClip(ctx);
+    CGContextSetFillColorWithColor(ctx, StrataNxBuiltShell(dark).CGColor);
+    CGContextFillRect(ctx, aperture);
+    CGContextRestoreGState(ctx);
+}
+
 static CGRect StrataNxArtworkFrameInPad(UIView *pad, UIImage *image) {
     UIView *skin = [pad.superview viewWithTag:877144];
     if (!skin) return StrataNxArtworkFrame(pad.bounds, image);
@@ -1115,6 +1145,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         [source drawInRect:art];
         if (!StrataNxIsBuiltinImage(source))
             StrataNxDrawRearrangedArtwork(source,art,!portrait,dark);
+        CGRect aperture = StrataNxArtworkAperture(art, source);
+        StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
         StrataNxDrawZNBrand(art,portrait);
         CGContextRestoreGState(ctx);
     }];
@@ -1139,17 +1171,17 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     CGContextRef ctx = UIGraphicsGetCurrentContext();
     if (!ctx) return;
 
-    // The artwork overlay now sits ABOVE DmGameView. Cut out exactly the
-    // skin's black opening, not the oversized game frame. The opaque shell
-    // covers every pixel of aspect-FILL overscan outside the opening.
+    // The skin and Metal view share the same maximum-width 16:9 opening.
+    // Keep the full native image visible in both orientations.
     UIImage *artwork = portrait ? self.portraitArtwork : self.landscapeArtwork;
-    CGRect opening = artwork ? StrataNxArtworkAperture(bounds, artwork) : game;
+    CGRect aperture = artwork ? StrataNxArtworkAperture(bounds, artwork) : game;
+    CGRect opening = artwork ? StrataNxFullGameRect(aperture) : game;
     if (CGRectIsNull(opening) || CGRectIsEmpty(opening)) return;
     CGContextSaveGState(ctx);
     CGContextAddRect(ctx, bounds);
     // Use the exact measured aperture for photo skins, without shrinking
     // the live picture or painting a dark line inside the opening.
-    // The same aperture is used by the game aspect-fill layout.
+    // The same fitted rectangle is used by the full-image game layout.
     CGContextAddRect(ctx, artwork ? opening : CGRectInset(opening, 0.35, 0.35));
     CGContextEOClip(ctx);
     if (artwork) {
@@ -1200,6 +1232,9 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
             // Custom imported art uses the original unmodified button positions.
             StrataNxDrawRearrangedArtwork(image,art,!portrait,self.darkTheme);
         }
+        // Match the original display rim with the actual 16:9 picture.
+        // Cover the old black screen's excess height with the shell colour.
+        StrataNxPaintDisplaySurround(aperture,opening,self.darkTheme);
         // Built-ins are already laid out with Look above ABXY. Do not
         // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
@@ -1250,7 +1285,7 @@ static UIView *StrataFindNxPadHost(UIView *view, NSUInteger depth) {
 }
 
 // The skin's black screen opening is not the default NxNative picture frame.
-// Apply the original game aspect FILL inside the measured artwork opening AFTER
+// Apply the full native 16:9 game picture inside the measured opening AFTER
 // DmRootVC lays out the scene; do not change render scale or Metal resources.
 static char StrataNxSkinRootGroupKey;
 static void (*StrataNxOriginalRootDidLayout)(id, SEL) = NULL;
@@ -1329,32 +1364,22 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     UIView *pad = StrataNxChildOfClass(host, @"DmGamepad");
     if (!game || game.superview != host || !pad) return;
 
-    CGRect hole = StrataNxArtworkAperture(host.bounds, img);
-    // The opening is taller than the usual 16:9 guest picture. Aspect-FIT
-    // created the black top/bottom bands shown in the user's screenshots.
-    // Aspect-FILL preserves the picture's aspect and covers the ENTIRE hole:
-    // the shell above the Metal view occludes the small left/right overscan.
-    // Never change DmGameView's superview (NxNative treats that as TV output).
+    CGRect aperture = StrataNxArtworkAperture(host.bounds, img);
+    CGRect hole = StrataNxFullGameRect(aperture);
+    // Preserve the complete native 16:9 image, rather than enlarging it until
+    // the skin clips the hearts, map, HUD or other left/right game content.
+    // The overlay replaces the unused height with the shell colour.
+    // Never reparent DmGameView or modify its Metal renderer.
     if (CGRectIsNull(hole) || CGRectIsEmpty(hole) ||
         hole.size.width < 80 || hole.size.height < 50 ||
         game.frame.size.width <= 0 || game.frame.size.height <= 0) return;
-    CGFloat aspect = game.frame.size.width / game.frame.size.height;
-    if (!isfinite(aspect) || aspect <= 0) return;
-    CGFloat width = MAX(hole.size.width, hole.size.height * aspect);
-    CGFloat height = width / aspect;
-    CGRect filled = CGRectMake(CGRectGetMidX(hole) - width * 0.5,
-                               CGRectGetMidY(hole) - height * 0.5,
-                               width, height);
-    // No layer masks or offscreen extra surfaces: the imported white shell is
-    // rendered ABOVE the guest Metal view but BELOW the touch input layer.
-    // It draws only outside StrataNxArtworkAperture and covers the overscan.
     game.clipsToBounds = YES;
-    if (!CGRectEqualToRect(game.frame, filled)) {
-        game.frame = filled;
+    if (!CGRectEqualToRect(game.frame, hole)) {
+        game.frame = hole;
         [skin setNeedsDisplay];
-        NSLog(@"[Strata][NxSkin] %@ aspect-FILL %@ over aperture %@",
+        NSLog(@"[Strata][NxSkin] %@ full 16:9 picture %@ inside aperture %@",
               portrait ? @"portrait" : @"landscape",
-              NSStringFromCGRect(filled), NSStringFromCGRect(hole));
+              NSStringFromCGRect(hole), NSStringFromCGRect(aperture));
     }
     // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
     StrataNxKeepNativeInputButHideDrawing(pad);
