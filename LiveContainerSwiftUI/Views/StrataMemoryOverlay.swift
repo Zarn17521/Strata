@@ -92,7 +92,7 @@ struct StrataMemoryOverlayView: View {
         switch s.role {
         case "helper": return "Helper · " + s.name
         case "app": return s.name.isEmpty ? "App" : s.name
-        default: return s.name.isEmpty || s.name == "Strata" ? "Strata" : "Strata · " + s.name
+        default: return s.name.isEmpty || s.name == "Strata" || s.name == "ZN" ? "ZN" : "ZN · " + s.name
         }
     }
     private func color(_ role: String) -> Color { role == "helper" ? .orange : role == "app" ? .green : .cyan }

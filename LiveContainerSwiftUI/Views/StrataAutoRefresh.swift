@@ -56,7 +56,7 @@ import Network
         guard StrataRefreshExpiry.shouldRemind(now: Date(), expiry: expiry, lastSuccess: lastSuccess, intervalDays: days) else { return }
         if let expiry {
             let hours = max(0, Int(expiry.timeIntervalSinceNow / 3600))
-            reminderMessage = hours < 48 ? "Strata's current signing expires in approximately \(hours) hours. Refresh now to keep it available." : "Your refresh interval is due. Strata's current signing expires \(expiry.formatted())."
+            reminderMessage = hours < 48 ? "ZN's current signing expires in approximately \(hours) hours. Refresh now to keep it available." : "Your refresh interval is due. ZN's current signing expires \(expiry.formatted())."
         } else {
             reminderMessage = "Your refresh interval is due. The installed expiry could not be read; check SideStore's expiry date."
         }
@@ -84,7 +84,7 @@ import Network
             setStatus("A scheduled Shortcut refresh is already active."); return
         }
         guard #available(iOS 17, *), UserDefaults.sideStoreExist() else {
-            finishWithoutStarting("Install Strata + SideStore with all extensions on iOS 17 or newer."); return
+            finishWithoutStarting("Install ZN + SideStore with all extensions on iOS 17 or newer."); return
         }
         if !manual && Date() < nextDue { finishWithoutStarting("Next refresh is not due yet."); return }
         defaults.set(Date(), forKey: "StrataRefreshLastAttempt")
@@ -152,7 +152,7 @@ struct StrataAutoRefreshSettings: View {
                 }
                 Toggle("Allow cellular attempts", isOn: $cellular)
             } footer: {
-                Text("When Strata opens, it checks your signing expiry and selected interval. You choose Refresh or Later. Refresh uses the supplied Set VPN Shortcut; a daily automation is optional.")
+                Text("When ZN opens, it checks your signing expiry and selected interval. You choose Refresh or Later. Refresh uses the supplied Set VPN Shortcut; a daily automation is optional.")
             }
             Section("Refresh status") {
                 Text(refresh.status).textSelection(.enabled).accessibilityIdentifier("refresh.status")

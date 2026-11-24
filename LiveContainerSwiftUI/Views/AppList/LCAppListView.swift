@@ -495,7 +495,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         NavigationView {
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(LCUtils.appGroupUserDefault.integer(forKey: "LCJITEnablerType") == JITEnablerType.BuiltIn.rawValue ? "Strata is connecting its built-in debugger. The app opens when attachment is confirmed; JIT setup can continue while you use it." : "lc.appBanner.waitForJitMsg".loc)
+                    Text(LCUtils.appGroupUserDefault.integer(forKey: "LCJITEnablerType") == JITEnablerType.BuiltIn.rawValue ? "ZN is connecting its built-in debugger. The app opens when attachment is confirmed; JIT setup can continue while you use it." : "lc.appBanner.waitForJitMsg".loc)
                         .padding(.vertical)
                         .id(0)
                     

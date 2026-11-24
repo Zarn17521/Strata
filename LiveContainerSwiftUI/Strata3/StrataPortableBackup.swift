@@ -99,7 +99,7 @@ enum StrataPortableBackup {
         let fm = FileManager.default
         let root = try confined(root, to: root)
         let input = try FileHandle(forReadingFrom: archive); defer { try? input.close() }
-        guard try readExactly(input, magic.count) == magic else { throw failure("This is not a Strata backup.") }
+        guard try readExactly(input, magic.count) == magic else { throw failure("This is not a ZN backup.") }
         let lengthData = try readExactly(input, 8)
         let count = lengthData.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
         guard count > 0, count <= UInt64(maximumManifest) else { throw failure("Invalid backup manifest length.") }

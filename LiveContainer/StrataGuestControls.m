@@ -1829,7 +1829,7 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
         return;
     }
     NSURL *root = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:self.group];
-    if (!root) { [self showError:@"Strata's shared container is unavailable. Reinstall with all extensions kept, then reopen this app from Strata."]; return; }
+    if (!root) { [self showError:@"ZN's shared container is unavailable. Reinstall with all extensions kept, then reopen this app from ZN."]; return; }
     NSURL *directory = [root URLByAppendingPathComponent:@"Library/StrataControls"];
     NSError *error = nil;
     if (![NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error]) { [self showError:error.localizedDescription]; return; }
@@ -1838,7 +1838,7 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
     if ([data writeToURL:[directory URLByAppendingPathComponent:@"request.json"] options:NSDataWritingAtomic error:nil]) {
         [self hide];
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.strata.controls.request"), NULL, NULL, true);
-    } else { [self showError:@"The app controls request could not be saved. Return to Strata and reopen this app."]; }
+    } else { [self showError:@"The app controls request could not be saved. Return to ZN and reopen this app."]; }
 }
 - (void)selectEntry:(NSDictionary *)entry close:(BOOL)close {
     if (close && [entry[@"key"] isEqualToString:self.currentKey]) { [self request:@"close"]; return; }
@@ -1847,7 +1847,7 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
     NSURL *directory = [root URLByAppendingPathComponent:@"Library/StrataControls"];
     NSError *error = nil;
     if (!directory || ![NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error]) {
-        [self showError:error.localizedDescription ?: @"Strata's shared container is unavailable."]; return;
+        [self showError:error.localizedDescription ?: @"ZN's shared container is unavailable."]; return;
     }
     NSDictionary *command = @{@"key":entry[@"key"], @"close":@(close), @"timestamp":@(NSDate.date.timeIntervalSince1970)};
     NSData *data = [NSJSONSerialization dataWithJSONObject:command options:0 error:nil];

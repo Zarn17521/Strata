@@ -123,8 +123,8 @@ class StrataPhoneAppInfo: LCAppInfo {
             }
             NSLog("[Strata] direct open of %@ refused: %@", bundleID, error)
             throw schemes.isEmpty
-                ? "iOS doesn’t let Strata open this app directly, and no app link is known for it. Re-export the app list from your Mac (it now includes app links and icons), or set an App URL or Shortcut for it under Settings → iPhone Apps → Advanced."
-                : "iOS doesn’t let Strata open this app directly, and its app link didn’t respond. Set an App URL or Shortcut for it under Settings → iPhone Apps → Advanced."
+                ? "iOS doesn’t let ZN open this app directly, and no app link is known for it. Re-export the app list from your Mac (it now includes app links and icons), or set an App URL or Shortcut for it under Settings → iPhone Apps → Advanced."
+                : "iOS doesn’t let ZN open this app directly, and its app link didn’t respond. Set an App URL or Shortcut for it under Settings → iPhone Apps → Advanced."
 
         }
         guard let url = Self.launchURL(entry) else { throw "Invalid app URL or Shortcut name." }
@@ -145,7 +145,7 @@ struct StrataPhoneAppsView: View {
                 HStack { Image(systemName: "magnifyingglass").foregroundStyle(.secondary); TextField("Added app name", text: $addedQuery).autocapitalization(.none).disableAutocorrection(true).submitLabel(.search) }
             }
             if addedQuery.isEmpty { Section {
-                Text("Choose the iPhone apps you want in Strata. They open normally in iOS; guest JIT, RAM and multitasking options do not apply.").font(.footnote)
+                Text("Choose the iPhone apps you want in ZN. They open normally in iOS; guest JIT, RAM and multitasking options do not apply.").font(.footnote)
                 Button { browsing = true } label: { Label("Choose installed apps", systemImage: "plus.circle.fill") }
                 Button("Advanced: App URL or Shortcut") { adding = true }
             }

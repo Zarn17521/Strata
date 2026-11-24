@@ -13,7 +13,7 @@ struct StrataRuntimeCenter: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Strata " + StrataVersion.display).font(.largeTitle.bold())
+                    Text("ZN " + StrataVersion.display).font(.largeTitle.bold())
                     Text("Runtime & data management").font(.subheadline).foregroundStyle(.secondary)
                 }.padding(.vertical, 8)
             }
@@ -25,7 +25,7 @@ struct StrataRuntimeCenter: View {
                 } else { Text("LiveExec32 · prepared on first 32-bit launch").foregroundStyle(.secondary) }
                 NavigationLink("HostJIT-InProcess · Experimental") {
                     Form {
-                        Section { Text("An opt-in cold-start host attachment is included in Strata 3.0. The supplied IPA's unknown binaries were not merged. Enable the experiment per guest below, prepare the device in JIT setup, then use Launch with JIT.")
+                        Section { Text("An opt-in cold-start host attachment is included in ZN 3.0. The supplied IPA's unknown binaries were not merged. Enable the experiment per guest below, prepare the device in JIT setup, then use Launch with JIT.")
                             Text("The comparison screenshot reports different host and extension memory budgets. It does not demonstrate in-process JIT. JIT permission is process-specific; attaching to a helper does not grant it to the host.") }
                         Section("Current fallback") { Text("The existing guest-extension path remains the default and is always used for Multitask. Experimental host startup waits at most 12 seconds for debugger attachment, then returns to the launcher on failure. EspressoU/Pong has verified in-process recompiler operation with a reported 6 GiB budget on the test iPhone 15 Pro. Other guests and devices still require testing.") }
                     }.navigationTitle("HostJIT")
@@ -128,7 +128,7 @@ struct StrataContainerManager: View {
             Section("Portable backups") {
                 Button("Create backup") { createBackup() }.disabled(busy || inUse)
                 Button("Import backup to restore…") { importing = true }.disabled(busy || inUse)
-                Text("Backups are stored in Files → Strata → Strata3 → Backups. Restoring keeps the previous container as a hidden .strata-rollback folder beside it for recovery.").font(.caption).foregroundStyle(.secondary)
+                Text("Backups are stored in Files → ZN → Strata3 → Backups. Restoring keeps the previous container as a hidden .strata-rollback folder beside it for recovery.").font(.caption).foregroundStyle(.secondary)
                 ForEach(backups, id: \.self) { url in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(url.lastPathComponent).font(.caption)
@@ -300,7 +300,7 @@ struct StrataDiagnosticsView: View {
             let url = LCPath.docPath.appendingPathComponent("Strata3/Diagnostics/\(Int(Date().timeIntervalSince1970)).json")
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: url, options: .atomic)
-            report = url; message = "Saved in Files → Strata → Strata3 → Diagnostics. Guest measurements may be from an earlier launch; compare their timestamps."
+            report = url; message = "Saved in Files → ZN → Strata3 → Diagnostics. Guest measurements may be from an earlier launch; compare their timestamps."
         } catch { message = error.localizedDescription }
     }
 }

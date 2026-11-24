@@ -19,7 +19,7 @@ struct StrataVPNAutomationGuide: View {
                 Section("Simple shortcut") {
                     step(1, "Connect to LocalDevVPN", "Use the native Set VPN action with Connect.")
                     step(2, "Wait 5 seconds", "Let the VPN route settle.")
-                    step(3, "Refresh All Apps", "Choose Strata's bundled SideStore action. Its source waits for the refresh result before returning.")
+                    step(3, "Refresh All Apps", "Choose ZN's bundled SideStore action. Its source waits for the refresh result before returning.")
                     step(4, "Wait 5 seconds", "Retained from your supplied shortcut.")
                     step(5, "Disconnect LocalDevVPN", "If refresh errors or iOS interrupts the shortcut, this action may not run. Disconnect manually afterward if necessary.")
                 }
@@ -30,7 +30,7 @@ struct StrataVPNAutomationGuide: View {
                 }
                 Section("Before enabling") {
                     Text("The simple shortcut disconnects LocalDevVPN at the end without checking for other users. If a JIT session or another app still needs the VPN, omit Disconnect or wait until that session finishes.")
-                    Text("If iOS interrupts Shortcuts, requires unlocking, or replaces Strata during its own refresh, cleanup may not run and the VPN can remain connected. Check the result and expiry date. An app-open automation alone does not schedule refreshes.")
+                    Text("If iOS interrupts Shortcuts, requires unlocking, or replaces ZN during its own refresh, cleanup may not run and the VPN can remain connected. Check the result and expiry date. An app-open automation alone does not schedule refreshes.")
                     Toggle("I added and checked the Set VPN Shortcut", isOn: $tested).accessibilityIdentifier("vpn.setup.confirmed")
                     Button("Finish setup") { confirm() }.disabled(!tested).accessibilityIdentifier("vpn.setup.enable")
                 }

@@ -84,13 +84,13 @@ struct LCSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section("Strata") {
+                Section("ZN") {
                     StrataCreditsButton(location: "settings.about")
                     NavigationLink("App Extensions") { StrataExtensionsView(apps: sharedModel.apps) }
                     NavigationLink("iPhone Apps") { StrataPhoneAppsView() }
                     NavigationLink("Refresh") { StrataAutoRefreshSettings() }
                     if #available(iOS 16.0, *) {
-                    NavigationLink("Runtime Manager · Strata " + StrataVersion.display) { StrataRuntimeCenter(apps: sharedModel.apps + sharedModel.hiddenApps, launch: { app in Task { do {
+                    NavigationLink("Runtime Manager · ZN " + StrataVersion.display) { StrataRuntimeCenter(apps: sharedModel.apps + sharedModel.hiddenApps, launch: { app in Task { do {
                         if app.uiIsLocked && !sharedModel.isHiddenAppUnlocked { guard try await LCUtils.authenticateUser() else { return } }
                         try await app.runApp()
                     } catch { errorInfo = error.localizedDescription; errorShow = true } } }, manage: { _ in sharedModel.selectedTab = .apps }) }

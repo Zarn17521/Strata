@@ -30,7 +30,7 @@ struct LiveBoardJITSetup: View {
                         }
                         Text("Enable Developer Mode in iPhone Settings. Connect LocalDevVPN and Wi-Fi before using Launch with JIT. The first launch may download a developer disk image.")
                         Label(LCUtils.strataCanDebug() ? "Debugging permission available" : "Re-signing required: debugging permission missing", systemImage: LCUtils.strataCanDebug() ? "checkmark.shield" : "exclamationmark.shield")
-                        Text("Built-in JIT uses a guest process to keep its debugger connection alive. Normal launch requests open that guest full-screen. Keep app extensions when installing Strata. On newer iOS versions, the guest may also need a compatible JIT script in its app settings.").foregroundStyle(.secondary)
+                        Text("Built-in JIT uses a guest process to keep its debugger connection alive. Normal launch requests open that guest full-screen. Keep app extensions when installing ZN. On newer iOS versions, the guest may also need a compatible JIT script in its app settings.").foregroundStyle(.secondary)
                     }
                     Section("Device connection") {
                         TextField("Device IP (without /32)", text: $deviceAddress)
@@ -53,7 +53,7 @@ struct LiveBoardJITSetup: View {
                         if !session.message.isEmpty { Text(session.message).font(.footnote).textSelection(.enabled).accessibilityIdentifier("jit.status") }
                     }
                     Section("Launch") {
-                        Text("Touch and hold an app, or open its console options, and choose Launch with JIT. Strata prepares the device and connects its helper automatically. Errors appear in the launch window.")
+                        Text("Touch and hold an app, or open its console options, and choose Launch with JIT. ZN prepares the device and connects its helper automatically. Errors appear in the launch window.")
                     }
                 } else {
                     Section("External provider") {

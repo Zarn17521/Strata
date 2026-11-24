@@ -271,7 +271,7 @@ struct StrataSwitchboard: View {
             }
 
             shortcutCell("Settings") {
-                roundButton("gearshape.fill", label: "Open Strata Settings", tint: .purple) {
+                roundButton("gearshape.fill", label: "Open ZN Settings", tint: .purple) {
                     controller.stop()
                     NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
                 }
