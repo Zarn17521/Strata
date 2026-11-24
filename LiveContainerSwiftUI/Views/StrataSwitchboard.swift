@@ -20,6 +20,8 @@ struct StrataSwitchboard: View {
     @State private var editingLibrary = false
     @State private var newCategory = ""
     @State private var visible = false
+    @AppStorage("ZNLastSeenWhatsNew", store: LCUtils.appGroupUserDefault) private var lastSeenWhatsNew = ""
+    @State private var showingWhatsNew = false
     @State private var busy = false
     @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     @State private var choosingCover = false
@@ -92,7 +94,7 @@ struct StrataSwitchboard: View {
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
         .background(LiveBoardOrientationLock(mask: .portrait))
-        .onAppear { visible = true; artwork.resumeDecoding(); selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
+        .onAppear { visible = true; artwork.resumeDecoding(); selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() } }
         .onDisappear { visible = false; controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
         .onChange(of: phase) { value in
             if value == .active { busy = false; artwork.resumeDecoding(); bind() }
@@ -118,6 +120,18 @@ struct StrataSwitchboard: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; if visible && phase == .active { artwork.resumeDecoding(); bind() } }
+        .sheet(isPresented: $showingWhatsNew, onDismiss: {
+            lastSeenWhatsNew = ZNWhatsNewView.releaseID
+            bind()
+        }) {
+            NavigationView {
+                ZNWhatsNewView().toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Continue") { showingWhatsNew = false }
+                    }
+                }
+            }.navigationViewStyle(.stack)
+        }
         .sheet(isPresented: $choosingCover, onDismiss: bind) {
             LiveBoardWallpaperPicker { image in
                 if let image { do { try artwork.save(image, for: coverKey, kind: .cover, mode: "switchboard") } catch { artworkError = error.localizedDescription } }
@@ -408,7 +422,7 @@ struct StrataSwitchboard: View {
         }
     }
     private func bind() {
-        guard visible, !editingLibrary, !choosingCover, !busy else { return }
+        guard visible, !showingWhatsNew, !editingLibrary, !choosingCover, !busy else { return }
         controller.onCommand = { command in
             let items = filtered
             let index = items.firstIndex { liveBoardAppKey($0) == selectedKey } ?? 0

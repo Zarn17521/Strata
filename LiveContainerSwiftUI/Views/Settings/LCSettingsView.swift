@@ -86,6 +86,7 @@ struct LCSettingsView: View {
             Form {
                 Section("ZN") {
                     StrataCreditsButton(location: "settings.about")
+                    NavigationLink { ZNWhatsNewView() } label: { Label("What’s New", systemImage: "sparkles") }
                     NavigationLink("ZN Beta · Controller & Audio") { ZNBetaControlsSettings() }
                     NavigationLink("App Extensions") { StrataExtensionsView(apps: sharedModel.apps) }
                     NavigationLink("iPhone Apps") { StrataPhoneAppsView() }
@@ -759,5 +760,41 @@ private struct ZNBetaControlsSettings: View {
                 swapAB = false; swapXY = false; audio = true; lowMemory = false
             }
         }.navigationTitle("ZN Beta Controls")
+    }
+}
+
+
+// Shared release notes for the first-launch sheet and Settings.
+struct ZNWhatsNewView: View {
+    static let releaseID = "0.1.1-beta"
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Image(systemName: "sparkles").font(.largeTitle).foregroundStyle(.purple)
+                    Text("What’s New").font(.largeTitle.bold())
+                    Text("ZN v0.1.1 Beta").font(.headline)
+                    Text("Performance & Memory Update").foregroundStyle(.secondary)
+                }.padding(.vertical, 12)
+            }
+            Section("Performance & Memory") {
+                Label("Enhanced Low Memory Mode", systemImage: "memorychip")
+                Label("Memory pressure management", systemImage: "gauge")
+                Label("Adaptive RAM monitoring", systemImage: "waveform.path")
+                Label("Peak RAM and session statistics", systemImage: "chart.bar")
+                Label("Resource cleanup before game launch", systemImage: "trash")
+                Label("Optimized artwork caching", systemImage: "photo")
+                Label("Smart launcher thermal management", systemImage: "thermometer")
+                Label("Reduced background resource usage", systemImage: "bolt")
+                Label("Updated beta version information", systemImage: "info.circle")
+            }
+            Section("Compatibility") {
+                Text("Existing JIT, Game Mode, Metal HUD, graphics settings and Bundle ID remain unchanged.")
+            }
+            Section("Beta Notice") {
+                Text("Long-session stability and performance improvements are still being evaluated.")
+                Text("ZN — Your games. Your library.").font(.footnote).foregroundStyle(.secondary)
+            }
+        }.navigationTitle("What’s New").navigationBarTitleDisplayMode(.inline)
     }
 }
