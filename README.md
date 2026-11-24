@@ -1,5 +1,7 @@
 # ZN — Game Library
 
+**Release version: 0.1.0**
+
 An independent modified fork of [Strata](https://github.com/huzaifahshahid71-ops/Strata), built on [LiveContainer](https://github.com/LiveContainer/LiveContainer). Maintained by [Zarn17521](https://github.com/Zarn17521).
 
 ## ZN interface

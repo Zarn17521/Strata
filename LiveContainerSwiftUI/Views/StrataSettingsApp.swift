@@ -1,12 +1,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Marketing version plus build revision, e.g. "4.0 (r43)", read from the packaged Info.plist.
+/// ZN release version, read from Info.plist. Retain internal build metadata for compatibility.
 enum StrataVersion {
-    static var marketing: String { Bundle.main.object(forInfoDictionaryKey: "StrataMarketingVersion") as? String ?? "4.0" }
+    static var marketing: String { Bundle.main.object(forInfoDictionaryKey: "StrataMarketingVersion") as? String ?? "0.1.0" }
     static var revision: Int? { (Bundle.main.object(forInfoDictionaryKey: "StrataRevision") as? NSNumber)?.intValue }
     static var channel: String? { Bundle.main.object(forInfoDictionaryKey: "StrataBuildChannel") as? String }
-    static var display: String { marketing + (revision.map { " (r\($0))" } ?? "") }
+    static var display: String { marketing }
     static var full: String { "ZN " + display + (channel.map { " · " + $0 } ?? "") }
 }
 
