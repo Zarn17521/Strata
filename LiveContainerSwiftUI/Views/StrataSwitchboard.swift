@@ -21,6 +21,7 @@ struct StrataSwitchboard: View {
     @State private var newCategory = ""
     @State private var visible = false
     @State private var busy = false
+    @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     @State private var choosingCover = false
     @State private var coverKey = ""
     @State private var artworkError: String?
@@ -69,7 +70,7 @@ struct StrataSwitchboard: View {
                     .frame(height: tile + 70)
                     .accessibilityIdentifier("switchboard.pages")
                     .onChange(of: selectedKey) { _ in
-                        if sounds && !lowMemory && phase == .active { audio.play() }
+                        if sounds && !lowMemory && !thermalConstrained && phase == .active { audio.play() }
                     }
                     if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                     Spacer(minLength: 4)
@@ -97,7 +98,14 @@ struct StrataSwitchboard: View {
             if value == .active { busy = false; artwork.resumeDecoding(); bind() }
             else { controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
         }
-        .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: false) }
+        .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: busy || !visible || phase != .active) }
+        .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
+            thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+            if thermalConstrained {
+                audio.stop()
+                trimPresentationCaches(pause: busy || !visible || phase != .active)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             // Evict transient launcher data and invalidate queued decode results.
             // Keep the visible library usable so it can reload artwork on demand.
@@ -109,7 +117,7 @@ struct StrataSwitchboard: View {
             trimPresentationCaches(pause: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
-        .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; bind() }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; if visible && phase == .active { artwork.resumeDecoding(); bind() } }
         .sheet(isPresented: $choosingCover, onDismiss: bind) {
             LiveBoardWallpaperPicker { image in
                 if let image { do { try artwork.save(image, for: coverKey, kind: .cover, mode: "switchboard") } catch { artworkError = error.localizedDescription } }
@@ -175,7 +183,7 @@ struct StrataSwitchboard: View {
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
                 .scaleEffect(isSelected ? 1.0 : 0.93)
                 .opacity(isSelected ? 1.0 : 0.80)
-                .animation((reduceMotion || lowMemory) ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
+                .animation((reduceMotion || lowMemory || thermalConstrained) ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: isSelected)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(customization.name(app))
@@ -185,27 +193,27 @@ struct StrataSwitchboard: View {
                 if !(app.appInfo is StrataPhoneAppInfo) && !(app.appInfo is BuiltInSideStoreAppInfo) {
                     if let launchWithJIT {
                         Button("Launch with JIT", systemImage: "bolt.fill") {
-                            controller.stop(); launchWithJIT(app)
+                            prepareForLaunch(app, using: launchWithJIT)
                         }
                     }
                     if let launchMultitask {
                         Button("Multitask", systemImage: "rectangle.on.rectangle") {
-                            controller.stop(); launchMultitask(app)
+                            prepareForLaunch(app, using: launchMultitask)
                         }
                     }
                     if let launchInGameMode {
                         Button("Request Game Mode", systemImage: "gamecontroller.fill") {
-                            controller.stop(); launchInGameMode(app)
+                            prepareForLaunch(app, using: launchInGameMode)
                         }
                     }
                     if let launchInGameModeWithJIT {
                         Button("Request Game Mode + JIT", systemImage: "bolt.circle.fill") {
-                            controller.stop(); launchInGameModeWithJIT(app)
+                            prepareForLaunch(app, using: launchInGameModeWithJIT)
                         }
                     }
                     if let launchWithMetalHUD {
                         Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") {
-                            controller.stop(); launchWithMetalHUD(app)
+                            prepareForLaunch(app, using: launchWithMetalHUD)
                         }
                     }
                 }
@@ -384,8 +392,20 @@ struct StrataSwitchboard: View {
         customization.trimTransientImages()
     }
     private func activate(_ app: LCAppModel) {
-        guard !busy else { return }; busy = true; controller.stop(); launch(app)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { busy = false }
+        prepareForLaunch(app, using: launch)
+    }
+    private func prepareForLaunch(_ app: LCAppModel, using action: (LCAppModel) -> Void) {
+        guard !busy else { return }
+        busy = true
+        controller.stop()
+        audio.stop()
+        trimPresentationCaches(pause: true)
+        action(app)
+        // Recover if a launch is cancelled while the library remains visible.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            busy = false
+            if visible && phase == .active { artwork.resumeDecoding(); bind() }
+        }
     }
     private func bind() {
         guard visible, !editingLibrary, !choosingCover, !busy else { return }

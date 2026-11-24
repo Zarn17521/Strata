@@ -19,7 +19,8 @@ import Darwin
     private var activeDecodes = 0
     private var constrained: Bool {
         let available = os_proc_available_memory()
-        return defaults.bool(forKey: "ZNBetaLowMemory") || (available > 0 && available < 512 * 1024 * 1024)
+        let thermal = ProcessInfo.processInfo.thermalState
+        return defaults.bool(forKey: "ZNBetaLowMemory") || thermal == .serious || thermal == .critical || (available > 0 && available < 512 * 1024 * 1024)
     }
     private var decodeConcurrencyLimit: Int {
         let thermal = ProcessInfo.processInfo.thermalState
