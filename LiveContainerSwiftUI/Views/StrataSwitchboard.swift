@@ -9,6 +9,7 @@ struct StrataSwitchboard: View {
     var launchWithJIT: ((LCAppModel) -> Void)? = nil
     var launchMultitask: ((LCAppModel) -> Void)? = nil
     var launchInGameMode: ((LCAppModel) -> Void)? = nil
+    var launchInGameModeWithJIT: ((LCAppModel) -> Void)? = nil
     var launchWithMetalHUD: ((LCAppModel) -> Void)? = nil
     @StateObject private var controller = LiveBoardControllerInput()
     @StateObject private var artwork = LiveBoardArtworkStore()
@@ -189,6 +190,11 @@ struct StrataSwitchboard: View {
                     if let launchInGameMode {
                         Button("Request Game Mode", systemImage: "gamecontroller.fill") {
                             controller.stop(); launchInGameMode(app)
+                        }
+                    }
+                    if let launchInGameModeWithJIT {
+                        Button("Request Game Mode + JIT", systemImage: "bolt.circle.fill") {
+                            controller.stop(); launchInGameModeWithJIT(app)
                         }
                     }
                     if let launchWithMetalHUD {

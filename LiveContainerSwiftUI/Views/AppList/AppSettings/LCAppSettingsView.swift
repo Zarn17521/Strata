@@ -148,7 +148,7 @@ struct LCAppSettingsView: View {
                     Text("lc.appSettings.helperProcessesSupport".loc)
                 }
                 .disabled(model.uiIs32bit)
-                Text("Launch in Game Mode declares support and requests a fullscreen launch. iOS controls activation; check Game Overlay in Control Center. This does not grant extra RAM.").font(.footnote).foregroundStyle(.secondary)
+                Text("Zn declares system Game Mode support for both host and guest processes. Request Game Mode uses a fullscreen launch; Game Mode + JIT also requests JIT. Turn system Game Mode on or off in Control Center while Zn is active. iOS controls activation for the host, not independently for each library item. This does not grant extra RAM.").font(.footnote).foregroundStyle(.secondary)
                 Toggle(isOn: $model.uiIsJITNeeded) {
                     Text("lc.appSettings.launchWithJit".loc)
                 }

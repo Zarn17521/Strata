@@ -72,9 +72,9 @@
 	<key>GCSupportsControllerUserInteraction</key>
 	<true/>
 	<key>GCSupportsGameMode</key>
-	<false/>
+	<true/>
 	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.education</string>
+	<string>public.app-category.games</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>sidestore</string>
@@ -83,7 +83,7 @@
 		<string>livecontainer3</string>
 	</array>
 	<key>LSSupportsGameMode</key>
-	<false/>
+	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NFCReaderUsageDescription</key>
