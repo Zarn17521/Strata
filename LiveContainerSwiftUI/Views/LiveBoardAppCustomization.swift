@@ -4,7 +4,17 @@ import SwiftUI
 @MainActor final class LiveBoardAppCustomization: ObservableObject {
     static let shared = LiveBoardAppCustomization()
     @Published private(set) var revision = 0
-    private let cache = NSCache<NSString, UIImage>()
+    private let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 12 * 1024 * 1024
+        cache.countLimit = 24
+        return cache
+    }()
+    func trimTransientImages() { cache.removeAllObjects() }
+    private func imageCost(_ image: UIImage) -> Int {
+        if let cg = image.cgImage { return cg.bytesPerRow * cg.height }
+        return Int(image.size.width * image.scale * image.size.height * image.scale * 4)
+    }
     private let defaults = LCUtils.appGroupUserDefault
     private var names: [String: String] { defaults.dictionary(forKey: "StrataAppNames") as? [String: String] ?? [:] }
     private var icons: [String: String] { defaults.dictionary(forKey: "StrataAppIcons") as? [String: String] ?? [:] }
@@ -32,7 +42,7 @@ import SwiftUI
         guard let file = icons[liveBoardAppKey(app)] else { return nil }
         if let image = cache.object(forKey: file as NSString) { return image }
         guard let image = UIImage(contentsOfFile: directory.appendingPathComponent(file).path) else { return nil }
-        cache.setObject(image, forKey: file as NSString)
+        cache.setObject(image, forKey: file as NSString, cost: imageCost(image))
         return image
     }
     func saveIcon(_ image: UIImage, app: LCAppModel) throws {
@@ -51,7 +61,7 @@ import SwiftUI
         var map = icons; let old = map.updateValue(file, forKey: liveBoardAppKey(app))
         defaults.set(map, forKey: "StrataAppIcons")
         if let old { try? FileManager.default.removeItem(at: directory.appendingPathComponent(old)) }
-        cache.setObject(result, forKey: file as NSString)
+        cache.setObject(result, forKey: file as NSString, cost: imageCost(result))
         revision += 1
     }
     func resetIcon(_ app: LCAppModel) {

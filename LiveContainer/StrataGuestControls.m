@@ -853,8 +853,11 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 }
 
 @interface StrataNxSkinView : UIView
-@property(nonatomic, strong) UIImage *portraitArtwork;
-@property(nonatomic, strong) UIImage *landscapeArtwork;
+@property(nonatomic, readonly) UIImage *portraitArtwork;
+@property(nonatomic, readonly) UIImage *landscapeArtwork;
+@property(nonatomic, strong) UIImage *activeArtwork;
+@property(nonatomic) BOOL activeArtworkPortrait;
+- (UIImage *)artworkForPortrait:(BOOL)portrait;
 @property(nonatomic) BOOL darkTheme;
 @property(nonatomic, weak) UIView *mappedPad;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
@@ -920,8 +923,22 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         layer.borderColor = edge.CGColor;
     }
 }
+// Load only the current orientation. The old image is released on rotation;
+// no image allocation during steady-state input or gameplay.
+- (UIImage *)artworkForPortrait:(BOOL)portrait {
+    if (self.activeArtwork && self.activeArtworkPortrait == portrait) return self.activeArtwork;
+    self.activeArtwork = nil;
+    self.activeArtworkPortrait = portrait;
+    self.activeArtwork = StrataNxBuiltinArtwork(portrait,self.darkTheme);
+    return self.activeArtwork;
+}
+- (UIImage *)portraitArtwork { return [self artworkForPortrait:YES]; }
+- (UIImage *)landscapeArtwork { return [self artworkForPortrait:NO]; }
 - (void)layoutSubviews {
     [super layoutSubviews];
+    if (!CGRectIsEmpty(self.bounds)) {
+        [self artworkForPortrait:self.bounds.size.height > self.bounds.size.width];
+    }
     [self setNeedsDisplay];
 }
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending {
@@ -1618,15 +1635,15 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     // without importing or downloading any PNG. The user's old custom
     // artwork files remain untouched on disk for potential future restore.
     skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
-    skin.portraitArtwork = StrataNxBuiltinArtwork(YES, skin.darkTheme);
-    skin.landscapeArtwork = StrataNxBuiltinArtwork(NO, skin.darkTheme);
-    if (skin.portraitArtwork || skin.landscapeArtwork) StrataEnableNxSkinTouchMapping(pad);
+    BOOL portrait=host.bounds.size.height>host.bounds.size.width;
+    BOOL hasArtwork=[skin artworkForPortrait:portrait]!=nil;
+    if (hasArtwork) StrataEnableNxSkinTouchMapping(pad);
     // The shell must cover aspect-FILL side overscan while staying under
     // the active DmGamepad touch view. Never reparent DmGameView.
     UIView *gameView = StrataNxChildOfClass(host, @"DmGameView");
     if (gameView) [host insertSubview:skin aboveSubview:gameView];
     else [host insertSubview:skin belowSubview:pad];
-    if (skin.portraitArtwork || skin.landscapeArtwork) {
+    if (hasArtwork) {
         StrataNxKeepNativeInputButHideDrawing(pad);
         if (gameRoot) {
             StrataNxHookRootLayout(gameRoot, group);
@@ -1638,10 +1655,9 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
         }
     }
     [skin setNeedsDisplay];
-    NSLog(@"[Strata][NxSkin] built-in %@ portrait=%@ landscape=%@; mapped native input",
+    NSLog(@"[Strata][NxSkin] built-in %@ %@ loaded=%@; other orientation loaded on demand",
           skin.darkTheme ? @"AMOLED Dark" : @"Pearl Light",
-          skin.portraitArtwork ? @"YES" : @"NO",
-          skin.landscapeArtwork ? @"YES" : @"NO");
+          portrait ? @"portrait" : @"landscape",hasArtwork ? @"YES" : @"NO");
 }
 
 // Apply the PER-APP Orientation Lock selected in App Settings or the

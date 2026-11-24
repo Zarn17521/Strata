@@ -89,9 +89,18 @@ struct StrataSwitchboard: View {
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
         .background(LiveBoardOrientationLock(mask: .portrait))
-        .onAppear { visible = true; selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
-        .onDisappear { visible = false; controller.stop(); audio.stop() }
-        .onChange(of: phase) { value in if value == .active { busy = false; bind() } else { controller.stop() } }
+        .onAppear { visible = true; artwork.resumeDecoding(); selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; bind() }
+        .onDisappear { visible = false; controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
+        .onChange(of: phase) { value in
+            if value == .active { busy = false; artwork.resumeDecoding(); bind() }
+            else { controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            trimPresentationCaches(pause: !visible || phase != .active)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardArtworkStore.trimNotification)) { _ in
+            trimPresentationCaches(pause: false)
+        }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; bind() }
         .sheet(isPresented: $choosingCover, onDismiss: bind) {
@@ -357,6 +366,11 @@ struct StrataSwitchboard: View {
         }.accessibilityLabel(label)
     }
 
+    private func trimPresentationCaches(pause: Bool) {
+        artwork.trimTransientImages(pause: pause)
+        LiveBoardIconStore.invalidate()
+        customization.trimTransientImages()
+    }
     private func activate(_ app: LCAppModel) {
         guard !busy else { return }; busy = true; controller.stop(); launch(app)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { busy = false }

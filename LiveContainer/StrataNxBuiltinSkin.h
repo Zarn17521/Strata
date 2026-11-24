@@ -229,8 +229,8 @@ static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark) {
     static dispatch_once_t once;
     dispatch_once(&once,^{
         cache=[NSCache new];
-        cache.countLimit=2;
-        cache.totalCostLimit=18*1024*1024;
+        cache.countLimit=1;
+        cache.totalCostLimit=9*1024*1024;
     });
     NSString *key=[NSString stringWithFormat:@"%@-%@",
         portrait?@"portrait":@"landscape",dark?@"amoled":@"pearl"];

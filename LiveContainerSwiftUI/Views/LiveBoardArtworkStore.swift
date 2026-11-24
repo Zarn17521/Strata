@@ -21,7 +21,30 @@ import ImageIO
             directory: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Artwork", isDirectory: true),
             legacyDirectory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LiveBoard/Artwork", isDirectory: true))
     }
-    init() { cache.totalCostLimit = 64 * 1024 * 1024; reloadFromDisk() }
+    // Limits describe evictable cache entries, not a guaranteed process budget.
+    static let trimNotification = Notification.Name("ZNTrimLauncherPresentationCaches")
+    private var decodingPaused = false
+    init() {
+        cache.totalCostLimit = 32 * 1024 * 1024
+        cache.countLimit = 32
+        reloadFromDisk()
+    }
+    private func imageCost(_ image: UIImage) -> Int {
+        if let cg = image.cgImage { return cg.bytesPerRow * cg.height }
+        return Int(image.size.width * image.scale * image.size.height * image.scale * 4)
+    }
+    // Do not delete artwork or mappings. Drop pending tokens so completed
+    // background decodes cannot refill an inactive launcher's cache.
+    func trimTransientImages(pause: Bool = false) {
+        if pause { decodingPaused = true }
+        requests.removeAll()
+        cache.removeAllObjects()
+    }
+    func resumeDecoding() {
+        guard decodingPaused else { return }
+        decodingPaused = false
+        revision += 1
+    }
     func reloadFromDisk() {
         mappingCache = nil
         if let migrated = try? files.migrate(mappings) {
@@ -43,7 +66,7 @@ import ImageIO
     func image(for key: String, kind: Kind, mode: String = "bigPicture") -> UIImage? {
         let id = mode + ":" + kind.rawValue + ":" + key
         if let cached = cache.object(forKey: id as NSString) { return cached }
-        guard !missing.contains(id), requests[id] == nil else { return nil }
+        guard !decodingPaused, !missing.contains(id), requests[id] == nil else { return nil }
         guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(id); return nil }
         let token = UUID(); requests[id] = token
         let maximum = kind == .background ? 1600 : 640
@@ -54,7 +77,7 @@ import ImageIO
             }.value
             guard let self, self.requests[id] == token else { return }
             self.requests[id] = nil
-            if let image { self.cache.setObject(image, forKey: id as NSString, cost: Int(image.size.width * image.size.height * 4)) }
+            if let image { self.cache.setObject(image, forKey: id as NSString, cost: self.imageCost(image)) }
             else { self.missing.insert(id) }
             self.revision += 1
         }
@@ -96,7 +119,7 @@ import ImageIO
         map[id] = filename; mappingCache = map; defaults.set(map, forKey: "LiveBoardConsoleArtwork")
         removeUnreferenced(previousFiles, mappings: map)
         writeIndex()
-        requests[id] = nil; missing.remove(id); cache.setObject(resized, forKey: id as NSString, cost: Int(resized.size.width * resized.size.height * 4)); revision += 1
+        requests[id] = nil; missing.remove(id); cache.setObject(resized, forKey: id as NSString, cost: imageCost(resized)); revision += 1
     }
     func remove(for key: String, kind: Kind, mode: String = "bigPicture") {
         let id = mode + ":" + kind.rawValue + ":" + key

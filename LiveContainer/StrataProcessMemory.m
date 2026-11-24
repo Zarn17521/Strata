@@ -75,8 +75,19 @@ void StrataStartMemoryOverlaySampler(NSString *group, NSString *role, NSString *
     settings = [[NSUserDefaults alloc] initWithSuiteName:group];
     timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
     dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, NSEC_PER_SEC / 5);
+    __block BOOL sampleFileMayExist = YES;
+    __block BOOL directoryReady = NO;
     dispatch_source_set_event_handler(timer, ^{
-        if (![settings boolForKey:@"StrataMemoryOverlay"]) { [NSFileManager.defaultManager removeItemAtURL:file error:nil]; return; }
+        @autoreleasepool {
+        if (![settings boolForKey:@"StrataMemoryOverlay"]) {
+            // Remove a stale sample only once, not once per second forever.
+            if (sampleFileMayExist) {
+                [NSFileManager.defaultManager removeItemAtURL:file error:nil];
+                sampleFileMayExist = NO;
+            }
+            directoryReady = NO;
+            return;
+        }
         task_vm_info_data_t vm = {0};
         mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
         if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vm, &count) != KERN_SUCCESS) return;
@@ -84,8 +95,14 @@ void StrataStartMemoryOverlaySampler(NSString *group, NSString *role, NSString *
         @synchronized ([NSProcessInfo class]) { r = currentRole ?: @"process"; n = currentName ?: @""; }
         NSDictionary *sample = @{@"pid": @(getpid()), @"role": r, @"name": n, @"footprint": @(vm.phys_footprint),
                                  @"available": @(os_proc_available_memory()), @"time": @(NSDate.date.timeIntervalSince1970)};
-        [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil];
-        [[NSJSONSerialization dataWithJSONObject:sample options:0 error:nil] writeToURL:file atomically:YES];
+        if (!directoryReady)
+            directoryReady = [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil];
+        if (directoryReady) {
+            NSData *data=[NSJSONSerialization dataWithJSONObject:sample options:0 error:nil];
+            if ([data writeToURL:file atomically:YES]) sampleFileMayExist = YES;
+            else directoryReady = NO;
+        }
+        }
     });
     dispatch_resume(timer);
 }
