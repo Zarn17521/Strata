@@ -57,6 +57,11 @@ import Darwin
         requests.removeAll()
         pendingDecodes.removeAll()
         cache.removeAllObjects()
+        // Apply Low Memory Mode limits immediately, rather than waiting for the
+        // next image lookup to update NSCache's eviction budget.
+        cache.totalCostLimit = constrained ? 4 * 1024 * 1024 : 8 * 1024 * 1024
+        cache.countLimit = constrained ? 4 : 8
+        revision += 1
     }
     func resumeDecoding() {
         guard decodingPaused else { return }
@@ -89,8 +94,8 @@ import Darwin
         let token = UUID(); requests[id] = token
         let lowMemory = constrained
         let maximum = kind == .background ? (lowMemory ? 800 : 1600) : (lowMemory ? 320 : 640)
-        cache.totalCostLimit = (lowMemory ? 8 : 16) * 1024 * 1024
-        cache.countLimit = lowMemory ? 8 : 16
+        cache.totalCostLimit = (lowMemory ? 4 : 16) * 1024 * 1024
+        cache.countLimit = lowMemory ? 4 : 16
         guard pendingDecodes.count < (lowMemory ? 4 : 16) else { requests[id] = nil; return nil }
         pendingDecodes.append(DecodeJob(id: id, token: token, url: url, maximum: maximum))
         startPendingDecodes()

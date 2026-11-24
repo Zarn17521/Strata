@@ -99,6 +99,10 @@ struct StrataSwitchboard: View {
         }
         .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: false) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            // Evict transient launcher data and invalidate queued decode results.
+            // Keep the visible library usable so it can reload artwork on demand.
+            controller.stop()
+            audio.stop()
             trimPresentationCaches(pause: !visible || phase != .active)
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardArtworkStore.trimNotification)) { _ in
