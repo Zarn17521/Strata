@@ -1147,9 +1147,10 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     if (CGRectIsNull(opening) || CGRectIsEmpty(opening)) return;
     CGContextSaveGState(ctx);
     CGContextAddRect(ctx, bounds);
-    // A tiny inward overlap prevents the Metal drawable from peeking past
-    // the printed screen border because of fractional backing-pixel rounding.
-    CGContextAddRect(ctx, CGRectInset(opening, 0.35, 0.35));
+    // Use the exact measured aperture for photo skins, without shrinking
+    // the live picture or painting a dark line inside the opening.
+    // The same aperture is used by the game aspect-fill layout.
+    CGContextAddRect(ctx, artwork ? opening : CGRectInset(opening, 0.35, 0.35));
     CGContextEOClip(ctx);
     if (artwork) {
         // Cover even transparent parts of imported PNGs so the extra-wide
@@ -1217,8 +1218,10 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     // large imported skin bitmap is NEVER redrawn because of touch motion.
     CGContextRestoreGState(ctx);
 
-    // A subtle screen edge follows the fixed opening, not the oversized game.
-    CGRect displayEdge = artwork ? opening : game;
+    // The photo artwork already contains its own physical screen rim.
+    // Do not overlay another dark stroke on top of the live game aperture.
+    if (artwork) return;
+    CGRect displayEdge = game;
     CGContextSaveGState(ctx);
     CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:0.06 alpha:0.88].CGColor);
     CGContextSetLineWidth(ctx, 3.0);
@@ -1247,7 +1250,7 @@ static UIView *StrataFindNxPadHost(UIView *view, NSUInteger depth) {
 }
 
 // The skin's black screen opening is not the default NxNative picture frame.
-// Apply the original game aspect FIT inside the measured artwork opening AFTER
+// Apply the original game aspect FILL inside the measured artwork opening AFTER
 // DmRootVC lays out the scene; do not change render scale or Metal resources.
 static char StrataNxSkinRootGroupKey;
 static void (*StrataNxOriginalRootDidLayout)(id, SEL) = NULL;
