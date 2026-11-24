@@ -857,6 +857,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic, readonly) UIImage *landscapeArtwork;
 @property(nonatomic, strong) UIImage *activeArtwork;
 @property(nonatomic) BOOL activeArtworkPortrait;
+@property(nonatomic) CGRect lastArtworkLayoutBounds;
 - (UIImage *)artworkForPortrait:(BOOL)portrait;
 @property(nonatomic) BOOL darkTheme;
 @property(nonatomic, weak) UIView *mappedPad;
@@ -936,10 +937,14 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 - (UIImage *)landscapeArtwork { return [self artworkForPortrait:NO]; }
 - (void)layoutSubviews {
     [super layoutSubviews];
-    if (!CGRectIsEmpty(self.bounds)) {
+    // Skip bitmap redraws on repeated layout passes with identical bounds.
+    // The game-layout hook still invalidates when the display aperture moves.
+    if (CGRectIsEmpty(self.bounds)) return;
+    if (!CGRectEqualToRect(self.lastArtworkLayoutBounds,self.bounds) || !self.activeArtwork) {
+        self.lastArtworkLayoutBounds=self.bounds;
         [self artworkForPortrait:self.bounds.size.height > self.bounds.size.width];
+        [self setNeedsDisplay];
     }
-    [self setNeedsDisplay];
 }
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending {
     UIView *pad=self.mappedPad;

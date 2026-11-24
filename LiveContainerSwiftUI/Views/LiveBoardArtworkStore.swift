@@ -8,6 +8,15 @@ import ImageIO
     private let defaults = LCUtils.appGroupUserDefault
     private let cache = NSCache<NSString, UIImage>()
     private var requests: [String: UUID] = [:]
+    private struct DecodeJob {
+        let id: String
+        let token: UUID
+        let url: URL
+        let maximum: Int
+    }
+    private var pendingDecodes: [DecodeJob] = []
+    private var activeDecodes = 0
+    private let decodeConcurrencyLimit = 2
     private var missing = Set<String>()
     private var mappingCache: [String: String]?
 
@@ -38,6 +47,7 @@ import ImageIO
     func trimTransientImages(pause: Bool = false) {
         if pause { decodingPaused = true }
         requests.removeAll()
+        pendingDecodes.removeAll()
         cache.removeAllObjects()
     }
     func resumeDecoding() {
@@ -51,7 +61,7 @@ import ImageIO
             defaults.set(migrated, forKey: "LiveBoardConsoleArtwork"); mappingCache = migrated
         }
         writeIndex()
-        cache.removeAllObjects(); requests.removeAll(); missing.removeAll(); revision += 1
+        cache.removeAllObjects(); requests.removeAll(); pendingDecodes.removeAll(); missing.removeAll(); revision += 1
     }
     private func writeIndex() {
         guard let data = try? JSONSerialization.data(withJSONObject: mappings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -70,18 +80,37 @@ import ImageIO
         guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(id); return nil }
         let token = UUID(); requests[id] = token
         let maximum = kind == .background ? 1600 : 640
-        Task { [weak self] in
-            let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: maximum] as CFDictionary) else { return nil }
-                return UIImage(cgImage: cg)
-            }.value
-            guard let self, self.requests[id] == token else { return }
-            self.requests[id] = nil
-            if let image { self.cache.setObject(image, forKey: id as NSString, cost: self.imageCost(image)) }
-            else { self.missing.insert(id) }
-            self.revision += 1
-        }
+        pendingDecodes.append(DecodeJob(id: id, token: token, url: url, maximum: maximum))
+        startPendingDecodes()
         return nil
+    }
+
+    // A large library must not decode every cover simultaneously. Each job
+    // keeps only a URL until a slot is available, and stale queued jobs are
+    // discarded before ImageIO opens a file.
+    private func startPendingDecodes() {
+        guard !decodingPaused else { return }
+        while activeDecodes < decodeConcurrencyLimit && !pendingDecodes.isEmpty {
+            let job = pendingDecodes.removeFirst()
+            guard requests[job.id] == job.token else { continue }
+            activeDecodes += 1
+            Task { [weak self] in
+                let image = await Task.detached(priority: .utility) { () -> UIImage? in
+                    guard let source = CGImageSourceCreateWithURL(job.url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                          let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: job.maximum] as CFDictionary) else { return nil }
+                    return UIImage(cgImage: cg)
+                }.value
+                guard let self else { return }
+                self.activeDecodes -= 1
+                if !self.decodingPaused, self.requests[job.id] == job.token {
+                    self.requests[job.id] = nil
+                    if let image { self.cache.setObject(image, forKey: job.id as NSString, cost: self.imageCost(image)) }
+                    else { self.missing.insert(job.id) }
+                    self.revision += 1
+                }
+                self.startPendingDecodes()
+            }
+        }
     }
 
     /// Cache-only lookup; never starts a decode. Used for same-frame fallbacks.
