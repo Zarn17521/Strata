@@ -38,7 +38,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.1.1</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -216,9 +216,9 @@
 	<key>SBAppUsesLocalNotifications</key>
 	<integer>1</integer>
 	<key>StrataBuildChannel</key>
-	<string>Release</string>
+	<string>Beta</string>
 	<key>StrataMarketingVersion</key>
-	<string>0.1.0</string>
+	<string>0.1.1</string>
 	<key>StrataRevision</key>
 	<integer>57</integer>
 	<key>UIApplicationSceneManifest</key>
