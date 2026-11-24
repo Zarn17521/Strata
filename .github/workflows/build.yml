@@ -73,6 +73,15 @@ jobs:
           file_to_build=`ls -A | grep -i \\.xcworkspace\$ || ls -A | grep -i \\.xcodeproj\$`
           file_to_build=`echo $file_to_build | awk '{$1=$1;print}'`
           echo "file_to_build=$file_to_build" >> $GITHUB_OUTPUT
+      - name: Prepare ZN app icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f Resources/ZNIcon.png ]; then
+            python3 .github/scripts/prepare_zn_icon.py
+          else
+            echo "::warning::ZNIcon.png has not been uploaded to Resources; retaining existing app icon."
+          fi
       - name: Embed user-supplied NxNative photo skins
         shell: bash
         run: |

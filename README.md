@@ -1,3 +1,23 @@
+# ZN — Game Library
+
+An independent modified fork of [Strata](https://github.com/huzaifahshahid71-ops/Strata), built on [LiveContainer](https://github.com/LiveContainer/LiveContainer). Maintained by [Zarn17521](https://github.com/Zarn17521).
+
+## ZN interface
+
+- Switchboard game library and app management
+- Pearl Light / AMOLED Dark NxNative controller skins
+- Classic, Wide and Full Screen display presets
+- Per-app orientation and existing JIT, memory capability and multitasking support
+
+Use the [Xcode Build workflow](https://github.com/Zarn17521/Strata/actions/workflows/build.yml) on this fork for unsigned IPA builds. The underlying bundle identifiers and stored settings remain unchanged. Back up data before updating.
+
+## Credits and licenses
+
+ZN is an independent community fork, not an official upstream or Nintendo release. Original authorship, copyright and applicable license terms are retained. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [LICENSE](LICENSE) and the dependency notices. The upstream documentation below is retained for provenance, not as a description of current ZN features or releases.
+
+<details>
+<summary>Original Strata README (historical)</summary>
+
 # Strata 2.0
 
 A customizable launcher built on [LiveContainer](https://github.com/LiveContainer/LiveContainer), with three interfaces and bundled SideStore support.
@@ -58,3 +78,5 @@ Use a compatible Xcode 26 or newer installation with the iPhoneOS SDK. The targe
 ## Credits and permissions
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), the retained [LiveContainer license](LICENSE), dependency notices and pinned provenance. StosSign redistribution permission for this Strata release was confirmed by the project maintainer on 29 October 2026; no general upstream license is asserted. Strata is not affiliated with Apple, Sony or Valve.
+
+</details>

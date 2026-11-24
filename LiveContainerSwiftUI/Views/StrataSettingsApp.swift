@@ -7,7 +7,7 @@ enum StrataVersion {
     static var revision: Int? { (Bundle.main.object(forInfoDictionaryKey: "StrataRevision") as? NSNumber)?.intValue }
     static var channel: String? { Bundle.main.object(forInfoDictionaryKey: "StrataBuildChannel") as? String }
     static var display: String { marketing + (revision.map { " (r\($0))" } ?? "") }
-    static var full: String { "Strata " + display + (channel.map { " · " + $0 } ?? "") }
+    static var full: String { "ZN " + display + (channel.map { " · " + $0 } ?? "") }
 }
 
 extension Notification.Name {
@@ -62,7 +62,7 @@ struct StrataSettingsApp: View {
             Entry(id: "refresh", title: "Refresh", symbol: "arrow.triangle.2.circlepath", tint: .cyan, section: "System", keywords: "refresh sidestore expiry certificate vpn shortcut automation") { AnyView(StrataAutoRefreshSettings()) },
             Entry(id: "identity", title: "Signing Identity", symbol: "signature", tint: .mint, section: "System", keywords: "signing identity certificate localsigner keychain") { if #available(iOS 16.0, *) { return AnyView(StrataIdentitySettings()) } else { return AnyView(Text("Requires iOS 16 or later.")) } },
             Entry(id: "advanced", title: "Advanced (LiveContainer)", symbol: "gearshape.2", tint: .gray, section: "System", keywords: "advanced livecontainer settings multitask jit enabler data management") { AnyView(LCSettingsView()) },
-            Entry(id: "about", title: "About Strata", symbol: "info.circle", tint: .blue, section: "About", keywords: "about version credits github") { AnyView(StrataAboutView()) },
+            Entry(id: "about", title: "About ZN", symbol: "info.circle", tint: .blue, section: "About", keywords: "about version credits github") { AnyView(StrataAboutView()) },
         ]
     }
 
@@ -126,7 +126,7 @@ struct StrataSettingsApp: View {
                 HStack(spacing: 14) {
                     StrataSettingsIcon.image.resizable().frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Strata").font(.title2.weight(.semibold))
+                        Text("ZN").font(.title2.weight(.semibold))
                         Text(StrataVersion.display + (StrataVersion.channel.map { " · " + $0 } ?? "")).font(.subheadline).foregroundStyle(.secondary)
                             .accessibilityIdentifier("settings.version")
                     }
@@ -172,7 +172,7 @@ struct StrataSettingsApp: View {
             link("jit"); link("memory")
             Toggle(isOn: Binding(get: { memoryOverlay }, set: { memoryOverlay = $0; StrataMemoryOverlay.shared.apply() })) { row("Memory overlay", symbol: "gauge.with.needle", tint: .green) }
             link("framegen"); link("storage")
-        } header: { Text("Performance") } footer: { Text("The overlay shows memory used and the limit for Strata, each app and each helper (RAM donor) process, with peaks.") }
+        } header: { Text("Performance") } footer: { Text("The overlay shows memory used and the limit for ZN, each app and each helper (RAM donor) process, with peaks.") }
         Section("System") { link("runtime"); link("refresh"); link("identity"); link("advanced") }
         Section("About") {
             link("about")

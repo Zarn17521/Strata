@@ -1,4 +1,8 @@
-# Third-party notices
+# ZN — Open source credits & third-party notices
+
+ZN is a modified fork maintained by [Zarn17521](https://github.com/Zarn17521). Original Strata authorship: [huzaifahshahid71-ops/Strata](https://github.com/huzaifahshahid71-ops/Strata) and contributors. The retained [GNU AGPL v3 license](LICENSE), source copyright and component-specific terms continue to apply. ZN branding does not transfer ownership of upstream work.
+
+## Retained upstream component notices
 
 - LiveContainer: https://github.com/LiveContainer/LiveContainer — AGPL-3.0; source base bdc07ed9d0fce19f79db78a4a1015d67d4312597. The upstream license is retained; the source base is identified above.
 - SideStore: https://github.com/SideStore/SideStore — see its upstream license and source. The combined release preserves the original bundled SideStore executable and extensions.
@@ -22,3 +26,8 @@ Pinned revision: c6e5f49cb4eb1a466eca1c66e3bf200ebbdab9e9. MIT license, retained
 ## ryC0
 
 The App Switcher deck layout and gesture model in `LiveContainer/StrataGuestControls.m` are adapted from ryC0 (`LiveContainerSwiftUI/Home/Screen/AppSwitcherView.swift`), https://github.com/Sami-Wali/ryC0, licensed under the GNU Affero General Public License v3.0, the same licence as Strata.
+
+
+## ZN fork artwork
+
+The custom ZN mark identifies this modified fork. Zelda-inspired artwork is fan branding; no Nintendo affiliation or endorsement is claimed. Existing upstream artwork notices above are retained. The original maintainer's StosSign permission statement is historical and should not be interpreted as a new permission granted to this fork; verify redistribution permission separately.
