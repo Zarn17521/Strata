@@ -82,8 +82,9 @@ final class LiveBoardControllerInput: ObservableObject {
         profile.valueChangedHandler = { [weak self] gamepad, element in
             Task { @MainActor [weak self] in self?.handle(gamepad, element: element) }
         }
-        confirmSymbol = profile.buttonA.sfSymbolsName ?? "a.circle"
-        detailsSymbol = profile.buttonX.sfSymbolsName ?? "x.circle"
+        let defaults = LCUtils.appGroupUserDefault
+        confirmSymbol = defaults.bool(forKey: "ZNBetaSwapAB") ? (profile.buttonB.sfSymbolsName ?? "b.circle") : (profile.buttonA.sfSymbolsName ?? "a.circle")
+        detailsSymbol = defaults.bool(forKey: "ZNBetaSwapXY") ? (profile.buttonY.sfSymbolsName ?? "y.circle") : (profile.buttonX.sfSymbolsName ?? "x.circle")
         connected = true
     }
     private func detach(_ controller: GCController) {
@@ -101,6 +102,10 @@ final class LiveBoardControllerInput: ObservableObject {
     private func handle(_ profile: GCExtendedGamepad, element: GCControllerElement) {
         guard active else { return }
 
+        let defaults = LCUtils.appGroupUserDefault
+        let swapAB = defaults.bool(forKey: "ZNBetaSwapAB")
+        let swapXY = defaults.bool(forKey: "ZNBetaSwapXY")
+        if !defaults.bool(forKey: "ZNBetaLowMemory") {
         // Update visual states for skin
         leftStick = CGPoint(x: CGFloat(profile.leftThumbstick.xAxis.value), y: CGFloat(profile.leftThumbstick.yAxis.value))
         rightStick = CGPoint(x: CGFloat(profile.rightThumbstick.xAxis.value), y: CGFloat(profile.rightThumbstick.yAxis.value))
@@ -117,13 +122,14 @@ final class LiveBoardControllerInput: ObservableObject {
         l3Pressed = profile.leftThumbstickButton?.isPressed ?? false
         r3Pressed = profile.rightThumbstickButton?.isPressed ?? false
 
+        }
         if element === profile.dpad || element === profile.leftThumbstick {
             let pad = element === profile.dpad ? profile.dpad : profile.leftThumbstick
             updateDirection(x: pad.xAxis.value, y: pad.yAxis.value)
-        } else if element === profile.buttonA, profile.buttonA.isPressed { onCommand?(.confirm) }
-        else if element === profile.buttonB, profile.buttonB.isPressed { onCommand?(.back) }
-        else if element === profile.buttonX, profile.buttonX.isPressed { onCommand?(.details) }
-        else if element === profile.buttonY, profile.buttonY.isPressed { onCommand?(.favorite) }
+        } else if element === profile.buttonA, profile.buttonA.isPressed { onCommand?(swapAB ? .back : .confirm) }
+        else if element === profile.buttonB, profile.buttonB.isPressed { onCommand?(swapAB ? .confirm : .back) }
+        else if element === profile.buttonX, profile.buttonX.isPressed { onCommand?(swapXY ? .favorite : .details) }
+        else if element === profile.buttonY, profile.buttonY.isPressed { onCommand?(swapXY ? .details : .favorite) }
         else if element === profile.leftShoulder, profile.leftShoulder.isPressed { onCommand?(.previousSection) }
         else if element === profile.rightShoulder, profile.rightShoulder.isPressed { onCommand?(.nextSection) }
         else if element === profile.buttonMenu, profile.buttonMenu.isPressed { onCommand?(.details) }

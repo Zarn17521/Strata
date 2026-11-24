@@ -6,6 +6,7 @@ import AudioToolbox
     private var sound: SystemSoundID = 0
     private var lastPlay = Date.distantPast
     func play() {
+        guard LCUtils.appGroupUserDefault.object(forKey: "ZNBetaNavigationAudio") as? Bool ?? true else { stop(); return }
         guard Date().timeIntervalSince(lastPlay) > 0.07 else { return }
         lastPlay = Date()
         if sound == 0 {
