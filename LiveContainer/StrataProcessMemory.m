@@ -28,6 +28,8 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     NSURL *latest = [directory URLByAppendingPathComponent:@"guest-memory.json"];
     NSURL *byPID = [directory URLByAppendingPathComponent:[NSString stringWithFormat:@"%d-memory.json", pid]];
     NSTimeInterval startedAt = NSDate.date.timeIntervalSince1970;
+    __block uint64_t peakFootprint = 0;
+    __block uint64_t minimumAvailable = UINT64_MAX;
     void (^sample)(void) = ^{
         @autoreleasepool {
             task_vm_info_data_t vm = {0};
@@ -44,7 +46,17 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
                 @"startedAt":@(startedAt), @"sampledAt":@(NSDate.date.timeIntervalSince1970),
                 @"increasedMemoryEntitlement":@(increased), @"debuggerAttached":@(attached), @"availableBytes":@(available),
                 @"availableReported":@(available > 0), @"footprintReported":@(hasFootprint)} mutableCopy];
-            if (hasFootprint) record[@"footprintBytes"] = @(vm.phys_footprint);
+            if (hasFootprint) {
+                peakFootprint = MAX(peakFootprint, vm.phys_footprint);
+                record[@"footprintBytes"] = @(vm.phys_footprint);
+                record[@"peakFootprintBytes"] = @(peakFootprint);
+            }
+#if !TARGET_OS_OSX
+            minimumAvailable = MIN(minimumAvailable, available);
+            record[@"minimumAvailableBytes"] = @(minimumAvailable);
+#endif
+            record[@"sessionSeconds"] = @(MAX(0, NSDate.date.timeIntervalSince1970 - startedAt));
+            record[@"thermalState"] = @(NSProcessInfo.processInfo.thermalState);
             NSData *json = [NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted error:nil];
             [json writeToURL:byPID options:NSDataWritingAtomic error:nil];
             [json writeToURL:latest options:NSDataWritingAtomic error:nil];
@@ -54,7 +66,7 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     static dispatch_source_t timer;
     if (timer) dispatch_source_cancel(timer);
     timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
-    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), 5 * NSEC_PER_SEC, NSEC_PER_SEC);
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), 10 * NSEC_PER_SEC, 2 * NSEC_PER_SEC);
     dispatch_source_set_event_handler(timer, sample);
     dispatch_resume(timer);
 }

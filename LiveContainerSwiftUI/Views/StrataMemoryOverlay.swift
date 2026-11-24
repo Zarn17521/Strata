@@ -23,7 +23,7 @@ import UIKit
     }
 }
 
-private struct StrataMemorySample: Identifiable {
+private struct StrataMemorySample: Identifiable, Equatable {
     let pid: Int
     let role: String
     let name: String
@@ -37,7 +37,7 @@ struct StrataMemoryOverlayView: View {
     @State private var samples: [StrataMemorySample] = []
     @State private var peaks: [Int: UInt64] = [:]
     @State private var peakTotal: UInt64 = 0
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 2, tolerance: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -84,9 +84,13 @@ struct StrataMemoryOverlayView: View {
                                            footprint: (value["footprint"] as? NSNumber)?.uint64Value ?? 0, available: (value["available"] as? NSNumber)?.uint64Value ?? 0))
         }
         let order = ["Strata": 0, "Strata + app": 0, "app": 1, "helper": 2]
-        samples = next.sorted { (order[$0.role] ?? 3, $0.pid) < (order[$1.role] ?? 3, $1.pid) }
-        for sample in samples { peaks[sample.pid] = max(peaks[sample.pid] ?? 0, sample.footprint) }
-        peakTotal = max(peakTotal, samples.reduce(0) { $0 + $1.footprint })
+        let sorted = next.sorted { (order[$0.role] ?? 3, $0.pid) < (order[$1.role] ?? 3, $1.pid) }
+        if samples != sorted { samples = sorted }
+        var nextPeaks: [Int: UInt64] = [:]
+        for sample in sorted { nextPeaks[sample.pid] = max(peaks[sample.pid] ?? 0, sample.footprint) }
+        if peaks != nextPeaks { peaks = nextPeaks }
+        let total = sorted.reduce(UInt64(0)) { $0 + $1.footprint }
+        if total > peakTotal { peakTotal = total }
     }
     private func label(_ s: StrataMemorySample) -> String {
         switch s.role {

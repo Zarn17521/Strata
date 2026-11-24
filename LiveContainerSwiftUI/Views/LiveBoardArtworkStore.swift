@@ -16,7 +16,10 @@ import ImageIO
     }
     private var pendingDecodes: [DecodeJob] = []
     private var activeDecodes = 0
-    private let decodeConcurrencyLimit = 2
+    private var decodeConcurrencyLimit: Int {
+        let thermal = ProcessInfo.processInfo.thermalState
+        return thermal == .serious || thermal == .critical || ProcessInfo.processInfo.isLowPowerModeEnabled ? 1 : 2
+    }
     private var missing = Set<String>()
     private var mappingCache: [String: String]?
 
@@ -34,8 +37,8 @@ import ImageIO
     static let trimNotification = Notification.Name("ZNTrimLauncherPresentationCaches")
     private var decodingPaused = false
     init() {
-        cache.totalCostLimit = 32 * 1024 * 1024
-        cache.countLimit = 32
+        cache.totalCostLimit = 16 * 1024 * 1024
+        cache.countLimit = 16
         reloadFromDisk()
     }
     private func imageCost(_ image: UIImage) -> Int {
@@ -148,7 +151,7 @@ import ImageIO
         map[id] = filename; mappingCache = map; defaults.set(map, forKey: "LiveBoardConsoleArtwork")
         removeUnreferenced(previousFiles, mappings: map)
         writeIndex()
-        requests[id] = nil; missing.remove(id); cache.setObject(resized, forKey: id as NSString, cost: imageCost(resized)); revision += 1
+        requests[id] = nil; missing.remove(id); cache.removeObject(forKey: id as NSString); revision += 1
     }
     func remove(for key: String, kind: Kind, mode: String = "bigPicture") {
         let id = mode + ":" + kind.rawValue + ":" + key
