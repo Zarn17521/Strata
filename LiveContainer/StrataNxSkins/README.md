@@ -11,15 +11,11 @@ this directory, keeping the names exactly as written:
 - `AmoledPortrait.png` — graphite/black recoloring of the same portrait photo
 - `AmoledLandscape.jpg` — graphite/black recoloring of the same landscape photo
 
-The source images retain their ORIGINAL geometry. Do not pre-swap buttons:
-`StrataNxDrawRearrangedArtwork` uses the measured input coordinates to swap
-Look/ABXY and relabel R/ZR, while the lower-left ZN logo is drawn separately.
-This is identical in Portrait and Landscape.
+The source images retain their ORIGINAL geometry. Keep the originals unchanged. The build-time preparation isolates each circular control, repairs its previous background, and swaps R/ZR lettering. Portrait ABXY is raised and resized to preserve + and gear. AMOLED is recoloured from the corrected Pearl geometry for readable graphite buttons. The supplied dark photos remain reference assets. Prepared photos are marked to skip runtime rearrangement; ZN remains a separate native overlay. Both orientations share the measured native hit centres.
 
 Before Xcode archive, `.github/scripts/embed_nxnative_skins.py` converts the
 binary images to a generated `LiveContainer/StrataNxPhotoData.h` header.
-No network downloads, first-launch imports, or extra asset databases are
-needed. The images are included in the compiled LiveContainerShared framework
+No first-launch imports or extra asset databases are needed. OpenCV runs only on the build runner. The images are included in the compiled LiveContainerShared framework
 and are cached in memory with the selected theme.
 
 Until ALL FOUR binary files exist here, the build prints a warning and uses

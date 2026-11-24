@@ -183,10 +183,13 @@ static CGPoint StrataArtOriginalRightStickCentre(BOOL landscape) {
                      : CGPointMake(0.7469, 0.8361);
 }
 static CGPoint StrataArtFaceCentre(BOOL landscape, int b) {
-    CGPoint c = StrataArtOriginalFaceCentre(landscape, b);
-    CGPoint from = StrataArtOriginalFaceGroupCentre(landscape);
-    CGPoint to = StrataArtOriginalRightStickCentre(landscape);
-    return CGPointMake(c.x + to.x - from.x, c.y + to.y - from.y);
+    // Portrait diamond is slightly smaller and raised to preserve the + / gear row.
+    static const CGFloat px[4] = {0.857, 0.747, 0.748, 0.638};
+    static const CGFloat py[4] = {0.817, 0.868, 0.766, 0.817};
+    static const CGFloat lx[4] = {0.8836, 0.8381, 0.8381, 0.7925};
+    static const CGFloat ly[4] = {0.6185, 0.6983, 0.5376, 0.6185};
+    b = MAX(0, MIN(b, 3));
+    return CGPointMake(landscape ? lx[b] : px[b], landscape ? ly[b] : py[b]);
 }
 static CGPoint StrataArtDpadCentre(BOOL landscape) {
     return landscape ? CGPointMake(0.1590, 0.3620) : CGPointMake(0.2490, 0.6460);
@@ -202,10 +205,10 @@ static CGPoint StrataArtGearCentre(BOOL landscape) {
 static NSInteger StrataNxArtRole(CGPoint p, BOOL landscape) {
     if (!isfinite(p.x) || !isfinite(p.y)) return StrataArtNoMapping;
     if (landscape) {
-        if (StrataArtNear(p, 0.1430, 0.1804, 0.026, 0.025)) return StrataArtL;
-        if (StrataArtNear(p, 0.2146, 0.1804, 0.026, 0.025)) return StrataArtZL;
-        if (StrataArtNear(p, 0.8126, 0.1827, 0.026, 0.025)) return StrataArtR;
-        if (StrataArtNear(p, 0.8628, 0.1827, 0.026, 0.025)) return StrataArtZR;
+        if (StrataArtNear(p, 0.1318, 0.1827, 0.026, 0.025)) return StrataArtL;
+        if (StrataArtNear(p, 0.2038, 0.1827, 0.026, 0.025)) return StrataArtZL;
+        if (StrataArtNear(p, 0.8006, 0.1827, 0.026, 0.025)) return StrataArtR;
+        if (StrataArtNear(p, 0.8757, 0.1827, 0.026, 0.025)) return StrataArtZR;
         if (StrataArtNear(p, 0.4122, 0.7982, 0.025, 0.038)) return StrataArtMinus;
         if (StrataArtNear(p, 0.5869, 0.7994, 0.025, 0.038)) return StrataArtPlus;
     } else {
@@ -218,8 +221,8 @@ static NSInteger StrataNxArtRole(CGPoint p, BOOL landscape) {
     }
     for (int b = 0; b < 4; b++) {
         CGPoint f = StrataArtFaceCentre(landscape, b);
-        if (StrataArtNear(p, f.x, f.y, landscape ? 0.029 : 0.074,
-                        landscape ? 0.048 : 0.038)) return StrataArtFace;
+        if (StrataArtNear(p, f.x, f.y, landscape ? 0.029 : 0.068,
+                        landscape ? 0.048 : 0.033)) return StrataArtFace;
     }
     CGPoint d = StrataArtDpadCentre(landscape);
     if (StrataArtNear(p, d.x, d.y, landscape ? 0.061 : 0.180,
@@ -384,8 +387,8 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
             int closest = 0; CGFloat best = CGFLOAT_MAX;
             for (int i = 0; i < 4; i++) {
                 CGPoint f = StrataArtFaceCentre(landscape, i);
-                CGFloat dx = (p.x - f.x) / (landscape ? 0.029 : 0.074);
-                CGFloat dy = (p.y - f.y) / (landscape ? 0.048 : 0.038);
+                CGFloat dx = (p.x - f.x) / (landscape ? 0.029 : 0.068);
+                CGFloat dy = (p.y - f.y) / (landscape ? 0.048 : 0.033);
                 CGFloat score = dx * dx + dy * dy;
                 if (score < best) { best = score; closest = i; }
             }
@@ -698,8 +701,8 @@ static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
             CGFloat best=CGFLOAT_MAX; CGPoint point=CGPointZero;
             for (int i=0;i<4;i++) {
                 CGPoint f=StrataArtFaceCentre(land,i);
-                CGFloat dx=(p.x-f.x)/(land?0.029:0.074);
-                CGFloat dy=(p.y-f.y)/(land?0.048:0.038);
+                CGFloat dx=(p.x-f.x)/(land?0.029:0.068);
+                CGFloat dy=(p.y-f.y)/(land?0.048:0.033);
                 CGFloat score=dx*dx+dy*dy;
                 if (score<best) { best=score;point=f; }
             }
@@ -723,10 +726,10 @@ static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
             s.y+=dy*(land?0.020:0.018);
             return s;
         }
-        case StrataArtL: return land?CGPointMake(0.1430,0.1804):CGPointMake(0.119,0.504);
-        case StrataArtZL: return land?CGPointMake(0.2146,0.1804):CGPointMake(0.283,0.504);
-        case StrataArtR: return land?CGPointMake(0.8126,0.1827):CGPointMake(0.719,0.504);
-        case StrataArtZR: return land?CGPointMake(0.8628,0.1827):CGPointMake(0.879,0.504);
+        case StrataArtL: return land?CGPointMake(0.1318,0.1827):CGPointMake(0.119,0.504);
+        case StrataArtZL: return land?CGPointMake(0.2038,0.1827):CGPointMake(0.283,0.504);
+        case StrataArtR: return land?CGPointMake(0.8006,0.1827):CGPointMake(0.719,0.504);
+        case StrataArtZR: return land?CGPointMake(0.8757,0.1827):CGPointMake(0.879,0.504);
         case StrataArtMinus: return land?CGPointMake(0.4122,0.7982):CGPointMake(0.3452,0.9357);
         case StrataArtPlus: return land?CGPointMake(0.5869,0.7994):CGPointMake(0.6559,0.9339);
         default: return CGPointMake(NAN,NAN);
@@ -960,8 +963,8 @@ static void StrataNxDrawRearrangedArtwork(UIImage *image, CGRect art,
 
     // R and ZR are the RIGHT-hand shoulder pair visible in the example;
     // swap the printed glyphs to match their swapped native touch roles.
-    const CGFloat leftX = landscape ? 0.8126 : 0.7190;
-    const CGFloat rightX = landscape ? 0.8628 : 0.8790;
+    const CGFloat leftX = landscape ? 0.8006 : 0.7190;
+    const CGFloat rightX = landscape ? 0.8757 : 0.8790;
     const CGFloat y = landscape ? 0.1827 : 0.5040;
     CGFloat size = MIN(art.size.width*(landscape ? 0.013 : 0.038),
                        art.size.height*(landscape ? 0.036 : 0.019));
@@ -1143,7 +1146,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
                                        (portrait?0.055:0.135)] addClip];
         }
         [source drawInRect:art];
-        if (!StrataNxIsBuiltinImage(source))
+        // Prepared photos already contain the final individual controls.
+        if (!StrataNxIsBuiltinImage(source) && !StrataNxIsPreparedPhoto(source))
             StrataNxDrawRearrangedArtwork(source,art,!portrait,dark);
         CGRect aperture = StrataNxArtworkAperture(art, source);
         StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
@@ -1228,8 +1232,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
             [[UIBezierPath bezierPathWithRoundedRect:body cornerRadius:radius] addClip];
         }
         [image drawInRect:art];
-        if (!builtIn) {
-            // Custom imported art uses the original unmodified button positions.
+        if (!builtIn && !StrataNxIsPreparedPhoto(image)) {
+            // Only legacy unprepared artwork needs runtime rearrangement.
             StrataNxDrawRearrangedArtwork(image,art,!portrait,self.darkTheme);
         }
         // Match the original display rim with the actual 16:9 picture.

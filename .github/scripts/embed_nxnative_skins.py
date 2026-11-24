@@ -4,7 +4,7 @@
 The four compressed image files are part of the app source. Generate an
 Objective-C header at build time so both the normal host process and the
 LiveProcess guest extension can use exactly the same controller photographs.
-Requires only Python 3's standard library; no internet access or Pillow.
+Prepare individual controls with OpenCV at build time, not during gameplay.
 """
 import base64
 from pathlib import Path
@@ -26,12 +26,16 @@ if missing:
     print("Older builds keep the compatible vector fallback until uploaded.")
     raise SystemExit(0)
 
+from prepare_nxnative_skins import final_assets
+
+prepared = final_assets(assets)
 parts = [
     "// Generated at build time. Do not commit this file.\n",
     "#pragma once\n",
+    "#define STRATA_NX_PREPARED_PHOTOS 1\n",
 ]
 for key, filename in inputs.items():
-    binary = (assets / filename).read_bytes()
+    binary = prepared[key]
     encoded = base64.b64encode(binary).decode("ascii")
     parts.append(f"static const char StrataSkin_{key}[] =\n")
     parts.extend(f'    "{encoded[i:i+256]}"\n'

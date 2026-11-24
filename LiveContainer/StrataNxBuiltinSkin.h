@@ -19,6 +19,11 @@ static NSData *StrataNxPackedPhotoData(BOOL portrait, BOOL dark) {
 #endif
 
 static char StrataNxBuiltinImageKey;
+static char StrataNxPreparedPhotoKey;
+
+static BOOL StrataNxIsPreparedPhoto(UIImage *image) {
+    return image && [objc_getAssociatedObject(image, &StrataNxPreparedPhotoKey) boolValue];
+}
 
 static BOOL StrataNxIsBuiltinImage(UIImage *image) {
     return image && [objc_getAssociatedObject(image, &StrataNxBuiltinImageKey) boolValue];
@@ -163,7 +168,7 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark) {
             for (int i=0;i<4;i++) lx[i]=size.width*points[i];
             sy=size.height*0.504;shoulderW=115;shoulderH=34;
         } else {
-            CGFloat points[]={0.1430,0.2146,0.8126,0.8628};
+            CGFloat points[]={0.1318,0.2038,0.8006,0.8757};
             for (int i=0;i<4;i++) lx[i]=size.width*points[i];
             sy=size.height*0.1827;shoulderW=78;shoulderH=36;
         }
@@ -185,8 +190,8 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark) {
         // StrataArtFaceCentre()'s moved hit targets.
         CGFloat bx[4],by[4];
         if (portrait) {
-            CGFloat xs[]={0.8746,0.7472,0.7485,0.6172};
-            CGFloat ys[]={0.8371,0.8953,0.7729,0.8371};
+            CGFloat xs[]={0.857,0.747,0.748,0.638};
+            CGFloat ys[]={0.817,0.868,0.766,0.817};
             for (int i=0;i<4;i++) { bx[i]=xs[i];by[i]=ys[i]; }
         } else {
             CGFloat xs[]={0.8836,0.8381,0.8381,0.7925};
@@ -237,6 +242,11 @@ static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark) {
         // corrects the R/ZR glyphs at precisely the same touch coordinates.
         NSData *photo=StrataNxPackedPhotoData(portrait,dark);
         if (photo.length) image=[UIImage imageWithData:photo];
+#if defined(STRATA_NX_PREPARED_PHOTOS)
+        // Preserve photo-specific frame/clip behavior, but never swap controls again.
+        if (image) objc_setAssociatedObject(image,&StrataNxPreparedPhotoKey,
+                                             @YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+#endif
         if (!image) image=StrataNxBuildArtwork(portrait,dark);
         if (image) [cache setObject:image forKey:key
                  cost:(NSUInteger)(image.size.width*image.size.height*4)];

@@ -77,7 +77,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/embed_nxnative_skins.py
+          # Prepare photographic controls offline in the build runner.
+          # No OpenCV dependency or image processing is shipped to the iPhone.
+          python3 -m venv "$RUNNER_TEMP/strata-skin-venv"
+          "$RUNNER_TEMP/strata-skin-venv/bin/python" -m pip install --disable-pip-version-check "opencv-python-headless==4.13.0.92"
+          "$RUNNER_TEMP/strata-skin-venv/bin/python" .github/scripts/embed_nxnative_skins.py
       - name: Archive
         env:
           scheme: ${{ steps.scheme.outputs.scheme }}
