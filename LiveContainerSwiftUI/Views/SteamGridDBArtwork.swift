@@ -149,7 +149,7 @@ struct StrataSteamGridDBArtworkSearch: View {
     @State private var assets: [StrataSGDBAsset] = []
     @State private var selectedGame: StrataSGDBGame?
     @State private var selectedAsset: Int?
-    @State private var automatic = true
+    @State private var automatic = false
     @State private var busy = false
     @State private var error: String?
     init(title: String, background: Bool, onSelect: @escaping (UIImage) -> Void) { self.title = title; self.background = background; self.onSelect = onSelect; _query = State(initialValue: title) }
@@ -164,7 +164,13 @@ struct StrataSteamGridDBArtworkSearch: View {
                 }
                 if !games.isEmpty { Section("Matching games") { ForEach(games) { game in Button { Task { await load(game) } } label: { HStack { Text(game.name); Spacer(); if selectedGame?.id == game.id { Image(systemName: "checkmark") } } } } } }
                 if !assets.isEmpty { Section(background ? "Background artwork" : "Cover artwork") {
-                    ForEach(assets) { asset in Button { selectedAsset = asset.id } label: { HStack { VStack(alignment: .leading) { Text("Artwork #\(asset.id)"); Text(asset.title).font(.caption).foregroundStyle(.secondary) }; Spacer(); if selectedAsset == asset.id { Image(systemName: "checkmark.circle.fill") } } } }
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: background ? 1 : 2), spacing: 12) {
+                        ForEach(assets) { asset in
+                            Button { selectedAsset = asset.id } label: {
+                                StrataArtworkPreview(asset: asset, background: background, selected: selectedAsset == asset.id)
+                            }.buttonStyle(.plain).disabled(busy)
+                        }
+                    }
                     Button(busy ? "Downloading…" : "Use Selected Artwork") { Task { await useSelected() } }.disabled(busy || selectedAsset == nil)
                 } }
             }
@@ -191,5 +197,59 @@ struct StrataSteamGridDBArtworkSearch: View {
         busy = true; defer { busy = false }
         do { let image = try await StrataSteamGridDB.download(asset); onSelect(image); dismiss() }
         catch let failure { self.error = failure.localizedDescription }
+    }
+}
+
+
+private struct StrataArtworkPreview: View {
+    let asset: StrataSGDBAsset
+    let background: Bool
+    let selected: Bool
+    @State private var thumbnail: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.12))
+                if let thumbnail {
+                    Image(uiImage: thumbnail).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if failed {
+                    Image(systemName: "photo").foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                if selected {
+                    Image(systemName: "checkmark.circle.fill").font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                        .padding(6).background(.regularMaterial, in: Circle()).padding(5)
+                }
+            }
+            .aspectRatio(background ? 16.0 / 9.0 : 2.0 / 3.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: selected ? 3 : 0))
+            Text(asset.title).font(.caption).foregroundStyle(.secondary)
+        }
+        .accessibilityLabel("Artwork \(asset.id), \(asset.title)")
+        .task(id: asset.id) {
+            guard thumbnail == nil else { return }
+            failed = false
+            do {
+                guard let url = asset.thumb, url.scheme == "https" else { throw URLError(.badURL) }
+                let (file, response) = try await URLSession.shared.download(for: URLRequest(url: url, timeoutInterval: 15))
+                defer { try? FileManager.default.removeItem(at: file) }
+                try Task.checkCancellation()
+                let bytes = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.intValue ?? Int.max
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), bytes <= 2 * 1024 * 1024,
+                      let source = CGImageSourceCreateWithURL(file as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                      let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 360] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
+                thumbnail = UIImage(cgImage: cg)
+            } catch {
+                if !Task.isCancelled { failed = true }
+            }
+        }
+        .onDisappear { thumbnail = nil }
     }
 }
