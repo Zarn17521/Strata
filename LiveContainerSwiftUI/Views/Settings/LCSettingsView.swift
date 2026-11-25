@@ -772,7 +772,7 @@ private struct ZNBetaControlsSettings: View {
 
 // Shared release notes for the first-launch sheet and Settings.
 struct ZNWhatsNewView: View {
-    static let releaseID = "0.1.1-beta.3"
+    static let releaseID = "0.1.1-beta.3-ram-shortcut"
     var body: some View {
         List {
             Section {
@@ -783,8 +783,27 @@ struct ZNWhatsNewView: View {
                     Text("Performance & Memory Update").foregroundStyle(.secondary)
                 }.padding(.vertical, 12)
             }
+            Section {
+                Label("RAM ON", systemImage: "memorychip")
+                Text("Uses smaller artwork caches and reduces controller visual updates. Illustrated NxNative skins use fewer pixels after you relaunch NxNative.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Label("RAM OFF", systemImage: "memorychip")
+                Text("Uses standard artwork quality and normal controller visual updates. Automatic memory pressure cleanup still runs.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } header: {
+                Text("Low Memory Mode")
+            } footer: {
+                Text("Tap the memory chip at the top right of ZN’s Library to switch modes. Both modes clean up launcher artwork before launching a game and use the same iOS memory limit.")
+            }
+            Section("iPhone Low Power Mode") {
+                Label("ON", systemImage: "battery.25percent")
+                Text("While iPhone Low Power Mode is on, ZN loads one artwork image at a time to reduce background work.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Label("OFF", systemImage: "battery.100percent")
+                Text("ZN can load up to two artwork images at once when memory and temperature allow. Turning off iPhone Low Power Mode leaves the library’s RAM setting as selected.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section("Performance & Memory") {
-                Label("Enhanced Low Memory Mode", systemImage: "memorychip")
                 Label("Memory pressure management", systemImage: "gauge")
                 Label("Adaptive RAM monitoring", systemImage: "waveform.path")
                 Label("Peak RAM and session statistics", systemImage: "chart.bar")
