@@ -323,13 +323,6 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
-                Picker("Controller Skin", selection: $style) {
-                    Text("Pearl Light").tag("pearl")
-                    Text("AMOLED Dark").tag("amoled")
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("settings.nxnative.builtinStyle")
-
                 HStack(spacing: 10) {
                     skinStyleCard(name: "Pearl Light", value: "pearl",
                                   detail: "Pearl white · warm silver")
