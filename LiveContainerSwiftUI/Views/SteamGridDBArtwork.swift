@@ -84,19 +84,58 @@ enum StrataSteamGridDB {
 struct StrataSteamGridDBKeySettings: View {
     @State private var key = StrataSteamGridDB.apiKey() ?? ""
     @State private var saved = false
-    @State private var error: String?
+    @State private var errorMessage = ""
+    @State private var showError = false
+
     var body: some View {
         Form {
             Section("API key") {
-                SecureField("SteamGridDB API key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("Save API key") { do { try StrataSteamGridDB.setAPIKey(key); saved = true } catch { self.error = error.localizedDescription } }
-                Button("Remove API key", role: .destructive) { do { try StrataSteamGridDB.setAPIKey(""); key = ""; saved = false } catch { error = error.localizedDescription } }.disabled(key.isEmpty)
+                SecureField("SteamGridDB API key", text: $key)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Save API key", action: saveKey)
+                Button("Remove API key", role: .destructive, action: removeKey)
+                    .disabled(key.isEmpty)
             }
-            Section { Text("The key is stored in this app’s Keychain and is sent only to SteamGridDB when you search or download artwork. It is not saved in shared preferences or exported with a skin.").font(.footnote).foregroundStyle(.secondary) }
-            if saved { Section { Label("Saved securely", systemImage: "checkmark.shield.fill").foregroundStyle(.green) } }
+            Section {
+                Text("The key is stored in this app’s Keychain and is sent only to SteamGridDB when searching for artwork.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if saved {
+                Section {
+                    Label("Saved securely", systemImage: "checkmark.shield.fill")
+                        .foregroundStyle(.green)
+                }
+            }
         }
         .navigationTitle("SteamGridDB")
-        .alert("SteamGridDB", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") { error = nil } } message: { Text(error ?? "") }
+        .alert("SteamGridDB", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+
+    private func saveKey() {
+        do {
+            try StrataSteamGridDB.setAPIKey(key)
+            saved = true
+        } catch let failure {
+            errorMessage = failure.localizedDescription
+            showError = true
+        }
+    }
+
+    private func removeKey() {
+        do {
+            try StrataSteamGridDB.setAPIKey("")
+            key = ""
+            saved = false
+        } catch let failure {
+            errorMessage = failure.localizedDescription
+            showError = true
+        }
     }
 }
 
@@ -139,18 +178,18 @@ struct StrataSteamGridDBArtworkSearch: View {
         guard let key = StrataSteamGridDB.apiKey() else { return }
         busy = true; defer { busy = false }
         do { games = try await StrataSteamGridDB.search(query, key: key); assets = []; selectedGame = nil; selectedAsset = nil }
-        catch { self.error = error.localizedDescription }
+        catch let failure { self.error = failure.localizedDescription }
     }
     @MainActor private func load(_ game: StrataSGDBGame) async {
         guard let key = StrataSteamGridDB.apiKey() else { return }
         busy = true; defer { busy = false }
         do { selectedGame = game; assets = try await StrataSteamGridDB.assets(gameID: game.id, background: background, key: key); selectedAsset = automatic ? assets.first?.id : nil }
-        catch { self.error = error.localizedDescription }
+        catch let failure { self.error = failure.localizedDescription }
     }
     @MainActor private func useSelected() async {
         guard let id = selectedAsset, let asset = assets.first(where: { $0.id == id }) else { return }
         busy = true; defer { busy = false }
         do { let image = try await StrataSteamGridDB.download(asset); onSelect(image); dismiss() }
-        catch { self.error = error.localizedDescription }
+        catch let failure { self.error = failure.localizedDescription }
     }
 }
