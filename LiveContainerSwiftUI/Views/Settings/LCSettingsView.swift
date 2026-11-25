@@ -797,6 +797,8 @@ struct ZNWhatsNewView: View {
             Section("Customization") {
                 Label("Selectable navigation sound styles with cue previews", systemImage: "speaker.wave.2")
                 Text("Classic, Soft and Arcade, with separate selection, confirmation and back samples. Original ZN sound synthesis; no ManicEMU audio code or dependency is bundled.").font(.footnote)
+                Label("Controller profiles for library navigation", systemImage: "gamecontroller")
+                Text("Custom profiles map Bluetooth controller buttons to library actions. Existing A/B and X/Y swaps remain the fallback. Guest input is not changed.").font(.footnote)
             }
             Section("Compatibility") {
                 Text("Existing JIT, Game Mode, Metal HUD, graphics settings and Bundle ID remain unchanged.")

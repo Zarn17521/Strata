@@ -31,6 +31,7 @@ final class LiveBoardControllerInput: ObservableObject {
     private var active = false
     private var observers: [NSObjectProtocol] = []
     private var profiles: [(GCExtendedGamepad, GCExtendedGamepadValueChangedHandler?)] = []
+    private var controllerProfileNames: [ObjectIdentifier: String] = [:]
     private var repeatTask: Task<Void, Never>?
     private var heldDirection: Command?
 
@@ -65,6 +66,7 @@ final class LiveBoardControllerInput: ObservableObject {
             Self.owners.removeObject(forKey: profile)
         }
         profiles.removeAll()
+        controllerProfileNames.removeAll()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll(); connected = false
     }
@@ -79,6 +81,7 @@ final class LiveBoardControllerInput: ObservableObject {
         }
         Self.owners.setObject(self, forKey: profile)
         profiles.append((profile, profile.valueChangedHandler))
+        controllerProfileNames[ObjectIdentifier(profile)] = LiveBoardControllerMapping.profileName(for: controller)
         profile.valueChangedHandler = { [weak self] gamepad, element in
             Task { @MainActor [weak self] in self?.handle(gamepad, element: element) }
         }
@@ -95,6 +98,7 @@ final class LiveBoardControllerInput: ObservableObject {
                 profile.valueChangedHandler = previous.1
                 Self.owners.removeObject(forKey: profile)
             }
+            controllerProfileNames.removeValue(forKey: ObjectIdentifier(profile))
         }
         repeatTask?.cancel(); heldDirection = nil
         connected = !profiles.isEmpty
@@ -126,13 +130,26 @@ final class LiveBoardControllerInput: ObservableObject {
         if element === profile.dpad || element === profile.leftThumbstick {
             let pad = element === profile.dpad ? profile.dpad : profile.leftThumbstick
             updateDirection(x: pad.xAxis.value, y: pad.yAxis.value)
-        } else if element === profile.buttonA, profile.buttonA.isPressed { onCommand?(swapAB ? .back : .confirm) }
-        else if element === profile.buttonB, profile.buttonB.isPressed { onCommand?(swapAB ? .confirm : .back) }
-        else if element === profile.buttonX, profile.buttonX.isPressed { onCommand?(swapXY ? .favorite : .details) }
-        else if element === profile.buttonY, profile.buttonY.isPressed { onCommand?(swapXY ? .details : .favorite) }
-        else if element === profile.leftShoulder, profile.leftShoulder.isPressed { onCommand?(.previousSection) }
-        else if element === profile.rightShoulder, profile.rightShoulder.isPressed { onCommand?(.nextSection) }
-        else if element === profile.buttonMenu, profile.buttonMenu.isPressed { onCommand?(.details) }
+        } else if element === profile.buttonA, profile.buttonA.isPressed { dispatch("A", fallback: swapAB ? .back : .confirm, for: profile) }
+        else if element === profile.buttonB, profile.buttonB.isPressed { dispatch("B", fallback: swapAB ? .confirm : .back, for: profile) }
+        else if element === profile.buttonX, profile.buttonX.isPressed { dispatch("X", fallback: swapXY ? .favorite : .details, for: profile) }
+        else if element === profile.buttonY, profile.buttonY.isPressed { dispatch("Y", fallback: swapXY ? .details : .favorite, for: profile) }
+        else if element === profile.leftShoulder, profile.leftShoulder.isPressed { dispatch("L", fallback: .previousSection, for: profile) }
+        else if element === profile.rightShoulder, profile.rightShoulder.isPressed { dispatch("R", fallback: .nextSection, for: profile) }
+        else if element === profile.buttonMenu, profile.buttonMenu.isPressed { dispatch("Menu", fallback: .details, for: profile) }
+    }
+    private func dispatch(_ button: String, fallback: Command, for profile: GCExtendedGamepad) {
+        let name = controllerProfileNames[ObjectIdentifier(profile)] ?? "Default"
+        guard let action = LiveBoardControllerMapping.command(button, profile: name) else { onCommand?(fallback); return }
+        switch action {
+        case "confirm": onCommand?(.confirm)
+        case "back": onCommand?(.back)
+        case "details": onCommand?(.details)
+        case "favorite": onCommand?(.favorite)
+        case "previousSection": onCommand?(.previousSection)
+        case "nextSection": onCommand?(.nextSection)
+        default: onCommand?(fallback)
+        }
     }
     private func updateDirection(x: Float, y: Float) {
         let direction: Command?
