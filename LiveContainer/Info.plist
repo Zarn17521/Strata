@@ -216,7 +216,7 @@
 	<key>SBAppUsesLocalNotifications</key>
 	<integer>1</integer>
 	<key>StrataBuildChannel</key>
-	<string>Beta</string>
+	<string>Stable</string>
 	<key>StrataMarketingVersion</key>
 	<string>0.1.1</string>
 	<key>StrataRevision</key>

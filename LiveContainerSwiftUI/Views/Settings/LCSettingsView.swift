@@ -738,14 +738,14 @@ struct LCSettingsView: View {
 /// Beta preferences use new keys and do not change guest input or signing.
 // Shared release notes for the first-launch sheet and Settings.
 struct ZNWhatsNewView: View {
-    static let releaseID = "0.1.1-beta.3-ram-shortcut"
+    static let releaseID = "0.1.1-stable"
     var body: some View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     Image(systemName: "sparkles").font(.largeTitle).foregroundStyle(.purple)
                     Text("What’s New").font(.largeTitle.bold())
-                    Text("ZN v0.1.1 Beta").font(.headline)
+                    Text(StrataVersion.full).font(.headline)
                     Text("Performance & Memory Update").foregroundStyle(.secondary)
                 }.padding(.vertical, 12)
             }
