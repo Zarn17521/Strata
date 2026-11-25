@@ -20,13 +20,13 @@ enum LiveBoardRecentGames {
         history[liveBoardAppKey(app)] = date.timeIntervalSince1970
         if history.count > limit {
             let retained = history.sorted { $0.value > $1.value }.prefix(limit)
-            history = Dictionary(uniqueKeysWithValues: retained)
+            history = Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })
         }
         defaults.set(history, forKey: key)
         NotificationCenter.default.post(name: changed, object: nil)
     }
 
-    static func sorted(_ apps: [LCAppModel]) -> [LCAppModel] {
+    @MainActor static func sorted(_ apps: [LCAppModel]) -> [LCAppModel] {
         let history = timestamps()
         return apps.filter { history[liveBoardAppKey($0)] != nil }
             .sorted {

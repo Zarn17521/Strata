@@ -50,13 +50,15 @@ struct LiveBoardControllerMappingSettings: View {
                     .textInputAutocapitalization(.words)
                 Text("A controller uses the profile matching its GameController vendor name. Create a separate name for each model; use Default as the fallback.").font(.footnote).foregroundStyle(.secondary)
             }
-            Section("Library buttons") {
+            Section {
                 ForEach(buttons, id: \.self) { button in
                     Picker(button, selection: actionBinding(button)) {
                         Text(defaultTitle(button)).tag("")
                         ForEach(LiveBoardControllerMapping.actions, id: \.self) { Text(LiveBoardControllerMapping.title($0)).tag($0) }
                     }
                 }
+            } header: {
+                Text("Library buttons")
             } footer: {
                 Text("These mappings only control Strata library navigation. The running guest keeps its original button layout. Existing A/B and X/Y swap settings remain the fallback when a profile has no custom mapping.")
             }

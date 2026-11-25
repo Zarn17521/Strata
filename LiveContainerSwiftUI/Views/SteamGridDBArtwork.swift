@@ -60,15 +60,15 @@ enum StrataSteamGridDB {
         guard envelope.success else { throw URLError(.cannotParseResponse) }
         return Array(envelope.data.prefix(20))
     }
-    static func search(_ title: String, key: String) async throws -> [StrataSGDBGame] {
+    fileprivate static func search(_ title: String, key: String) async throws -> [StrataSGDBGame] {
         guard let term = title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))) else { throw URLError(.badURL) }
         return try await request("search/autocomplete/\(term)", key: key, type: StrataSGDBGame.self)
     }
-    static func assets(gameID: Int, background: Bool, key: String) async throws -> [StrataSGDBAsset] {
+    fileprivate static func assets(gameID: Int, background: Bool, key: String) async throws -> [StrataSGDBAsset] {
         let endpoint = background ? "heroes" : "grids"
         return try await request("\(endpoint)/game/\(gameID)", key: key, type: StrataSGDBAsset.self)
     }
-    static func download(_ asset: StrataSGDBAsset) async throws -> UIImage {
+    fileprivate static func download(_ asset: StrataSGDBAsset) async throws -> UIImage {
         var request = URLRequest(url: asset.url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.setValue("image/*", forHTTPHeaderField: "Accept")
         let (file, response) = try await URLSession.shared.download(for: request)
