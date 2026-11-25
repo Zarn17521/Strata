@@ -26,6 +26,7 @@ struct StrataSwitchboard: View {
     @State private var showingWhatsNew = false
     @State private var busy = false
     @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+    @State private var showingSkinSettings = false
     @State private var choosingCover = false
     @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var coverKey = ""
@@ -154,6 +155,16 @@ struct StrataSwitchboard: View {
                         Button("Continue") { showingWhatsNew = false }
                     }
                 }
+            }.navigationViewStyle(.stack)
+        }
+        .fullScreenCover(isPresented: $showingSkinSettings, onDismiss: bind) {
+            NavigationView {
+                StrataNxPortraitSkinSettings()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingSkinSettings = false }
+                        }
+                    }
             }.navigationViewStyle(.stack)
         }
         .sheet(isPresented: $choosingCover, onDismiss: bind) {
@@ -516,7 +527,7 @@ struct StrataSwitchboard: View {
     }
     private func openNxSkinSettings() {
         controller.stop()
-        NotificationCenter.default.post(name: .strataOpenNxNativeSkinSettings, object: nil)
+        showingSkinSettings = true
     }
 
     private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {

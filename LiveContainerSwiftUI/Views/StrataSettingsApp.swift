@@ -301,7 +301,7 @@ final class StrataSettingsAppInfo: StrataPhoneAppInfo {
 
  
 // Built-in skin variants are available without importing a portrait or landscape PNG.
-private struct StrataNxPortraitSkinSettings: View {
+struct StrataNxPortraitSkinSettings: View {
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault)
     private var enabled = true
     @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault)
