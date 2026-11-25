@@ -327,12 +327,7 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
-                Picker("Display Size", selection: $displayLayout) {
-                    Text("Classic").tag("classic")
-                    Text("Wide").tag("wide")
-                    Text("Full Screen").tag("full")
-                }
-                .pickerStyle(.segmented)
+                skinChoices([("Classic", "classic"), ("Wide", "wide"), ("Full Screen", "full")], selection: $displayLayout)
                 .accessibilityIdentifier("settings.nxnative.displayLayout")
             } header: {
                 Text("Game Display")
@@ -341,13 +336,14 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section("Portrait & Landscape") {
+                Group {
                 if displayLayout == "full" {
                     Label("Full Screen keeps NxNative's native control positions and touch mapping. The selected theme still colors press feedback; shell artwork stays hidden so it cannot cover the game.", systemImage: "arrow.up.left.and.arrow.down.right")
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout, themeTint: activeTheme.tint, portraitTemplateName: activeTheme.portraitTemplateName)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout, theme: activeTheme, portraitTemplateName: activeTheme.portraitTemplateName)
                             .frame(width: 96, height: 208)
                         Text("Portrait")
                             .font(.caption)
@@ -355,7 +351,7 @@ struct StrataNxPortraitSkinSettings: View {
                     }
                     Spacer(minLength: 0)
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: displayLayout, themeTint: activeTheme.tint)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: displayLayout, theme: activeTheme)
                             .frame(maxWidth: 232)
                             .aspectRatio(displayLayout == "wide" ? 852.0/393.0 : 1792.0/1008.0, contentMode: .fit)
                         Text("Landscape")
@@ -365,14 +361,12 @@ struct StrataNxPortraitSkinSettings: View {
                 }
                 .padding(.vertical, 6)
                 }
+                }
+                .frame(height: 240)
             }
 
             Section {
-                Picker("Shell Finish", selection: $style) {
-                    Text("Pearl Light").tag("pearl")
-                    Text("AMOLED Dark").tag("amoled")
-                }
-                .pickerStyle(.segmented)
+                skinChoices([("Pearl Light", "pearl"), ("AMOLED Dark", "amoled")], selection: $style)
                 .accessibilityIdentifier("settings.nxnative.builtinStyle")
 
                 HStack {
@@ -407,33 +401,48 @@ struct StrataNxPortraitSkinSettings: View {
         }
     }
 
+    private func skinChoices(_ options: [(String, String)], selection: Binding<String>) -> some View {
+        HStack(spacing: 4) {
+            ForEach(options.indices, id: \.self) { index in
+                let (label, value) = options[index]
+                let selected = selection.wrappedValue == value
+                Button {
+                    selection.wrappedValue = value
+                } label: {
+                    Text(label)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                        .background(selected ? Color.accentColor.opacity(0.22) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     @ViewBuilder
     private func builtInThemeCard(_ theme: StrataNxBuiltInSkin) -> some View {
         let selected = themeID == theme.id
-        let assetName = theme.portraitTemplateName ?? "MainPortrait"
         Button {
             themeID = theme.id
             enabled = true
         } label: {
             VStack(spacing: 8) {
                 ZStack(alignment: .topTrailing) {
-                    if let image = UIImage(named: assetName, in: Bundle.main, compatibleWith: nil) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 112, maxHeight: 146)
-                            .overlay {
-                                if theme.portraitTemplateName == nil {
-                                    Rectangle().fill(theme.tint.opacity(0.28)).blendMode(.color)
-                                }
-                            }
-                    } else {
-                        Image(systemName: "gamecontroller.fill")
-                            .resizable().scaledToFit()
-                            .foregroundStyle(theme.tint)
-                            .frame(maxWidth: 92, maxHeight: 100)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack(spacing: 5) {
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: "classic",
+                                                  theme: theme, portraitTemplateName: theme.portraitTemplateName)
+                            .aspectRatio(9.0 / 16.0, contentMode: .fit)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: "classic", theme: theme)
+                            .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     }
+                    .padding(5)
                     if selected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
@@ -467,17 +476,19 @@ struct StrataNxPortraitSkinSettings: View {
 // The preview is rendered by the same Core Graphics photo pipeline as
 // the NxNative overlay. This prevents Settings from showing the obsolete
 // synthetic vector-controller design when bundled user images are available.
+private final class StrataNxSkinAssetBundleToken: NSObject {}
+
 private struct StrataNxBuiltInSkinPreview: View {
     let dark: Bool
     let landscape: Bool
     let layout: String
-    let themeTint: Color
+    let theme: StrataNxBuiltInSkin
     var portraitTemplateName: String? = nil
 
     var body: some View {
         GeometryReader { geo in
             if !landscape, let name = portraitTemplateName,
-               let template = UIImage(named: name, in: Bundle.main, compatibleWith: nil) {
+               let template = UIImage(named: name, in: Bundle(for: StrataNxSkinAssetBundleToken.self), compatibleWith: nil) {
                 Image(uiImage: template)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -487,7 +498,12 @@ private struct StrataNxBuiltInSkinPreview: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .overlay(Rectangle().fill(themeTint.opacity(0.24)).blendMode(.color))
+                    .overlay {
+                        Rectangle().fill(theme.tint.opacity(0.24)).blendMode(.color)
+                        if let artwork = StrataNxThemeArtworkPreview(theme.id, !landscape) {
+                            Image(uiImage: artwork).resizable().allowsHitTesting(false)
+                        }
+                    }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
             } else {

@@ -37,14 +37,14 @@ checks = {
         "LiveContainerSwiftUI/Assets.xcassets/MainPortrait.imageset/MainPortrait.jpg",
         "LiveContainerSwiftUI/Assets.xcassets/ZeldaClassicEdition.imageset/ZeldaClassicEdition.jpg",
     )),
-    "Zelda Classic Edition selects its supplied portrait template": 'portraitTemplateName: "ZeldaClassicEdition"' in built_in_skins and 'theme.portraitTemplateName ?? "MainPortrait"' in settings,
+    "Zelda Classic Edition selects its supplied portrait template": 'portraitTemplateName: "ZeldaClassicEdition"' in built_in_skins and 'portraitTemplateName: theme.portraitTemplateName' in settings,
     "built-in theme initializer accepts an optional portrait template": "init(id: String, title: String, tint: Color, portraitTemplateName: String? = nil)" in built_in_skins,
     "Custom skin layers persist in the shared app group": '"ZNCustomSkinMainLayersV1"' in (ROOT / "LiveContainer/StrataGuestControls.m").read_text(),
     "Guest skin renderer draws saved custom layers": '"ZNCustomSkinMainLayersV1"' in guest_controls and "drawCustomSkinLayersPortrait" in guest_controls,
     "26 unique character and Zelda game themes are listed once": len(re.findall(r'\.init\(id: "kirby"', built_in_skins)) == 1 and len(re.findall(r'\.init\(id:', built_in_skins)) == 26,
     "theme colors are shared with the guest renderer": set(re.findall(r'\.init\(id: "([^"]+)"', built_in_skins)) == set(re.findall(r'@"([^"]+)": @\[@', guest_controls)),
     "controller presses glow and depress then release": all(key in guest_controls for key in ("zn.press.glow", "zn.press.down", "zn.press.lift")),
-    "all themes share Classic Wide and Full Screen options": all(f'Text("{name}").tag("{tag}")' in settings for name, tag in (("Classic", "classic"), ("Wide", "wide"), ("Full Screen", "full"))) and '"StrataNxDisplayLayout"' in settings,
+    "all themes share Classic Wide and Full Screen options": all(f'("{name}", "{tag}")' in settings for name, tag in (("Classic", "classic"), ("Wide", "wide"), ("Full Screen", "full"))) and '"StrataNxDisplayLayout"' in settings,
     "Full Screen keeps native touch while applying themed press feedback": 'fullScreenMode = YES' in guest_controls and "nativeRoleForPoint" in guest_controls and "StrataNxHookPadVisualEvents(); // native positions" in guest_controls,
 }
 

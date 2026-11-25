@@ -12,3 +12,4 @@ void StrataSetSwitcherProviders(UIView *(^live)(NSString *key), NSString *(^fron
 UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark);
 UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *mode);
 BOOL StrataNxPhotoSkinsBundled(void);
+UIImage *StrataNxThemeArtworkPreview(NSString *identifier, BOOL portrait);

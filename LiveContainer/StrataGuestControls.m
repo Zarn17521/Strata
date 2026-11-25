@@ -813,6 +813,97 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
                             blue:rgb[2].doubleValue alpha:1];
 }
 
+
+// Original shell decorations use system glyphs and engraved geometry.
+static void StrataNxDrawThemeArtwork(NSString *identifier, CGRect frame, BOOL portrait) {
+    if (!identifier.length || CGRectIsEmpty(frame)) return;
+    UIColor *ink = StrataNxCustomThemeColor(identifier);
+    if (!ink) return;
+    static NSDictionary<NSString *, NSString *> *symbols;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        symbols = @{
+            @"zelda": @"leaf",
+            @"mario": @"circle.grid.cross",
+            @"kirby": @"star",
+            @"luigi": @"sparkles",
+            @"peach": @"heart",
+            @"bowser": @"flame",
+            @"zelda-classic-edition": @"seal",
+            @"zelda-1": @"mountain.2",
+            @"adventure-of-link": @"shield",
+            @"a-link-to-the-past": @"drop",
+            @"links-awakening": @"moon",
+            @"ocarina-of-time": @"music.note",
+            @"majoras-mask": @"eye",
+            @"oracle-of-ages": @"hourglass",
+            @"oracle-of-seasons": @"sun",
+            @"wind-waker": @"wind",
+            @"minish-cap": @"clover",
+            @"twilight-princess": @"diamond",
+            @"phantom-hourglass": @"water.waves",
+            @"spirit-tracks": @"tram",
+            @"skyward-sword": @"feather",
+            @"a-link-between-worlds": @"square.on.square",
+            @"triforce-heroes": @"person.3",
+            @"breath-of-the-wild": @"tent",
+            @"tears-of-the-kingdom": @"spiral",
+            @"echoes-of-wisdom": @"cloud",
+        };
+    });
+    NSString *name = symbols[identifier];
+    if (!name) return;
+
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    if (!context) return;
+    CGContextSaveGState(context);
+    CGContextSetBlendMode(context, kCGBlendModeColor);
+    CGContextSetFillColorWithColor(context, [ink colorWithAlphaComponent:0.32].CGColor);
+    CGContextFillRect(context, frame);
+    CGContextRestoreGState(context);
+
+    CGFloat unit = MIN(frame.size.width, frame.size.height);
+    CGFloat radius = unit * (portrait ? 0.105 : 0.081);
+    CGFloat x = CGRectGetMidX(frame);
+    CGFloat y = CGRectGetMinY(frame) + frame.size.height * (portrait ? 0.72 : 0.82);
+    CGRect badge = CGRectMake(x-radius,y-radius,2*radius,2*radius);
+    [[ink colorWithAlphaComponent:0.91] setFill];
+    [[UIBezierPath bezierPathWithOvalInRect:badge] fill];
+    UIColor *highlight = [UIColor colorWithRed:1 green:0.93 blue:0.74 alpha:0.95];
+    [highlight setStroke];
+    UIBezierPath *ring = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(badge,radius*0.13,radius*0.13)];
+    ring.lineWidth = radius * 0.045;
+    [ring stroke];
+    NSUInteger facets = 5 + name.length % 6;
+    UIBezierPath *engraving = [UIBezierPath bezierPath];
+    engraving.lineWidth = radius * 0.035;
+    for (NSUInteger index = 0; index < facets; ++index) {
+        CGFloat angle = (2 * M_PI * index) / facets;
+        CGFloat dx = cos(angle), dy = sin(angle);
+        [engraving moveToPoint:CGPointMake(x+dx*radius*0.72,y+dy*radius*0.72)];
+        [engraving addLineToPoint:CGPointMake(x+dx*radius*0.83,y+dy*radius*0.83)];
+    }
+    [engraving stroke];
+    UIImage *glyph = [UIImage systemImageNamed:name] ?: [UIImage systemImageNamed:@"sparkle"];
+    glyph = [glyph imageWithTintColor:highlight renderingMode:UIImageRenderingModeAlwaysOriginal];
+    CGRect glyphBox = CGRectInset(badge,radius*0.46,radius*0.46);
+    if (glyph.size.width > 0 && glyph.size.height > 0) {
+        CGFloat scale = MIN(glyphBox.size.width/glyph.size.width,glyphBox.size.height/glyph.size.height);
+        CGSize size = CGSizeMake(glyph.size.width*scale,glyph.size.height*scale);
+        [glyph drawInRect:CGRectMake(x-size.width/2,y-size.height/2,size.width,size.height)];
+    }
+}
+
+UIImage *StrataNxThemeArtworkPreview(NSString *identifier, BOOL portrait) {
+    CGSize size = portrait ? CGSizeMake(180,320) : CGSizeMake(320,180);
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1;
+    return [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format]
+        imageWithActions:^(__unused UIGraphicsImageRendererContext *renderer) {
+            StrataNxDrawThemeArtwork(identifier, (CGRect){CGPointZero,size}, portrait);
+        }];
+}
+
 // Press feedback uses the EXACT control geometry of the touch remapper,
 // with no extra view hitboxes or replacement input handler.
 static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
@@ -892,6 +983,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic, copy) NSArray<NSDictionary *> *customSkinItems;
 @property(nonatomic, copy) NSArray<UIImage *> *customSkinImages;
 @property(nonatomic, strong) UIColor *customThemeTint;
+@property(nonatomic, copy) NSString *themeIdentifier;
 @property(nonatomic, weak) UIView *mappedPad;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
 @property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
@@ -971,7 +1063,8 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
     NSURL *container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:self.sharedGroup];
     if (!container) return;
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:self.sharedGroup];
-    self.customThemeTint = StrataNxCustomThemeColor([defaults stringForKey:@"ZNCustomSkinThemeID"]);
+    self.themeIdentifier = [defaults stringForKey:@"ZNCustomSkinThemeID"];
+    self.customThemeTint = StrataNxCustomThemeColor(self.themeIdentifier);
     if (self.fullScreenMode) { [self setDarkTheme:self.darkTheme]; return; }
     NSData *data = [defaults dataForKey:@"ZNCustomSkinMainLayersV1"];
     NSArray *items = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
@@ -996,14 +1089,8 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
     self.customSkinImages = images;
 }
 - (void)drawCustomThemeInArtworkFrame:(CGRect)artworkFrame {
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    if (!context || !self.customThemeTint || CGRectIsEmpty(artworkFrame)) return;
-    CGContextSaveGState(context);
-    CGContextSetBlendMode(context, kCGBlendModeColor);
-    CGContextSetAlpha(context, 0.24);
-    CGContextSetFillColorWithColor(context, self.customThemeTint.CGColor);
-    CGContextFillRect(context, artworkFrame);
-    CGContextRestoreGState(context);
+    StrataNxDrawThemeArtwork(self.themeIdentifier, artworkFrame,
+                            self.bounds.size.height > self.bounds.size.width);
 }
 - (void)drawCustomSkinLayersPortrait:(BOOL)portrait artworkFrame:(CGRect)artworkFrame {
     CGContextRef context = UIGraphicsGetCurrentContext();
