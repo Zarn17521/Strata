@@ -17,7 +17,6 @@ import Darwin
             ?? defaults.object(forKey: "ZNBetaNavigationAudio") as? Bool ?? true
         let available = os_proc_available_memory()
         guard enabled, available == 0 || available >= 512 * 1024 * 1024 else { return }
-        guard preview || !defaults.bool(forKey: "ZNBetaLowMemory") else { return }
         guard ProcessInfo.processInfo.thermalState != .serious && ProcessInfo.processInfo.thermalState != .critical else { return }
         guard !UIAccessibility.isVoiceOverRunning else { return }
         let style = defaults.string(forKey: "ZNBetaSoundStyle") ?? "classic"

@@ -252,7 +252,7 @@ private struct StrataNavigationSoundSettings: View {
                 Button { audio.play(.back, preview: true) } label: { Label("Back", systemImage: "arrow.uturn.backward.circle") }
             }
             Section { Toggle("Navigation sounds", isOn: $enabled) }
-            Section { Text("Sound effects are generated only when previewed or used. Low Memory Mode suppresses automatic cues but permits manual previews when memory and temperature allow. Serious or critical thermal pressure suppresses playback; audio objects are released when this screen closes or a game launches.").font(.footnote).foregroundStyle(.secondary) }
+            Section { Text("Sound effects are generated only when previewed or used. Navigation sounds remain available in Low Memory Mode when sufficient memory is available. Serious or critical thermal pressure suppresses playback; audio objects are released when this screen closes or a game launches.").font(.footnote).foregroundStyle(.secondary) }
         }
         .navigationTitle("Navigation Sounds")
         .onChange(of: style) { _ in audio.stop() }

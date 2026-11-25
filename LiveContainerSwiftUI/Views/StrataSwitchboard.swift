@@ -72,7 +72,7 @@ struct StrataSwitchboard: View {
                     libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
                         .frame(height: tile + 70)
                         .onChange(of: selectedKey) { _ in
-                            if sounds && !lowMemory && !thermalConstrained && phase == .active { audio.play() }
+                            if sounds && !thermalConstrained && phase == .active && visible && !busy { audio.play() }
                         }
                     if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                     Spacer(minLength: 4)
@@ -539,7 +539,7 @@ struct StrataSwitchboard: View {
             case .details: audio.play(.confirm); if let app = selected { controller.stop(); manage(app) }
             case .previousSection: changeCategory(-1)
             case .nextSection: changeCategory(1)
-            case .back: openInterface()
+            case .back: audio.play(.back); openInterface()
             default: break
             }
         }; controller.start()
