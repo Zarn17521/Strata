@@ -349,8 +349,10 @@ struct StrataNxPortraitSkinSettings: View {
                 Text("Wide (default) enlarges the 16:9 game area and moves the landscape controls outward. Portrait uses the full screen width. Classic retains the original shell. Full Screen uses the largest uncropped 16:9 viewport with native translucent controls instead of the photo skin. Restart NxNative to apply. Render scale is unchanged.")
             }
 
-            Section("Custom Skins") {
+            Section {
                 NavigationLink("ZN Skin Studio") { ZNSkinStudioDraftEditor() }
+            } header: {
+                Text("Custom Skins")
             } footer: {
                 Text("Create and save custom layout drafts. In-game custom skin support is not yet available.")
             }
