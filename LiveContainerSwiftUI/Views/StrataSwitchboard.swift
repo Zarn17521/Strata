@@ -318,13 +318,9 @@ struct StrataSwitchboard: View {
             .accessibilityLabel(customization.name(app))
             .accessibilityIdentifier("switchboard.tile." + key)
             .contextMenu {
-                if presentation == "Shelf" {
-                    Button("Options…", systemImage: "ellipsis.circle") {
-                        controller.stop()
-                        shelfOptionsApp = LiveBoardAppearanceSelection(app: app)
-                    }
-                } else {
-                    appOptions(app, perform: { action in action() })
+                Button("Options…", systemImage: "ellipsis.circle") {
+                    controller.stop()
+                    shelfOptionsApp = LiveBoardAppearanceSelection(app: app)
                 }
             }
         }
