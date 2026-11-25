@@ -3,6 +3,7 @@
 #import "LCSharedUtils.h"
 #import "utils.h"
 #import <UIKit/UIKit.h>
+#import <ImageIO/ImageIO.h>
 #import <unistd.h>
 #import <math.h>
 #import "StrataNxBuiltinSkin.h"
@@ -274,9 +275,12 @@ static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     // Legacy JPEG artwork needs gutter crop. Built-in vectors have no
     // baked black gutters, so aspect-fill alone reaches every display edge
     // without cropping the shoulder buttons.
-    CGFloat scale = landscapeArtwork
-        ? MAX(sx, sy) * (StrataNxIsBuiltinImage(image) ? 1.0 : 1.12)
-        : MIN(sx, sy);
+    BOOL usesPhotoFraming = !StrataNxIsBuiltinImage(image);
+#if __has_include("StrataNxPhotoData.h")
+    // Preserve the landscape crop used by the original photo-based themes.
+    usesPhotoFraming |= StrataNxIsThemeImage(image);
+#endif
+    CGFloat scale = landscapeArtwork ? MAX(sx, sy) * (usesPhotoFraming ? 1.12 : 1.0) : MIN(sx, sy);
     CGSize fit = CGSizeMake(image.size.width*scale, image.size.height*scale);
     return CGRectMake(CGRectGetMidX(bounds)-fit.width/2,
                       CGRectGetMidY(bounds)-fit.height/2,fit.width,fit.height);
@@ -807,101 +811,49 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
             @"echoes-of-wisdom": @[@0.79,@0.47,@0.61]
         };
     });
-    NSArray<NSNumber *> *rgb = palette[identifier];
+    NSArray<NSNumber *> *rgb = identifier.length ? palette[identifier] : nil;
     if (rgb.count != 3) return nil;
     return [UIColor colorWithRed:rgb[0].doubleValue green:rgb[1].doubleValue
                             blue:rgb[2].doubleValue alpha:1];
 }
 
 
-// Original shell decorations use system glyphs and engraved geometry.
-static void StrataNxDrawThemeArtwork(NSString *identifier, CGRect frame, BOOL portrait) {
-    if (!identifier.length || CGRectIsEmpty(frame)) return;
-    UIColor *ink = StrataNxCustomThemeColor(identifier);
-    if (!ink) return;
-    static NSDictionary<NSString *, NSString *> *symbols;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        symbols = @{
-            @"zelda": @"leaf",
-            @"mario": @"circle.grid.cross",
-            @"kirby": @"star",
-            @"luigi": @"sparkles",
-            @"peach": @"heart",
-            @"bowser": @"flame",
-            @"zelda-classic-edition": @"seal",
-            @"zelda-1": @"mountain.2",
-            @"adventure-of-link": @"shield",
-            @"a-link-to-the-past": @"drop",
-            @"links-awakening": @"moon",
-            @"ocarina-of-time": @"music.note",
-            @"majoras-mask": @"eye",
-            @"oracle-of-ages": @"hourglass",
-            @"oracle-of-seasons": @"sun",
-            @"wind-waker": @"wind",
-            @"minish-cap": @"clover",
-            @"twilight-princess": @"diamond",
-            @"phantom-hourglass": @"water.waves",
-            @"spirit-tracks": @"tram",
-            @"skyward-sword": @"feather",
-            @"a-link-between-worlds": @"square.on.square",
-            @"triforce-heroes": @"person.3",
-            @"breath-of-the-wild": @"tent",
-            @"tears-of-the-kingdom": @"spiral",
-            @"echoes-of-wisdom": @"cloud",
+@interface StrataNxThemeBundleToken : NSObject
+@end
+@implementation StrataNxThemeBundleToken
+@end
+
+static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail) {
+    if (!StrataNxCustomThemeColor(identifier)) return nil;
+    NSBundle *bundle = [NSBundle bundleForClass:StrataNxThemeBundleToken.class];
+    NSString *name = [identifier stringByAppendingString:portrait ? @"-portrait" : @"-landscape"];
+    NSURL *url = [bundle URLForResource:name withExtension:@"jpg" subdirectory:@"NxThemeArtwork"];
+    if (!url) return nil;
+
+    // ImageIO downsamples before allocating preview pixels. Gameplay keeps
+    // the reference coordinates and renders only its active orientation.
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+    if (!source) return nil;
+    CGImageRef pixels;
+    if (thumbnail) {
+        NSDictionary *options = @{
+            (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+            (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @640,
+            (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES
         };
-    });
-    NSString *name = symbols[identifier];
-    if (!name) return;
-
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    if (!context) return;
-    CGContextSaveGState(context);
-    CGContextSetBlendMode(context, kCGBlendModeColor);
-    CGContextSetFillColorWithColor(context, [ink colorWithAlphaComponent:0.32].CGColor);
-    CGContextFillRect(context, frame);
-    CGContextRestoreGState(context);
-
-    CGFloat unit = MIN(frame.size.width, frame.size.height);
-    CGFloat radius = unit * (portrait ? 0.105 : 0.081);
-    CGFloat x = CGRectGetMidX(frame);
-    CGFloat y = CGRectGetMinY(frame) + frame.size.height * (portrait ? 0.72 : 0.82);
-    CGRect badge = CGRectMake(x-radius,y-radius,2*radius,2*radius);
-    [[ink colorWithAlphaComponent:0.91] setFill];
-    [[UIBezierPath bezierPathWithOvalInRect:badge] fill];
-    UIColor *highlight = [UIColor colorWithRed:1 green:0.93 blue:0.74 alpha:0.95];
-    [highlight setStroke];
-    UIBezierPath *ring = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(badge,radius*0.13,radius*0.13)];
-    ring.lineWidth = radius * 0.045;
-    [ring stroke];
-    NSUInteger facets = 5 + name.length % 6;
-    UIBezierPath *engraving = [UIBezierPath bezierPath];
-    engraving.lineWidth = radius * 0.035;
-    for (NSUInteger index = 0; index < facets; ++index) {
-        CGFloat angle = (2 * M_PI * index) / facets;
-        CGFloat dx = cos(angle), dy = sin(angle);
-        [engraving moveToPoint:CGPointMake(x+dx*radius*0.72,y+dy*radius*0.72)];
-        [engraving addLineToPoint:CGPointMake(x+dx*radius*0.83,y+dy*radius*0.83)];
+        pixels = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+    } else {
+        pixels = CGImageSourceCreateImageAtIndex(source, 0, NULL);
     }
-    [engraving stroke];
-    UIImage *glyph = [UIImage systemImageNamed:name] ?: [UIImage systemImageNamed:@"sparkle"];
-    glyph = [glyph imageWithTintColor:highlight renderingMode:UIImageRenderingModeAlwaysOriginal];
-    CGRect glyphBox = CGRectInset(badge,radius*0.46,radius*0.46);
-    if (glyph.size.width > 0 && glyph.size.height > 0) {
-        CGFloat scale = MIN(glyphBox.size.width/glyph.size.width,glyphBox.size.height/glyph.size.height);
-        CGSize size = CGSizeMake(glyph.size.width*scale,glyph.size.height*scale);
-        [glyph drawInRect:CGRectMake(x-size.width/2,y-size.height/2,size.width,size.height)];
-    }
-}
-
-UIImage *StrataNxThemeArtworkPreview(NSString *identifier, BOOL portrait) {
-    CGSize size = portrait ? CGSizeMake(180,320) : CGSizeMake(320,180);
-    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
-    format.scale = 1;
-    return [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format]
-        imageWithActions:^(__unused UIGraphicsImageRendererContext *renderer) {
-            StrataNxDrawThemeArtwork(identifier, (CGRect){CGPointZero,size}, portrait);
-        }];
+    CFRelease(source);
+    if (!pixels) return nil;
+    UIImage *plate = [UIImage imageWithCGImage:pixels];
+    CGImageRelease(pixels);
+    // UIImage's logical size stays the same for geometry even when its bitmap
+    // is downsampled. Draw the real keys over both representations.
+    UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, thumbnail ? 0.32 : 1);
+    if (image) objc_setAssociatedObject(image, &StrataNxThemeImageKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return image;
 }
 
 // Press feedback uses the EXACT control geometry of the touch remapper,
@@ -989,7 +941,6 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending;
 - (void)loadCustomSkinLayers;
-- (void)drawCustomThemeInArtworkFrame:(CGRect)artworkFrame;
 - (void)drawCustomSkinLayersPortrait:(BOOL)portrait artworkFrame:(CGRect)artworkFrame;
 - (NSInteger)nativeRoleForPoint:(CGPoint)point pad:(UIView *)pad;
 - (CGRect)nativeFeedbackFrameForRole:(NSInteger)role point:(CGPoint)point pad:(UIView *)pad;
@@ -1088,10 +1039,6 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
     self.customSkinItems = validItems;
     self.customSkinImages = images;
 }
-- (void)drawCustomThemeInArtworkFrame:(CGRect)artworkFrame {
-    StrataNxDrawThemeArtwork(self.themeIdentifier, artworkFrame,
-                            self.bounds.size.height > self.bounds.size.width);
-}
 - (void)drawCustomSkinLayersPortrait:(BOOL)portrait artworkFrame:(CGRect)artworkFrame {
     CGContextRef context = UIGraphicsGetCurrentContext();
     if (!context || self.customSkinItems.count == 0 || CGRectIsEmpty(artworkFrame)) return;
@@ -1118,7 +1065,8 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
     if (self.activeArtwork && self.activeArtworkPortrait == portrait) return self.activeArtwork;
     self.activeArtwork = nil;
     self.activeArtworkPortrait = portrait;
-    self.activeArtwork = StrataNxBuiltinArtwork(portrait,self.darkTheme);
+    self.activeArtwork = StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO)
+        ?: StrataNxBuiltinArtwork(portrait,self.darkTheme);
     return self.activeArtwork;
 }
 - (UIImage *)portraitArtwork { return [self artworkForPortrait:YES]; }
@@ -1498,14 +1446,23 @@ static void StrataNxDrawWidePanel(UIImage *image, CGRect frame, CGRect source) {
     [image drawInRect:frame];
     CGContextRestoreGState(ctx);
 }
-static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark) {
-    [StrataNxBuiltShell(dark) setFill];
+static UIColor *StrataNxArtworkBacking(UIImage *image, BOOL dark, UIColor *tint) {
+    if (!StrataNxIsThemeImage(image)) return StrataNxBuiltShell(dark);
+    CGFloat red = 0, green = 0, blue = 0;
+    [tint getRed:&red green:&green blue:&blue alpha:NULL];
+    return [UIColor colorWithRed:.025 + red*.30 green:.025 + green*.30 blue:.025 + blue*.30 alpha:1];
+}
+
+static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark, UIColor *tint) {
+    [StrataNxArtworkBacking(image,dark,tint) setFill];
     UIRectFill(bounds);
     BOOL portrait=bounds.size.height>=bounds.size.width;
     CGContextRef ctx=UIGraphicsGetCurrentContext();
     if (portrait) {
         CGRect art=StrataNxArtworkFrame(bounds,image);
-        // Keep the entire corrected lower panel; discard the old tall bezel.
+        if (StrataNxIsThemeImage(image))
+            StrataNxDrawWidePanel(image, art, CGRectMake(0,0,1,.065));
+        // Keep the entire corrected lower panel; discard the Classic bezel.
         CGContextSaveGState(ctx);
         CGContextClipToRect(ctx,StrataNxMapNormalizedRect(art,CGRectMake(0,.435,1,.565)));
         CGRect body=StrataNxArtRect(art,CGRectMake(.025,.015,.950,.970));
@@ -1525,9 +1482,7 @@ static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark) {
     }
 }
 
-// Settings uses the exact same cached photograph and the very same
-// Look/ABXY, R/ZR and ZN transforms as the running NxNative game. A vector
-// mockup would give the user a misleading preview of the shipped skin.
+// Keep the original photo path for the two legacy finishes.
 BOOL StrataNxPhotoSkinsBundled(void) {
 #if __has_include("StrataNxPhotoData.h")
     return YES;
@@ -1536,22 +1491,23 @@ BOOL StrataNxPhotoSkinsBundled(void) {
 #endif
 }
 
-UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *mode) {
+UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mode, NSString *identifier) {
     BOOL wide=[mode isEqualToString:@"wide"];
     static NSCache<NSString *, UIImage *> *previewCache;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         previewCache = [NSCache new];
-        previewCache.countLimit = 2;
-        previewCache.totalCostLimit = 3 * 1024 * 1024;
+        previewCache.countLimit = 20;
+        previewCache.totalCostLimit = 5 * 1024 * 1024;
     });
-    NSString *key = [NSString stringWithFormat:@"photo-preview-%@-%@-%@",
+    NSString *key = [NSString stringWithFormat:@"%@-%@-%@-%@", identifier,
                      portrait ? @"portrait" : @"landscape",
                      dark ? @"amoled" : @"pearl",wide ? @"wide" : @"classic"];
     UIImage *cached = [previewCache objectForKey:key];
     if (cached) return cached;
 
-    UIImage *source = StrataNxBuiltinArtwork(portrait,dark);
+    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES)
+        ?: StrataNxBuiltinArtwork(portrait,dark);
     if (!source) return nil;
     CGSize size = wide ? (portrait ? CGSizeMake(393,852) : CGSizeMake(852,393)) : source.size;
     // Keep Settings snapshots at one-third resolution: the real native
@@ -1574,7 +1530,7 @@ UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *m
         CGContextScaleCTM(ctx,previewSize.width/size.width,
                           previewSize.height/size.height);
         if (wide) {
-            StrataNxDrawWideArtwork(source,art,dark);
+            StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             [UIColor.blackColor setFill];
             UIRectFill(StrataNxDisplayRect(art,source,YES));
             CGContextRestoreGState(ctx);
@@ -1593,7 +1549,8 @@ UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *m
         if (!StrataNxIsBuiltinImage(source) && !StrataNxIsPreparedPhoto(source))
             StrataNxDrawRearrangedArtwork(source,art,!portrait,dark);
         CGRect aperture = StrataNxArtworkAperture(art, source);
-        StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
+        if (!StrataNxIsThemeImage(source))
+            StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
         StrataNxDrawZNBrand(art,portrait);
         CGContextRestoreGState(ctx);
     }];
@@ -1601,10 +1558,6 @@ UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *m
         cost:(NSUInteger)(result.size.width*result.size.height*4)];
     return result;
 }
-UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
-    return StrataNxSkinPreviewImageForLayout(portrait,dark,@"classic");
-}
-
 - (void)drawRect:(CGRect)rect {
     if (self.fullScreenMode) return; // leave the edge-to-edge game and native controls unobstructed
     UIView *parent = self.superview;
@@ -1639,14 +1592,13 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
     if (artwork) {
         // Cover even transparent parts of imported PNGs so the extra-wide
         // Metal drawable cannot leak around the handheld artwork.
-        CGContextSetFillColorWithColor(ctx, StrataNxBuiltShell(self.darkTheme).CGColor);
+        CGContextSetFillColorWithColor(ctx, StrataNxArtworkBacking(artwork,self.darkTheme,self.customThemeTint).CGColor);
         CGContextFillRect(ctx, bounds);
     }
 
     if (artwork && wide) {
-        StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme);
+        StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         CGRect artFrame = StrataNxArtworkFrame(bounds,artwork);
-        [self drawCustomThemeInArtworkFrame:artFrame];
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:artFrame];
         CGContextRestoreGState(ctx);
         return;
@@ -1695,11 +1647,11 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         }
         // Match the original display rim with the actual 16:9 picture.
         // Cover the old black screen's excess height with the shell colour.
-        StrataNxPaintDisplaySurround(aperture,opening,self.darkTheme);
+        if (!StrataNxIsThemeImage(image))
+            StrataNxPaintDisplaySurround(aperture,opening,self.darkTheme);
         // Built-ins are already laid out with Look above ABXY. Do not
         // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
-        [self drawCustomThemeInArtworkFrame:art];
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:art];
         CGContextRestoreGState(ctx);
     } else {
@@ -1941,9 +1893,8 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     [skin setDarkTheme:skin.darkTheme];
     // The same immutable preset drives drawing, hit testing and press layers.
     objc_setAssociatedObject(skin,&StrataNxWideSkinKey,@([mode isEqualToString:@"wide"]),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    // Built-in vector skin: every NxNative guest has BOTH orientations
-    // without importing or downloading any PNG. The user's old custom
-    // artwork files remain untouched on disk for potential future restore.
+    // Keep only this orientation in the overlay. Rotation replaces it through
+    // the same geometry path used for the display and touch mapping.
     BOOL portrait=host.bounds.size.height>host.bounds.size.width;
     BOOL hasArtwork=[skin artworkForPortrait:portrait]!=nil;
     if (hasArtwork) StrataEnableNxSkinTouchMapping(pad);

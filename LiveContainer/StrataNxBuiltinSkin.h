@@ -1,5 +1,5 @@
 // Built-in, self-contained NxNative controller art for Strata.
-// Included by StrataGuestControls.m only; no binary PNG, network or game patch.
+// Included by StrataGuestControls.m only.
 // These shapes are rendered once on installation and cached.  All positions
 // use the ORIGINAL 923x2000 / 1792x1008 reference coordinate system,
 // with the requested FINAL mapping (look stick above, ABXY below).
@@ -20,6 +20,11 @@ static NSData *StrataNxPackedPhotoData(BOOL portrait, BOOL dark) {
 
 static char StrataNxBuiltinImageKey;
 static char StrataNxPreparedPhotoKey;
+static char StrataNxThemeImageKey;
+
+static BOOL StrataNxIsThemeImage(UIImage *image) {
+    return image && [objc_getAssociatedObject(image, &StrataNxThemeImageKey) boolValue];
+}
 
 static BOOL StrataNxIsPreparedPhoto(UIImage *image) {
     return image && [objc_getAssociatedObject(image, &StrataNxPreparedPhotoKey) boolValue];
@@ -146,20 +151,22 @@ static void StrataNxBuiltScreen(CGRect hole, BOOL dark) {
     [[UIColor colorWithWhite:dark?0.62:0.93 alpha:0.70] setStroke];[edge stroke];
 }
 
-static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark) {
+static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, CGFloat scale) {
     CGSize size = portrait ? CGSizeMake(923,2000) : CGSizeMake(1792,1008);
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
     format.opaque=YES;
-    format.scale=1;
+    format.scale=scale;
     UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
     UIImage *result=[renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull render) {
         CGRect all=CGRectMake(0,0,size.width,size.height);
-        [StrataNxBuiltShell(dark) setFill];
-        UIRectFill(all);
-        // Full-bleed shell. No baked black JPEG gutters, transparent
-        // corners, or decorative controls inside the game aperture.
-        CGRect game = portrait ? CGRectMake(37,138,847,661) : CGRectMake(463,169,863,574);
-        StrataNxBuiltScreen(game,dark);
+        if (plate) {
+            [plate drawInRect:all];
+        } else {
+            [StrataNxBuiltShell(dark) setFill];
+            UIRectFill(all);
+            CGRect game = portrait ? CGRectMake(37,138,847,661) : CGRectMake(463,169,863,574);
+            StrataNxBuiltScreen(game,dark);
+        }
         // Shoulder pairs remain LEFT L/ZL and RIGHT R/ZR in both modes.
         NSArray<NSString *> *labels=@[@"L",@"ZL",@"R",@"ZR"];
         CGFloat lx[4],sy,shoulderW,shoulderH;
@@ -247,7 +254,7 @@ static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark) {
         if (image) objc_setAssociatedObject(image,&StrataNxPreparedPhotoKey,
                                              @YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 #endif
-        if (!image) image=StrataNxBuildArtwork(portrait,dark);
+        if (!image) image=StrataNxBuildArtwork(portrait,dark,nil,1);
         if (image) [cache setObject:image forKey:key
                  cost:(NSUInteger)(image.size.width*image.size.height*4)];
     }

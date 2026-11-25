@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Static regression checks for launcher artwork and layout identity rules."""
 from pathlib import Path
+import hashlib
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +11,11 @@ icons = (ROOT / "LiveContainerSwiftUI/Views/LiveBoardIconStore.swift").read_text
 built_in_skins = (ROOT / "LiveContainerSwiftUI/Views/StrataNxBuiltInSkins.swift").read_text()
 guest_controls = (ROOT / "LiveContainer/StrataGuestControls.m").read_text()
 settings = (ROOT / "LiveContainerSwiftUI/Views/StrataSettingsApp.swift").read_text()
+
+theme_ids = re.findall(r'\.init\(id: "([^"]+)"', built_in_skins)
+artwork_root = ROOT / "Resources/NxThemeArtwork"
+artwork_files = {f"{theme}-{orientation}.jpg" for theme in theme_ids for orientation in ("portrait", "landscape")}
+project = (ROOT / "LiveContainer.xcodeproj/project.pbxproj").read_text()
 
 checks = {
     "thumbnail cache is independent": "private let thumbnailCache = NSCache<NSString, UIImage>()" in store,
@@ -37,11 +43,20 @@ checks = {
         "LiveContainerSwiftUI/Assets.xcassets/MainPortrait.imageset/MainPortrait.jpg",
         "LiveContainerSwiftUI/Assets.xcassets/ZeldaClassicEdition.imageset/ZeldaClassicEdition.jpg",
     )),
-    "Zelda Classic Edition selects its supplied portrait template": 'portraitTemplateName: "ZeldaClassicEdition"' in built_in_skins and 'portraitTemplateName: theme.portraitTemplateName' in settings,
-    "built-in theme initializer accepts an optional portrait template": "init(id: String, title: String, tint: Color, portraitTemplateName: String? = nil)" in built_in_skins,
     "Custom skin layers persist in the shared app group": '"ZNCustomSkinMainLayersV1"' in (ROOT / "LiveContainer/StrataGuestControls.m").read_text(),
     "Guest skin renderer draws saved custom layers": '"ZNCustomSkinMainLayersV1"' in guest_controls and "drawCustomSkinLayersPortrait" in guest_controls,
     "26 unique character and Zelda game themes are listed once": len(re.findall(r'\.init\(id: "kirby"', built_in_skins)) == 1 and len(re.findall(r'\.init\(id:', built_in_skins)) == 26,
+    "all 52 unique artwork files match the saved catalog IDs":
+        len(artwork_files) == 52 and artwork_files == {p.name for p in artwork_root.glob("*.jpg")}
+        and len({hashlib.sha256(p.read_bytes()).digest() for p in artwork_root.glob("*.jpg")}) == 52,
+    "shared framework packages the artwork folder":
+        "path = Resources/NxThemeArtwork" in project
+        and "NxThemeArtwork in Resources" in project.split("E1292BD42DCA3B660065E12D /* Resources */ = {", 1)[1].split("runOnlyForDeploymentPostprocessing", 1)[0],
+    "picker and gameplay use the same source with bounded picker decoding":
+        'StrataNxSkinPreviewImageForTheme(!landscape, dark, layout, theme.id)' in settings
+        and 'StrataNxLoadThemeArtwork(identifier, portrait, YES)' in guest_controls
+        and 'StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO)' in guest_controls
+        and 'kCGImageSourceThumbnailMaxPixelSize: @640' in guest_controls,
     "theme colors are shared with the guest renderer": set(re.findall(r'\.init\(id: "([^"]+)"', built_in_skins)) == set(re.findall(r'@"([^"]+)": @\[@', guest_controls)),
     "controller presses glow and depress then release": all(key in guest_controls for key in ("zn.press.glow", "zn.press.down", "zn.press.lift")),
     "all themes share Classic Wide and Full Screen options": all(f'("{name}", "{tag}")' in settings for name, tag in (("Classic", "classic"), ("Wide", "wide"), ("Full Screen", "full"))) and '"StrataNxDisplayLayout"' in settings,

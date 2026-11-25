@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A22000000000000000000005 /* ImageIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A22000000000000000000006 /* ImageIO.framework */; };
+		A22000000000000000000003 /* NxThemeArtwork in Resources */ = {isa = PBXBuildFile; fileRef = A22000000000000000000004 /* NxThemeArtwork */; };
 		A22000000000000000000001 /* StrataGuestControls.m in Sources */ = {isa = PBXBuildFile; fileRef = A22000000000000000000002 /* StrataGuestControls.m */; };
 		A20000000000000000000001 /* StrataProcessMemory.m in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* StrataProcessMemory.m */; };
 		173545AF2E2C7913001B3B4C /* SideStoreSupport.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 173545A82E2C7913001B3B4C /* SideStoreSupport.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -161,6 +163,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A22000000000000000000006 /* ImageIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ImageIO.framework; path = System/Library/Frameworks/ImageIO.framework; sourceTree = SDKROOT; };
+		A22000000000000000000004 /* NxThemeArtwork */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/NxThemeArtwork; sourceTree = SOURCE_ROOT; };
 		A22000000000000000000002 /* StrataGuestControls.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StrataGuestControls.m; sourceTree = "<group>"; };
 		A20000000000000000000002 /* StrataProcessMemory.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StrataProcessMemory.m; sourceTree = "<group>"; };
 		A20000000000000000000003 /* StrataProcessMemory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StrataProcessMemory.h; sourceTree = "<group>"; };
@@ -417,6 +421,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A22000000000000000000005 /* ImageIO.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -467,6 +472,7 @@
 				17B0F8452DE16FE4008110EA /* xcconfigs */,
 				E1292C242DCA4E6F0065E12D /* MultitaskSupport */,
 				172CA8992D9D72C300CF6989 /* Resources */,
+				A22000000000000000000004 /* NxThemeArtwork */,
 				172CA8652D9D723200CF6989 /* entitlements.xml */,
 				172CA85F2D9D721700CF6989 /* LiveContainer */,
 				17413FB62D9C0BAE00F3F928 /* LiveContainerSwiftUI */,
@@ -941,6 +947,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A22000000000000000000003 /* NxThemeArtwork in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

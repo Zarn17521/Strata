@@ -7,9 +7,7 @@ void StrataToggleHostControls(UIWindow *window);
 @class UIView;
 void StrataSetSwitcherProviders(UIView *(^live)(NSString *key), NSString *(^front)(void));
 
-// Cached photo-faithful preview shared by Settings and the NxNative skin.
+// Bounded Settings preview using the same artwork and controls as gameplay.
 @class UIImage;
-UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark);
-UIImage *StrataNxSkinPreviewImageForLayout(BOOL portrait, BOOL dark, NSString *mode);
+UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mode, NSString *identifier);
 BOOL StrataNxPhotoSkinsBundled(void);
-UIImage *StrataNxThemeArtworkPreview(NSString *identifier, BOOL portrait);

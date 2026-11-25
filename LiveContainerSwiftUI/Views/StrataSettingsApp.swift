@@ -313,8 +313,8 @@ struct StrataNxPortraitSkinSettings: View {
 
     private var dark: Bool { style == "amoled" }
     private let originalSkins = [
-        StrataNxBuiltInSkin(id: "pearl", title: "Pearl Light", tint: .clear),
-        StrataNxBuiltInSkin(id: "amoled", title: "AMOLED Dark", tint: .clear)
+        StrataNxBuiltInSkin(id: "pearl", title: "Pearl Light"),
+        StrataNxBuiltInSkin(id: "amoled", title: "AMOLED Dark")
     ]
 
     private var availableSkins: [StrataNxBuiltInSkin] { originalSkins + StrataNxBuiltInSkin.all }
@@ -322,8 +322,8 @@ struct StrataNxPortraitSkinSettings: View {
         availableSkins.first { $0.id == themeID } ?? originalSkins[dark ? 1 : 0]
     }
     private var finishSelection: Binding<String> {
-        Binding(get: { style }, set: { finish in
-            if originalSkins.contains(where: { $0.id == themeID }) { themeID = finish }
+        Binding(get: { activeTheme.id }, set: { finish in
+            themeID = finish
             style = finish
         })
     }
@@ -357,7 +357,7 @@ struct StrataNxPortraitSkinSettings: View {
                 } else {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout, theme: activeTheme, portraitTemplateName: activeTheme.portraitTemplateName)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout, theme: activeTheme)
                             .frame(width: 96, height: 208)
                         Text("Portrait")
                             .font(.caption)
@@ -404,7 +404,7 @@ struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Built-in Skin")
             } footer: {
-                Text("Choose a picture to apply its theme. Pearl Light and AMOLED Dark remain available as finishes. Restart NxNative to apply.")
+                Text("Choose a picture to apply its theme. Choose Pearl Light or AMOLED Dark to use the original skins. Restart NxNative to apply.")
             }
         }
         .navigationTitle("NxNative Controller Skins")
@@ -454,8 +454,8 @@ struct StrataNxPortraitSkinSettings: View {
                 ZStack(alignment: .topTrailing) {
                     HStack(spacing: 5) {
                         StrataNxBuiltInSkinPreview(dark: cardDark, landscape: false, layout: "classic",
-                                                  theme: theme, portraitTemplateName: theme.portraitTemplateName)
-                            .aspectRatio(9.0 / 16.0, contentMode: .fit)
+                                                  theme: theme)
+                            .aspectRatio(923.0 / 2000.0, contentMode: .fit)
                         StrataNxBuiltInSkinPreview(dark: cardDark, landscape: true, layout: "classic", theme: theme)
                             .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     }
@@ -490,40 +490,18 @@ struct StrataNxPortraitSkinSettings: View {
     }
 }
 
-// The preview is rendered by the same Core Graphics photo pipeline as
-// the NxNative overlay. This prevents Settings from showing the obsolete
-// synthetic vector-controller design when bundled user images are available.
-private final class StrataNxSkinAssetBundleToken: NSObject {}
-
 private struct StrataNxBuiltInSkinPreview: View {
     let dark: Bool
     let landscape: Bool
     let layout: String
     let theme: StrataNxBuiltInSkin
-    var portraitTemplateName: String? = nil
 
     var body: some View {
-        GeometryReader { geo in
-            if !landscape, let name = portraitTemplateName,
-               let template = UIImage(named: name, in: Bundle(for: StrataNxSkinAssetBundleToken.self), compatibleWith: nil) {
-                Image(uiImage: template)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-            } else if let image = StrataNxSkinPreviewImageForLayout(!landscape, dark, layout) {
+        Group {
+            if let image = StrataNxSkinPreviewImageForTheme(!landscape, dark, layout, theme.id) {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .overlay {
-                        Rectangle().fill(theme.tint.opacity(0.24)).blendMode(.color)
-                        if theme.id != "pearl", theme.id != "amoled",
-                           let artwork = StrataNxThemeArtworkPreview(theme.id, !landscape) {
-                            Image(uiImage: artwork).resizable().allowsHitTesting(false)
-                        }
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
+                    .scaledToFit()
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(dark ? Color.black : Color(white: 0.96))
@@ -533,7 +511,6 @@ private struct StrataNxBuiltInSkinPreview: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(dark ? "AMOLED Dark controller skin preview"
-                                 : "Pearl Light controller skin preview")
+        .accessibilityLabel("\(theme.title), \(landscape ? "Landscape" : "Portrait") controller skin preview")
     }
 }
