@@ -784,10 +784,10 @@ struct ZNWhatsNewView: View {
                 }.padding(.vertical, 12)
             }
             Section {
-                Label("RAM ON", systemImage: "memorychip")
+                Label("Optimize ON", systemImage: "memorychip")
                 Text("Uses smaller artwork caches and reduces controller visual updates. Illustrated NxNative skins use fewer pixels after you relaunch NxNative.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Label("RAM OFF", systemImage: "memorychip")
+                Label("Optimize OFF", systemImage: "memorychip")
                 Text("Uses standard artwork quality and normal controller visual updates. Automatic memory pressure cleanup still runs.")
                     .font(.footnote).foregroundStyle(.secondary)
             } header: {
