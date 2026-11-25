@@ -28,9 +28,15 @@ extension LCAppModel {
         var hud = LCUtils.appGroupUserDefault.dictionary(forKey: "StrataMetalHUDApps") as? [String: Bool] ?? [:]
         hud[liveBoardAppKey(self)] = metalHUD
         LCUtils.appGroupUserDefault.set(hud, forKey: "StrataMetalHUDApps")
+        let previousLaunch = appInfo.lastLaunched
         do {
             try await runApp(multitask: gameMode ? false : multitask, forceJIT: forceJIT ? true : nil)
-            LiveBoardRecentGames.record(self)
+            // runApp records lastLaunched only when it reaches a completed
+            // launch handoff. It can also return early for a no-op/already
+            // running app, so a successful async return alone is insufficient.
+            if let completedLaunch = appInfo.lastLaunched, completedLaunch != previousLaunch {
+                LiveBoardRecentGames.record(self, at: completedLaunch)
+            }
         }
         catch {
             var pending = LCUtils.appGroupUserDefault.dictionary(forKey: "StrataMetalHUDApps") as? [String: Bool] ?? [:]
