@@ -84,7 +84,7 @@ struct StrataSwitchboard: View {
                         Spacer()
                         Menu {
                             ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
-                                Button { presentation = name } label: {
+                                Button { if presentation != name { presentation = name } } label: {
                                     if presentation == name { Label(name, systemImage: "checkmark") } else { Text(name) }
                                 }
                             }
@@ -102,13 +102,22 @@ struct StrataSwitchboard: View {
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
         .background(LiveBoardOrientationLock(mask: .portrait))
-        .onAppear { if !["Switchboard", "Cinematic", "Shelf"].contains(presentation) { presentation = "Switchboard" }; visible = true; artwork.resumeDecoding(); selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() } }
+        .onAppear {
+            if !["Switchboard", "Cinematic", "Shelf"].contains(presentation) { presentation = "Switchboard" }
+            visible = true
+            artwork.resumeDecoding()
+            if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" }
+            if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() }
+        }
         .onDisappear { visible = false; controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
         .onChange(of: phase) { value in
             if value == .active { busy = false; artwork.resumeDecoding(); bind() }
             else { controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
         }
         .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: busy || !visible || phase != .active) }
+        .onChange(of: filtered.map(liveBoardAppKey)) { keys in
+            if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" }
+        }
         .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
             thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
             if thermalConstrained {
@@ -195,6 +204,7 @@ struct StrataSwitchboard: View {
                             }
                         }.padding(.horizontal, 12)
                     }
+                    .onAppear { if !selectedKey.isEmpty { proxy.scrollTo(selectedKey, anchor: .center) } }
                     .onChange(of: selectedKey) { key in proxy.scrollTo(key, anchor: .center) }
                 }.frame(height: 76)
             }
@@ -209,6 +219,7 @@ struct StrataSwitchboard: View {
                         }
                     }.padding(12)
                 }
+                .onAppear { if !selectedKey.isEmpty { proxy.scrollTo(selectedKey, anchor: .center) } }
                 .onChange(of: selectedKey) { key in proxy.scrollTo(key, anchor: .center) }
             }
         default:
@@ -229,11 +240,7 @@ struct StrataSwitchboard: View {
         return Button { selectedKey = key } label: {
             VStack(spacing: 2) {
                 Group {
-                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
-                        Image(uiImage: cover).resizable().scaledToFill()
-                    } else {
-                        LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
-                    }
+                    LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode, thumbnail: true)
                 }.frame(width: size, height: size).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(foreground, lineWidth: selectedKey == key ? 2 : 0))
@@ -265,11 +272,7 @@ struct StrataSwitchboard: View {
             } label: {
                 ZStack {
                     tilePlaceholder
-                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
-                        Image(uiImage: cover).resizable().scaledToFill()
-                    } else {
-                        LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
-                    }
+                    LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode)
                 }
                 .frame(width: tile, height: tile)
                 .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -333,7 +336,6 @@ struct StrataSwitchboard: View {
             }
         }
         .frame(width: tile + 10)
-        .id(key)
     }
 
     // The system status bar already displays time, Wi-Fi and battery.
@@ -544,6 +546,44 @@ struct StrataSwitchboard: View {
             default: break
             }
         }; controller.start()
+    }
+}
+
+/// Keeps the currently displayed cover alive while a newly selected cover is
+/// being decoded. A mapped image uses a neutral placeholder instead of briefly
+/// falling back to the app icon, which caused the visible cover/icon flicker.
+private struct LiveBoardCoverImage: View {
+    @ObservedObject var store: LiveBoardArtworkStore
+    let key: String
+    let app: LCAppModel
+    let darkMode: Bool
+    var thumbnail = false
+    @State private var lastReady: UIImage?
+
+    var body: some View {
+        let loaded = store.image(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail)
+        Group {
+            if let image = loaded ?? lastReady {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if store.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
+                Rectangle().fill(darkMode ? Color(white: 0.10) : Color(white: 0.95))
+            } else {
+                LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
+            }
+        }
+        .onAppear(perform: refresh)
+        .onChange(of: key) { _ in refresh() }
+        .onChange(of: store.revision) { _ in refresh() }
+    }
+
+    private func refresh() {
+        if let image = store.cachedImage(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail) {
+            lastReady = image
+        } else if !store.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
+            // The app icon is already an available replacement when the game
+            // has no custom image, so don't retain the previous game's cover.
+            lastReady = nil
+        }
     }
 }
 

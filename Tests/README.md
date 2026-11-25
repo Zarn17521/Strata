@@ -37,3 +37,13 @@ swiftc SideStoreSupport/StrataAutomationPolicy.swift Tests/automation-policy-tes
 ```
 
 Tests cover 1–5 day due checks, disabled schedules, retry throttling, active-refresh suppression, and conservative VPN cleanup while JIT remains active. They do not prove that iOS will run a Personal Automation or complete a self-update without interruption.
+
+# Launcher artwork and layout regressions
+
+```sh
+python3 Tests/launcher-stability-tests.py
+```
+
+This verifies source-level invariants for separately bounded thumbnail caching,
+cover retention during asynchronous replacement, and selected-item restoration.
+It does not replace iOS rendering or interaction tests.
