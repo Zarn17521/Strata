@@ -1,12 +1,18 @@
 import Foundation
 import AudioToolbox
+import UIKit
 
 /// Original short navigation cue; system sound playback does not replace a guest audio session.
 @MainActor final class LiveBoardNavigationAudio: ObservableObject {
     private var sound: SystemSoundID = 0
+    private var loadedStyle = ""
     private var lastPlay = Date.distantPast
     func play() {
         guard LCUtils.appGroupUserDefault.object(forKey: "ZNBetaNavigationAudio") as? Bool ?? true else { stop(); return }
+        guard !UIAccessibility.isVoiceOverRunning else { stop(); return }
+        let style = LCUtils.appGroupUserDefault.string(forKey: "ZNBetaSoundStyle") ?? "classic"
+        if style != loadedStyle { stop(); loadedStyle = style }
+        let frequency: Double = style == "soft" ? 440 : (style == "arcade" ? 1040 : 740)
         guard Date().timeIntervalSince(lastPlay) > 0.07 else { return }
         lastPlay = Date()
         if sound == 0 {
@@ -15,7 +21,7 @@ import AudioToolbox
             for index in 0..<count {
                 let t = Double(index) / Double(rate)
                 let envelope = sin(Double.pi * Double(index) / Double(count)) * exp(-t * 70)
-                var value = Int16(sin(t * 2 * Double.pi * 740) * envelope * 3800).littleEndian
+                var value = Int16(sin(t * 2 * Double.pi * frequency) * envelope * 3800).littleEndian
                 withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
             }
             var data = Data("RIFF".utf8)

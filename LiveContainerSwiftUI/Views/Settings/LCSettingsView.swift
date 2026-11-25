@@ -741,6 +741,7 @@ private struct ZNBetaControlsSettings: View {
     @AppStorage("ZNBetaSwapAB", store: LCUtils.appGroupUserDefault) private var swapAB = false
     @AppStorage("ZNBetaSwapXY", store: LCUtils.appGroupUserDefault) private var swapXY = false
     @AppStorage("ZNBetaNavigationAudio", store: LCUtils.appGroupUserDefault) private var audio = true
+    @AppStorage("ZNBetaSoundStyle", store: LCUtils.appGroupUserDefault) private var soundStyle = "classic"
     @AppStorage("ZNBetaLowMemory", store: LCUtils.appGroupUserDefault) private var lowMemory = false
     var body: some View {
         Form {
@@ -751,13 +752,18 @@ private struct ZNBetaControlsSettings: View {
             }
             Section("Navigation sound") {
                 Toggle("Play navigation sounds", isOn: $audio)
+                Picker("Sound style", selection: $soundStyle) {
+                    Text("Classic").tag("classic")
+                    Text("Soft").tag("soft")
+                    Text("Arcade").tag("arcade")
+                }.disabled(!audio)
             }
             Section("Low memory") {
                 Toggle("Reduce controller visual updates", isOn: $lowMemory)
                 Text("Disables live stick and button visual feedback while retaining navigation.").font(.footnote)
             }
             Button("Restore beta defaults") {
-                swapAB = false; swapXY = false; audio = true; lowMemory = false
+                swapAB = false; swapXY = false; audio = true; soundStyle = "classic"; lowMemory = false
             }
         }.navigationTitle("ZN Beta Controls")
     }
@@ -787,6 +793,10 @@ struct ZNWhatsNewView: View {
                 Label("Smart launcher thermal management", systemImage: "thermometer")
                 Label("Reduced background resource usage", systemImage: "bolt")
                 Label("Updated beta version information", systemImage: "info.circle")
+            }
+            Section("Customization") {
+                Label("Selectable navigation sounds", systemImage: "speaker.wave.2")
+                Text("Classic, Soft and Arcade. Inspired by ManicEMU FocusKit; original ZN sound synthesis.").font(.footnote)
             }
             Section("Compatibility") {
                 Text("Existing JIT, Game Mode, Metal HUD, graphics settings and Bundle ID remain unchanged.")
