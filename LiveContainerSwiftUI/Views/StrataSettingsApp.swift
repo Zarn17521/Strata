@@ -54,6 +54,7 @@ struct StrataSettingsApp: View {
             Entry(id: "storage", title: "Storage", symbol: "internaldrive", tint: .gray, section: "Performance", keywords: "storage space size cache data") { AnyView(LCStorageManagementView()) },
             Entry(id: "switcher", title: "App Switcher", symbol: "rectangle.stack", tint: .indigo, section: "Interface", keywords: "switcher three finger multitask pinned running cards") { AnyView(StrataSwitcherSettings(apps: allApps)) },
             Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape pearl light amoled dark black graphite glass built-in nxnative controller skin") { AnyView(StrataNxPortraitSkinSettings()) },
+            Entry(id: "sounds", title: "Navigation Sounds", symbol: "speaker.wave.2.fill", tint: .pink, section: "Interface", keywords: "classic soft arcade selection confirm back preview sound effects") { AnyView(StrataNavigationSoundSettings()) },
             Entry(id: "iphone", title: "iPhone Apps", symbol: "iphone", tint: .blue, section: "Apps", keywords: "iphone native ios apps shortcut url add") { AnyView(StrataPhoneAppsView()) },
             Entry(id: "extensions", title: "App Extensions", symbol: "puzzlepiece.extension", tint: .teal, section: "Apps", keywords: "extensions share widgets plugins helper") { AnyView(StrataExtensionsView(apps: sharedModel.apps)) },
             Entry(id: "sources", title: "Sources", symbol: "books.vertical", tint: .orange, section: "Apps", keywords: "sources repositories install altstore") { AnyView(LCSourcesView()) },
@@ -148,6 +149,7 @@ struct StrataSettingsApp: View {
     @ViewBuilder private var mainSections: some View {
         Section {
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
+            link("sounds")
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
             link("portraitskin")
@@ -221,6 +223,35 @@ struct StrataSettingsApp: View {
                 .frame(width: 29, height: 29).background(tint, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             Text(title).foregroundStyle(.primary)
         }
+    }
+}
+
+/// Three short system-sound cues. Samples are generated on demand and released after preview.
+private struct StrataNavigationSoundSettings: View {
+    @AppStorage("ZNBetaSoundStyle", store: LCUtils.appGroupUserDefault) private var style = "classic"
+    @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var enabled = true
+    @StateObject private var audio = LiveBoardNavigationAudio()
+    var body: some View {
+        Form {
+            Section("Style") {
+                Picker("Sound style", selection: $style) {
+                    Text("Classic").tag("classic")
+                    Text("Soft").tag("soft")
+                    Text("Arcade").tag("arcade")
+                }.pickerStyle(.segmented)
+                Button { audio.play(.selection, preview: true) } label: { Label("Preview style", systemImage: "play.circle") }
+            }
+            Section("Preview cues") {
+                Button { audio.play(.selection, preview: true) } label: { Label("Selection", systemImage: "arrow.up.arrow.down") }
+                Button { audio.play(.confirm, preview: true) } label: { Label("Confirmation", systemImage: "checkmark.circle") }
+                Button { audio.play(.back, preview: true) } label: { Label("Back", systemImage: "arrow.uturn.backward.circle") }
+            }
+            Section { Toggle("Navigation sounds", isOn: $enabled) }
+            Section { Text("Sound effects are generated only when previewed or used. Low Memory Mode and serious or critical thermal pressure suppress playback; audio objects are released when this screen closes or a game launches.").font(.footnote).foregroundStyle(.secondary) }
+        }
+        .navigationTitle("Navigation Sounds")
+        .onChange(of: style) { _ in audio.stop() }
+        .onDisappear { audio.stop() }
     }
 }
 
