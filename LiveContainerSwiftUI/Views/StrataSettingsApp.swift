@@ -31,6 +31,7 @@ struct StrataSettingsApp: View {
     @AppStorage("StrataResumeAfterSystemClose", store: LCUtils.appGroupUserDefault) private var resumeAfterSystemClose = false
     @AppStorage("StrataKeepGuestAlive", store: LCUtils.appGroupUserDefault) private var keepGuestAlive = false
     @AppStorage("StrataSeamlessSwitching", store: LCUtils.appGroupUserDefault) private var seamlessSwitching = true
+    @AppStorage("ZNBetaLowMemory", store: LCUtils.appGroupUserDefault) private var lowMemory = false
     @AppStorage(StrataMemoryOverlay.key, store: LCUtils.appGroupUserDefault) private var memoryOverlay = false
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
 
@@ -177,9 +178,11 @@ struct StrataSettingsApp: View {
         } header: { Text("Background") } footer: { Text("Keep alive plays silent audio while you're in another app so the game isn't suspended. Uses more battery.") }
         Section {
             link("jit"); link("memory")
+            Toggle(isOn: $lowMemory) { row("Low Memory Mode", symbol: "memorychip", tint: .green) }
+                .accessibilityIdentifier("settings.lowMemoryMode")
             Toggle(isOn: Binding(get: { memoryOverlay }, set: { memoryOverlay = $0; StrataMemoryOverlay.shared.apply() })) { row("Memory overlay", symbol: "gauge.with.needle", tint: .green) }
             link("framegen"); link("storage")
-        } header: { Text("Performance") } footer: { Text("The overlay shows memory used and the limit for ZN, each app and each helper (RAM donor) process, with peaks.") }
+        } header: { Text("Performance") } footer: { Text("Low Memory Mode reduces artwork memory. Relaunch NxNative to apply the skin change. The overlay shows memory usage, limits and peaks for each process.") }
         Section("System") { link("runtime"); link("refresh"); link("identity"); link("advanced") }
         Section("About") {
             link("about")
