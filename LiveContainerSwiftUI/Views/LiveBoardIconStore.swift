@@ -28,10 +28,11 @@ import CoreImage
             return replacement
         }
         let isBuiltInSideStore = app.appInfo is BuiltInSideStoreAppInfo
+        let bundlePath = app.appInfo.bundlePath()
         // The built-in app has a logical launcher identity rather than a guest
         // bundle identity. Keep its cached image distinct from the framework
         // bundle path used to extract other apps' icons.
-        let sourceKey = isBuiltInSideStore ? "builtin:sidestore" : app.appInfo.bundlePath()
+        let sourceKey = isBuiltInSideStore ? "builtin:sidestore" : (bundlePath ?? app.bundleIdentifier)
         let key = (sourceKey + (dark ? ":dark" : ":light") + ":" + String(LiveBoardAppCustomization.shared.revision)) as NSString
         if let image = icons.object(forKey: key) { return image }
         if let sideStore = app.appInfo as? BuiltInSideStoreAppInfo,
@@ -41,7 +42,7 @@ import CoreImage
             return image
         }
         if let phone = app.appInfo as? StrataPhoneAppInfo, let image = phone.iconIsDarkIcon(dark) { icons.setObject(image, forKey: key, cost: imageCost(image)); return image }
-        guard let image = UIImage.generateIcon(forBundleURL: URL(fileURLWithPath: app.appInfo.bundlePath()), style: dark ? .Dark : .Light, hasBorder: false) else { return nil }
+        guard let image = UIImage.generateIcon(forBundleURL: URL(fileURLWithPath: bundlePath ?? app.bundleIdentifier), style: dark ? .Dark : .Light, hasBorder: false) else { return nil }
         let cleaned = LiveBoardIconEdges.clean(image)
         icons.setObject(cleaned, forKey: key, cost: imageCost(cleaned))
         return cleaned

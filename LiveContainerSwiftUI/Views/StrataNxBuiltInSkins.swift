@@ -4,7 +4,14 @@ struct StrataNxBuiltInSkin: Identifiable {
     let id: String
     let title: String
     let tint: Color
-    let portraitTemplateName: String? = nil
+    let portraitTemplateName: String?
+
+    init(id: String, title: String, tint: Color, portraitTemplateName: String? = nil) {
+        self.id = id
+        self.title = title
+        self.tint = tint
+        self.portraitTemplateName = portraitTemplateName
+    }
 
     static let all: [StrataNxBuiltInSkin] = [
         .init(id: "zelda", title: "Zelda", tint: Color(red: 0.20, green: 0.53, blue: 0.29)),
