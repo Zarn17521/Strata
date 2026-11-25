@@ -437,15 +437,16 @@ struct StrataSwitchboard: View {
                 VStack(spacing: 3) {
                     Image(systemName: "memorychip")
                         .font(.system(size: 18, weight: .semibold))
-                    Text(lowMemory ? "RAM ON" : "RAM OFF")
+                    Text(lowMemory ? "Optimize ON" : "Optimize OFF")
                         .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
                 }
                 .foregroundStyle(lowMemory ? Color.green : foreground.opacity(0.65))
-                .frame(width: 54, height: 44)
+                .frame(width: 72, height: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Low Memory Mode")
+            .accessibilityLabel("Optimize memory")
             .accessibilityValue(lowMemory ? "On" : "Off")
             .accessibilityIdentifier("switchboard.toggle.lowMemoryMode")
         }
