@@ -795,14 +795,6 @@ struct ZNWhatsNewView: View {
             } footer: {
                 Text("Tap the memory chip at the top right of ZN’s Library to switch modes. Both modes clean up launcher artwork before launching a game and use the same iOS memory limit.")
             }
-            Section("iPhone Low Power Mode") {
-                Label("ON", systemImage: "battery.25percent")
-                Text("While iPhone Low Power Mode is on, ZN loads one artwork image at a time to reduce background work.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Label("OFF", systemImage: "battery.100percent")
-                Text("ZN can load up to two artwork images at once when memory and temperature allow. Turning off iPhone Low Power Mode leaves the library’s RAM setting as selected.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
             Section("Performance & Memory") {
                 Label("Memory pressure management", systemImage: "gauge")
                 Label("Adaptive RAM monitoring", systemImage: "waveform.path")
