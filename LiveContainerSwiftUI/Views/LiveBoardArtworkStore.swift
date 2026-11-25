@@ -19,7 +19,7 @@ import Darwin
         let maximum: Int
     }
     private var pendingDecodes: [DecodeJob] = []
-    private var activeDecodes = 0
+    private var activeDecodes: [UUID: Task<UIImage?, Never>] = [:]
     private var constrained: Bool {
         let available = os_proc_available_memory()
         let thermal = ProcessInfo.processInfo.thermalState
@@ -60,6 +60,9 @@ import Darwin
     // background decodes cannot refill an inactive launcher's cache.
     func trimTransientImages(pause: Bool = false) {
         if pause { decodingPaused = true }
+        // ImageIO cannot interrupt an active call, but jobs waiting for a worker
+        // can exit before opening the file and running jobs can discard pixels.
+        activeDecodes.values.forEach { $0.cancel() }
         requests.removeAll()
         pendingDecodes.removeAll()
         cache.removeAllObjects()
@@ -72,6 +75,17 @@ import Darwin
         thumbnailCache.countLimit = constrained ? 8 : 32
         revision += 1
     }
+    /// Give cancelled ImageIO jobs a short opportunity to release their buffers.
+    /// A slow file never holds up launching for longer than the grace period.
+    func waitForLaunchDecodeDrain() async -> Int {
+        let deadline = DispatchTime.now().uptimeNanoseconds + 120_000_000
+        while !activeDecodes.isEmpty && !Task.isCancelled &&
+            DispatchTime.now().uptimeNanoseconds < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return activeDecodes.count
+    }
+
     func resumeDecoding() {
         guard decodingPaused else { return }
         decodingPaused = false
@@ -124,18 +138,24 @@ import Darwin
     // discarded before ImageIO opens a file.
     private func startPendingDecodes() {
         guard !decodingPaused else { return }
-        while activeDecodes < decodeConcurrencyLimit && !pendingDecodes.isEmpty {
+        while activeDecodes.count < decodeConcurrencyLimit && !pendingDecodes.isEmpty {
             let job = pendingDecodes.removeFirst()
             guard requests[job.id] == job.token else { continue }
-            activeDecodes += 1
-            Task { [weak self] in
-                let image = await Task.detached(priority: .utility) { () -> UIImage? in
-                    guard let source = CGImageSourceCreateWithURL(job.url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-                          let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: job.maximum] as CFDictionary) else { return nil }
+            let worker = Task.detached(priority: .utility) { () -> UIImage? in
+                autoreleasepool {
+                    guard !Task.isCancelled,
+                          let source = CGImageSourceCreateWithURL(job.url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                          !Task.isCancelled,
+                          let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: job.maximum] as CFDictionary),
+                          !Task.isCancelled else { return nil }
                     return UIImage(cgImage: cg)
-                }.value
+                }
+            }
+            activeDecodes[job.token] = worker
+            Task { [weak self] in
+                let image = await worker.value
                 guard let self else { return }
-                self.activeDecodes -= 1
+                self.activeDecodes.removeValue(forKey: job.token)
                 if !self.decodingPaused, self.requests[job.id] == job.token {
                     self.requests[job.id] = nil
                     if let image {

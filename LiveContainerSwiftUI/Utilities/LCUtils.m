@@ -65,6 +65,15 @@
     CFRelease(task);
     return allowed;
 }
++ (NSDictionary *)strataLauncherMemorySample {
+    task_vm_info_data_t vm = {0};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    BOOL reported = task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vm, &count) == KERN_SUCCESS;
+    uint64_t available = os_proc_available_memory();
+    return @{@"footprintBytes": @(reported ? vm.phys_footprint : 0),
+             @"footprintReported": @(reported), @"availableBytes": @(available),
+             @"availableReported": @(available > 0), @"pid": @(getpid())};
+}
 + (NSDictionary *)strataMemoryStatus {
     void *task = SecTaskCreateFromSelf(NULL);
     BOOL (^flag)(NSString *) = ^BOOL(NSString *key) {

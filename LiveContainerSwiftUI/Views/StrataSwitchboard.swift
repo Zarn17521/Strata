@@ -25,6 +25,7 @@ struct StrataSwitchboard: View {
     @AppStorage("ZNLastSeenWhatsNew", store: LCUtils.appGroupUserDefault) private var lastSeenWhatsNew = ""
     @State private var showingWhatsNew = false
     @State private var busy = false
+    @State private var pendingLaunch: Task<Void, Never>?
     @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     @State private var showingSkinSettings = false
     @State private var choosingCover = false
@@ -108,14 +109,25 @@ struct StrataSwitchboard: View {
         .onAppear {
             if !["Switchboard", "Cinematic", "Shelf"].contains(presentation) { presentation = "Switchboard" }
             visible = true
-            artwork.resumeDecoding()
+            if !busy && phase == .active { artwork.resumeDecoding() }
             if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" }
             if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() }
         }
-        .onDisappear { visible = false; controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
+        .onDisappear {
+            visible = false
+            cancelPendingLaunch()
+            controller.stop()
+            audio.stop()
+            trimPresentationCaches(pause: true)
+        }
         .onChange(of: phase) { value in
             if value == .active { busy = false; artwork.resumeDecoding(); bind() }
-            else { controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
+            else {
+                cancelPendingLaunch()
+                controller.stop()
+                audio.stop()
+                trimPresentationCaches(pause: true)
+            }
         }
         .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: busy || !visible || phase != .active) }
         .onChange(of: filtered.map(liveBoardAppKey)) { keys in
@@ -140,8 +152,13 @@ struct StrataSwitchboard: View {
             trimPresentationCaches(pause: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
-        .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; if visible && phase == .active { artwork.resumeDecoding(); bind() } }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in
+            cancelPendingLaunch()
+            busy = false
+            if visible && phase == .active { artwork.resumeDecoding(); bind() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.launchFailedNotification)) { _ in
+            cancelPendingLaunch()
             busy = false
             if visible && phase == .active { artwork.resumeDecoding(); bind() }
         }
@@ -273,12 +290,24 @@ struct StrataSwitchboard: View {
         }
     }
 
+    // Keep tile identity and scroll state while dropping the image views and
+    // their retained last-ready bitmaps during guest launch or backgrounding.
+    @ViewBuilder
+    private func tileArtwork(_ app: LCAppModel, key: String, thumbnail: Bool = false) -> some View {
+        if busy || phase == .background {
+            tilePlaceholder
+        } else {
+            LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode, thumbnail: thumbnail)
+                .id(key)
+        }
+    }
+
     private func compactTile(_ app: LCAppModel, size: CGFloat) -> some View {
         let key = liveBoardAppKey(app)
         return Button { selectedKey = key } label: {
             VStack(spacing: 2) {
                 Group {
-                    LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode, thumbnail: true)
+                    tileArtwork(app, key: key, thumbnail: true)
                 }.frame(width: size, height: size).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(foreground, lineWidth: selectedKey == key ? 2 : 0))
@@ -310,8 +339,7 @@ struct StrataSwitchboard: View {
             } label: {
                 ZStack {
                     tilePlaceholder
-                    LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode)
-                        .id(key)
+                    tileArtwork(app, key: key)
                 }
                 .frame(width: tile, height: tile)
                 .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -542,6 +570,7 @@ struct StrataSwitchboard: View {
         artwork.trimTransientImages(pause: pause)
         LiveBoardIconStore.invalidate()
         customization.trimTransientImages()
+        StrataNxTrimSkinPreviewCache()
     }
     private func activate(_ app: LCAppModel) {
         launchShortcut(app, LiveBoardShortcutProfiles.defaultProfile(for: app)?.action ?? .normal)
@@ -556,17 +585,47 @@ struct StrataSwitchboard: View {
         case .metalHUD: if let launchWithMetalHUD { prepareForLaunch(app, using: launchWithMetalHUD) }
         }
     }
-    private func prepareForLaunch(_ app: LCAppModel, using action: (LCAppModel) -> Void) {
-        guard !busy else { return }
+    private func cancelPendingLaunch() {
+        guard let pendingLaunch else { return }
+        pendingLaunch.cancel()
+        self.pendingLaunch = nil
+        busy = false
+    }
+
+    private func prepareForLaunch(_ app: LCAppModel, using action: @escaping (LCAppModel) -> Void) {
+        guard !busy, visible, phase == .active else { return }
         busy = true
         controller.stop()
         audio.stop()
+        let before = LCUtils.appGroupUserDefault.bool(forKey: StrataMemoryOverlay.key)
+            ? LCUtils.strataLauncherMemorySample() : nil
         trimPresentationCaches(pause: true)
-        action(app)
-        // Stay paused until the app lifecycle confirms a return, or the launch
-        // reports an error. A timeout here resumed thumbnail work while a
-        // multitasked guest was still running.
+        pendingLaunch = Task { @MainActor in
+            let remaining = await artwork.waitForLaunchDecodeDrain()
+            guard !Task.isCancelled else { return }
+            pendingLaunch = nil
+            if let before {
+                let after = LCUtils.strataLauncherMemorySample()
+                saveLaunchMemorySample(before: before, after: after, pendingDecodes: remaining)
+            }
+            // Decode stays paused until the existing return or failure signal.
+            action(app)
+        }
     }
+
+    private func saveLaunchMemorySample(before: [AnyHashable: Any],
+                                        after: [AnyHashable: Any], pendingDecodes: Int) {
+        guard let root = LCSharedUtils.appGroupPath() else { return }
+        let directory = root.appendingPathComponent("Library/StrataDiagnostics", isDirectory: true)
+        let sample: [String: Any] = [
+            "schema": 1, "sampledAt": Date().timeIntervalSince1970,
+            "beforeTrim": before, "beforeHandoff": after, "pendingDecodes": pendingDecodes
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: sample) else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: directory.appendingPathComponent("launcher-memory.json"), options: .atomic)
+    }
+
     private func changeCategory(_ delta: Int) {
         let categories = library.visibleCategories(apps)
         let count = categories.count + 2

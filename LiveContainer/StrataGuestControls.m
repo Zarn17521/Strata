@@ -823,37 +823,41 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
 @implementation StrataNxThemeBundleToken
 @end
 
-static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail) {
+static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory) {
     if (!StrataNxCustomThemeColor(identifier)) return nil;
-    NSBundle *bundle = [NSBundle bundleForClass:StrataNxThemeBundleToken.class];
-    NSString *name = [identifier stringByAppendingString:portrait ? @"-portrait" : @"-landscape"];
-    NSURL *url = [bundle URLForResource:name withExtension:@"jpg" subdirectory:@"NxThemeArtwork"];
-    if (!url) return nil;
+    @autoreleasepool {
+        NSBundle *bundle = [NSBundle bundleForClass:StrataNxThemeBundleToken.class];
+        NSString *name = [identifier stringByAppendingString:portrait ? @"-portrait" : @"-landscape"];
+        NSURL *url = [bundle URLForResource:name withExtension:@"jpg" subdirectory:@"NxThemeArtwork"];
+        if (!url) return nil;
 
-    // ImageIO downsamples before allocating preview pixels. Gameplay keeps
-    // the reference coordinates and renders only its active orientation.
-    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
-    if (!source) return nil;
-    CGImageRef pixels;
-    if (thumbnail) {
-        NSDictionary *options = @{
-            (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
-            (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @640,
-            (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES
-        };
-        pixels = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
-    } else {
-        pixels = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+        // ImageIO downsamples before allocating preview pixels. Gameplay keeps
+        // the reference coordinates and renders only its active orientation.
+        NSDictionary *sourceOptions = @{(__bridge NSString *)kCGImageSourceShouldCache: @NO};
+        CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, (__bridge CFDictionaryRef)sourceOptions);
+        if (!source) return nil;
+        CGImageRef pixels;
+        if (thumbnail || lowMemory) {
+            NSDictionary *options = @{
+                (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+                (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: (thumbnail ? @640 : @(portrait ? 1500 : 1344)),
+                (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES
+            };
+            pixels = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+        } else {
+            pixels = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+        }
+        CFRelease(source);
+        if (!pixels) return nil;
+        UIImage *plate = [UIImage imageWithCGImage:pixels];
+        CGImageRelease(pixels);
+        // UIImage's logical size stays the same for geometry even when its bitmap
+        // is downsampled. Draw the real keys over both representations.
+        CGFloat scale = thumbnail ? 0.32 : (lowMemory ? 0.75 : 1.0);
+        UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, scale);
+        if (image) objc_setAssociatedObject(image, &StrataNxThemeImageKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return image;
     }
-    CFRelease(source);
-    if (!pixels) return nil;
-    UIImage *plate = [UIImage imageWithCGImage:pixels];
-    CGImageRelease(pixels);
-    // UIImage's logical size stays the same for geometry even when its bitmap
-    // is downsampled. Draw the real keys over both representations.
-    UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, thumbnail ? 0.32 : 1);
-    if (image) objc_setAssociatedObject(image, &StrataNxThemeImageKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return image;
 }
 
 // Press feedback uses the EXACT control geometry of the touch remapper,
@@ -1065,7 +1069,9 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
     if (self.activeArtwork && self.activeArtworkPortrait == portrait) return self.activeArtwork;
     self.activeArtwork = nil;
     self.activeArtworkPortrait = portrait;
-    self.activeArtwork = StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO)
+    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:self.sharedGroup];
+    BOOL lowMemory = [prefs boolForKey:@"ZNBetaLowMemory"];
+    self.activeArtwork = StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO, lowMemory)
         ?: StrataNxBuiltinArtwork(portrait,self.darkTheme);
     return self.activeArtwork;
 }
@@ -1491,8 +1497,7 @@ BOOL StrataNxPhotoSkinsBundled(void) {
 #endif
 }
 
-UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mode, NSString *identifier) {
-    BOOL wide=[mode isEqualToString:@"wide"];
+static NSCache<NSString *, UIImage *> *StrataNxSkinPreviewCache(void) {
     static NSCache<NSString *, UIImage *> *previewCache;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -1500,13 +1505,23 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         previewCache.countLimit = 20;
         previewCache.totalCostLimit = 5 * 1024 * 1024;
     });
+    return previewCache;
+}
+
+void StrataNxTrimSkinPreviewCache(void) {
+    [StrataNxSkinPreviewCache() removeAllObjects];
+}
+
+UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mode, NSString *identifier) {
+    BOOL wide=[mode isEqualToString:@"wide"];
+    NSCache<NSString *, UIImage *> *previewCache = StrataNxSkinPreviewCache();
     NSString *key = [NSString stringWithFormat:@"%@-%@-%@-%@", identifier,
                      portrait ? @"portrait" : @"landscape",
                      dark ? @"amoled" : @"pearl",wide ? @"wide" : @"classic"];
     UIImage *cached = [previewCache objectForKey:key];
     if (cached) return cached;
 
-    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES)
+    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO)
         ?: StrataNxBuiltinArtwork(portrait,dark);
     if (!source) return nil;
     CGSize size = wide ? (portrait ? CGSizeMake(393,852) : CGSizeMake(852,393)) : source.size;

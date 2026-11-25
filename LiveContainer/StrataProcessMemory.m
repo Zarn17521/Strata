@@ -31,7 +31,12 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     __block uint64_t peakFootprint = 0;
     __block uint64_t minimumAvailable = UINT64_MAX;
     __block dispatch_source_t diagnosticsTimer = nil;
+#if TARGET_OS_OSX
     __block uint64_t intervalSeconds = 10;
+#else
+    NSTimeInterval startupDeadline = NSProcessInfo.processInfo.systemUptime + 15;
+    __block uint64_t intervalSeconds = 1;
+#endif
     void (^sample)(void) = ^{
         @autoreleasepool {
             task_vm_info_data_t vm = {0};
@@ -54,10 +59,15 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
                 record[@"peakFootprintBytes"] = @(peakFootprint);
             }
 #if !TARGET_OS_OSX
-            minimumAvailable = MIN(minimumAvailable, available);
-            record[@"minimumAvailableBytes"] = @(minimumAvailable);
-            uint64_t nextInterval = available < 256ULL * 1024 * 1024 ? 2 : (available < 768ULL * 1024 * 1024 ? 5 : 10);
-            record[@"memoryPressureLevel"] = @(nextInterval == 2 ? 2 : (nextInterval == 5 ? 1 : 0));
+            if (available > 0) {
+                minimumAvailable = MIN(minimumAvailable, available);
+                record[@"minimumAvailableBytes"] = @(minimumAvailable);
+            }
+            NSInteger pressure = available == 0 ? -1 :
+                (available < 256ULL * 1024 * 1024 ? 2 : (available < 768ULL * 1024 * 1024 ? 1 : 0));
+            BOOL starting = NSProcessInfo.processInfo.systemUptime < startupDeadline;
+            uint64_t nextInterval = starting ? 1 : (pressure == 2 ? 2 : (pressure == 1 ? 5 : 10));
+            record[@"memoryPressureLevel"] = @(pressure);
             record[@"sampleIntervalSeconds"] = @(nextInterval);
             if (diagnosticsTimer && intervalSeconds != nextInterval) {
                 intervalSeconds = nextInterval;
@@ -75,7 +85,8 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     static dispatch_source_t timer;
     if (timer) dispatch_source_cancel(timer);
     timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
-    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), 10 * NSEC_PER_SEC, 2 * NSEC_PER_SEC);
+    uint64_t interval = intervalSeconds * NSEC_PER_SEC;
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, interval), interval, interval / 5);
     diagnosticsTimer = timer;
     dispatch_source_set_event_handler(timer, sample);
     dispatch_source_set_cancel_handler(timer, ^{ diagnosticsTimer = nil; });

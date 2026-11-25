@@ -272,7 +272,7 @@ struct StrataDiagnosticsView: View {
     var body: some View {
         Form {
             Section {
-                Text("Exports current host memory, the latest saved guest memory/Metal sample and guest identifiers. Pairing files, signing identities, Apple credentials, arbitrary guest files and raw JIT logs are excluded.").font(.footnote)
+                Text("Exports host and guest memory, the latest launch memory sample recorded with Memory overlay enabled, Metal data and guest identifiers. Pairing files, signing identities, Apple credentials, arbitrary guest files and raw JIT logs are excluded.").font(.footnote)
                 Button("Create diagnostic report") { create() }
                 if let report { ShareLink("Export diagnostic report", item: report) }
                 if !message.isEmpty { Text(message).font(.caption) }
@@ -286,8 +286,20 @@ struct StrataDiagnosticsView: View {
             "host": raw.filter { allowed.contains($0.key) }, "guests": apps.map { ["name": $0.displayName, "bundleID": $0.bundleIdentifier, "is32bit": $0.uiIs32bit, "JITRequested": $0.uiIsJITNeeded] as [String: Any] },
             "features": ["guestExtensionJIT": "existing", "hostInProcessJIT": "experimentalOptInUnverified", "huskEmbeddedAOT": "notIntegrated", "sharedIdentityVault": "implemented", "frameGeneration": "experimental2x"]]
         if let guest = raw["guestSample"] as? [String: Any] {
-            let fields = ["pid", "guest", "executionMode", "availableBytes", "footprintBytes", "sampledAt", "increasedMemoryEntitlement", "availableReported", "footprintReported", "jitEnabled", "debuggerAttached"]
+            let fields = ["pid", "guest", "executionMode", "availableBytes", "footprintBytes", "sampledAt", "increasedMemoryEntitlement", "availableReported", "footprintReported", "jitEnabled", "debuggerAttached", "peakFootprintBytes", "minimumAvailableBytes", "sampleIntervalSeconds", "startedAt"]
             result["latestGuest"] = guest.filter { fields.contains($0.key) }
+        }
+        if let group = LCSharedUtils.appGroupPath(),
+           let data = try? Data(contentsOf: group.appendingPathComponent("Library/StrataDiagnostics/launcher-memory.json")),
+           let launch = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let sampleFields = ["footprintBytes", "footprintReported", "availableBytes", "availableReported", "pid"]
+            var filtered = launch.filter { ["schema", "sampledAt", "pendingDecodes"].contains($0.key) && $0.value is NSNumber }
+            for key in ["beforeTrim", "beforeHandoff"] {
+                if let sample = launch[key] as? [String: Any] {
+                    filtered[key] = sample.filter { sampleFields.contains($0.key) && $0.value is NSNumber }
+                }
+            }
+            result["latestLauncherMemory"] = filtered
         }
         if let group = LCSharedUtils.appGroupPath(), let bytes = try? Data(contentsOf: group.appendingPathComponent("Library/StrataFrameGen/latest.json")), let fg = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] {
             let fields = ["pid", "sampledAt", "nativeGPUFPS", "generatedGPUFPS", "computedFPS", "presentedFPS", "displayMaximumHz", "benchmark", "revision"]
