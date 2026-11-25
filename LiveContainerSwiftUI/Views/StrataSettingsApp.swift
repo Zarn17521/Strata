@@ -350,6 +350,7 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
+                NavigationLink("Skin Collections") { ZNSkinCollectionsView() }
                 NavigationLink("ZN Skin Studio") { ZNSkinStudioDraftEditor() }
             } header: {
                 Text("Custom Skins")
@@ -586,5 +587,86 @@ private struct ZNSkinStudioDraftEditor: View {
                 Text("Opacity").font(.caption)
             }
         }
+    }
+}
+
+
+// Collections only activate skins whose guest renderer and input map already
+// exist. ManicEMU packages are references until their assets and mapping have
+// been validated; a Git LFS pointer is not an installable skin.
+private struct ZNSkinCollectionsView: View {
+    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var enabled = true
+    @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault) private var style = "pearl"
+    @AppStorage("StrataNxDisplayLayout", store: LCUtils.appGroupUserDefault) private var layout = "wide"
+    @State private var previewLandscape = false
+    @State private var showReferences = false
+
+    private let references = ["NGC", "NGC_FLEX", "Wii", "Wii_FLEX",
+                              "PSV", "PSP", "PSP_FLEX", "DC", "DC_FLEX",
+                              "PS1", "PS1_FLEX", "N64", "N64_FLEX"]
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Preview", selection: $previewLandscape) {
+                    Text("Portrait").tag(false)
+                    Text("Landscape").tag(true)
+                }.pickerStyle(.segmented)
+                collectionCard("Pearl Light", value: "pearl")
+                collectionCard("AMOLED Dark", value: "amoled")
+            } header: {
+                Text("Ready to Play")
+            } footer: {
+                Text("Restart NxNative after selecting a skin. The existing game display setting is preserved.")
+            }
+            Section("My Skins") {
+                NavigationLink("Create or Edit Skin") { ZNSkinStudioDraftEditor() }
+                Text("Custom drafts are not yet playable.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                DisclosureGroup("ManicEMU layout references", isExpanded: $showReferences) {
+                    ForEach(references, id: \.self) { name in
+                        if let url = URL(string: "https://github.com/Zarn17521/manicemu/blob/5840a80d333753c22038420da5c111a7fa9103a4/System.core/" + name + ".manicskin") {
+                            Link(destination: url) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(name.replacingOccurrences(of: "_FLEX", with: " Flex"))
+                                    Text("Reference only · Not imported")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("ManicEMU")
+            } footer: {
+                Text("Original ManicEMU assets and input maps require inspection before conversion. These references do not install or activate a skin. Credit: ManicEMU contributors (AGPL-3.0 source repository).")
+            }
+        }
+        .navigationTitle("Skin Collections")
+    }
+
+    private func collectionCard(_ name: String, value: String) -> some View {
+        Button {
+            style = value
+            enabled = true
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(name).font(.headline)
+                    Spacer()
+                    Image(systemName: enabled && style == value ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(Color.accentColor)
+                }
+                // Decode only the selected preview. No extra persistent artwork cache.
+                if style == value {
+                    StrataNxBuiltInSkinPreview(dark: value == "amoled",
+                        landscape: previewLandscape, layout: layout == "full" ? "classic" : layout)
+                        .frame(height: previewLandscape ? 125 : 200)
+                }
+                Text(enabled && style == value ? "Selected" : "Tap to select")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.buttonStyle(.plain)
     }
 }
