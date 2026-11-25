@@ -53,6 +53,7 @@ struct LiveBoardConsoleScreen: View {
     @State private var launching = false
     @State private var launchReturned = false
     @State private var picker: ArtworkRequest?
+    @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var artworkError: String?
 
     @State private var backdropTop: BackdropLayer?
@@ -171,6 +172,13 @@ struct LiveBoardConsoleScreen: View {
                     catch { artworkError = error.localizedDescription }
                 }
                 picker = nil
+            }
+        }
+        .sheet(item: $onlineArtwork, onDismiss: bindController) { request in
+            StrataSteamGridDBArtworkSearch(title: request.title, background: request.kind == .background) { image in
+                do { try artwork.save(image, for: request.key, kind: request.kind, mode: request.mode) }
+                catch { artworkError = error.localizedDescription }
+                onlineArtwork = nil
             }
         }
         .alert("Artwork", isPresented: Binding(get: { artworkError != nil }, set: { if !$0 { artworkError = nil; bindController() } })) {
@@ -491,11 +499,11 @@ struct LiveBoardConsoleScreen: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 4) {
-                            ForEach((0..<11).filter { (bigPicture || $0 != 6) && (!(app.appInfo is StrataPhoneAppInfo) || ($0 != 8 && $0 != 10)) }, id: \.self) { index in
+                            ForEach((0..<13).filter { (bigPicture || $0 != 6) && (!(app.appInfo is StrataPhoneAppInfo) || ($0 != 8 && $0 != 10)) }, id: \.self) { index in
                                 Button { detailAction(index, app: app) } label: {
                                     HStack(spacing: 10) {
-                                        Image(systemName: ["play.fill", "gearshape", "photo", "rectangle", "star", "arrow.counterclockwise", "rectangle.portrait", "eye.slash", "bolt.fill", "pencil", "gamecontroller.fill"][index]).frame(width: 24)
-                                        Text(["Launch", "App settings", "Choose landscape cover", "Choose background", favoriteKeys.contains(liveBoardAppKey(app)) ? "Remove favorite" : "Add favorite", "Reset artwork", "Choose portrait cover", "Hide in this mode", "Launch with JIT", "Rename / change app icon", "Request Game Mode"][index]).font(.system(size: 15))
+                                        Image(systemName: ["play.fill", "gearshape", "photo", "rectangle", "star", "arrow.counterclockwise", "rectangle.portrait", "eye.slash", "bolt.fill", "pencil", "gamecontroller.fill", "sparkles", "sparkles"][index]).frame(width: 24)
+                                        Text(["Launch", "App settings", "Choose landscape cover", "Choose background", favoriteKeys.contains(liveBoardAppKey(app)) ? "Remove favorite" : "Add favorite", "Reset artwork", "Choose portrait cover", "Hide in this mode", "Launch with JIT", "Rename / change app icon", "Request Game Mode", "Search cover on SteamGridDB", "Search background on SteamGridDB"][index]).font(.system(size: 15))
                                         Spacer(minLength: 0)
                                     }.padding(10).frame(minHeight: 40).background(detailsIndex == index ? .white.opacity(0.17) : .clear, in: RoundedRectangle(cornerRadius: 10))
                                 }.buttonStyle(.plain).id(index).accessibilityIdentifier("console.option.\(index)")
@@ -548,6 +556,9 @@ struct LiveBoardConsoleScreen: View {
             picker = ArtworkRequest(key: liveBoardAppKey(app), kind: index == 2 ? .cover : (index == 6 ? .portrait : .background))
         case 8: details = false; activate(app, forceJIT: true)
         case 10: details = false; activate(app, gameMode: true)
+        case 11, 12:
+            details = false; controller.stop()
+            onlineArtwork = StrataArtworkOnlineRequest(key: liveBoardAppKey(app), title: appCustomization.name(app), kind: index == 11 ? .cover : .background, mode: mode)
         case 9: details = false; controller.stop(); appearanceApp = LiveBoardAppearanceSelection(app: app)
         case 4: favorite(app)
         case 7: updateLibrary { $0.hidden.insert(liveBoardAppKey(app)) }; details = false
@@ -584,8 +595,8 @@ struct LiveBoardConsoleScreen: View {
             switch command {
             case .up: detailsIndex = max(0, detailsIndex - 1); if !bigPicture && detailsIndex == 6 { detailsIndex = 5 }
             case .down: detailsIndex = min(10, detailsIndex + 1); if !bigPicture && detailsIndex == 6 { detailsIndex = 7 }
-            case .confirm: if let app = selected { detailAction(detailsIndex, app: app) }
-            case .back, .details: details = false
+            case .confirm: audio.play(.confirm); if let app = selected { detailAction(detailsIndex, app: app) }
+            case .back, .details: audio.play(.back); details = false
             default: break
             }
             return
@@ -601,7 +612,7 @@ struct LiveBoardConsoleScreen: View {
                 }
             } else if navigation.focus == .details { showDetails() }
             else if let app = selected { activate(app) }
-        case .details: showDetails()
+        case .details: audio.play(.confirm); showDetails()
         case .favorite: if let app = selected { favorite(app) }
         case .previousSection: changeSection(-1)
         case .nextSection: changeSection(1)

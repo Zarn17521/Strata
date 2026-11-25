@@ -772,7 +772,7 @@ private struct ZNBetaControlsSettings: View {
 
 // Shared release notes for the first-launch sheet and Settings.
 struct ZNWhatsNewView: View {
-    static let releaseID = "0.1.1-beta"
+    static let releaseID = "0.1.1-beta.2"
     var body: some View {
         List {
             Section {
@@ -799,6 +799,16 @@ struct ZNWhatsNewView: View {
                 Text("Classic, Soft and Arcade, with separate selection, confirmation and back samples. Original ZN sound synthesis; no ManicEMU audio code or dependency is bundled.").font(.footnote)
                 Label("Controller profiles for library navigation", systemImage: "gamecontroller")
                 Text("Custom profiles map Bluetooth controller buttons to library actions. Existing A/B and X/Y swaps remain the fallback. Guest input is not changed.").font(.footnote)
+                Label("SteamGridDB artwork lookup", systemImage: "square.stack.3d.up")
+                Text("Search covers and backgrounds by game title, then select a result. The API key stays in Keychain.").font(.footnote)
+                Label("Controller-specific library mappings", systemImage: "gamecontroller")
+                Text("Map Bluetooth controller buttons to library actions by controller model. Guest-game input is unchanged.").font(.footnote)
+                Label("Custom quick access tools", systemImage: "square.grid.2x2")
+                Text("Arrange, resize, add or remove Home tools and restore their defaults from edit mode.").font(.footnote)
+            }
+            Section("Library navigation") {
+                Label("Switchboard, Cinematic, Big Picture, Shelf and Arcade layouts", systemImage: "rectangle.grid.2x2")
+                Label("Controller navigation, favorites and custom categories", systemImage: "arrow.left.arrow.right")
             }
             Section("Compatibility") {
                 Text("Existing JIT, Game Mode, Metal HUD, graphics settings and Bundle ID remain unchanged.")

@@ -25,6 +25,7 @@ struct StrataSwitchboard: View {
     @State private var busy = false
     @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     @State private var choosingCover = false
+    @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var coverKey = ""
     @State private var artworkError: String?
     @Environment(\.scenePhase) private var phase
@@ -138,6 +139,13 @@ struct StrataSwitchboard: View {
                 choosingCover = false
             }
         }
+        .sheet(item: $onlineArtwork, onDismiss: bind) { request in
+            StrataSteamGridDBArtworkSearch(title: request.title, background: false) { image in
+                do { try artwork.save(image, for: request.key, kind: .cover, mode: "switchboard") }
+                catch { artworkError = error.localizedDescription }
+                onlineArtwork = nil
+            }
+        }
         .alert("Artwork", isPresented: Binding(get: { artworkError != nil }, set: { if !$0 { artworkError = nil } })) { Button("OK") { artworkError = nil } } message: { Text(artworkError ?? "") }
         .onChange(of: filtered.map(liveBoardAppKey)) { keys in if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" } }
         .sheet(isPresented: $editingLibrary, onDismiss: bind) {
@@ -234,6 +242,9 @@ struct StrataSwitchboard: View {
                 Button("App settings", systemImage: "gearshape") { controller.stop(); manage(app) }
                 Button("Choose cover artwork", systemImage: "photo") {
                     coverKey = key; choosingCover = true; controller.stop()
+                }
+                Button("Search cover on SteamGridDB", systemImage: "sparkles") {
+                    onlineArtwork = StrataArtworkOnlineRequest(key: key, title: customization.name(app), kind: .cover, mode: "switchboard"); controller.stop()
                 }
                 StrataArrangeMenus(
                     app: app, visible: filtered, all: apps,
@@ -430,7 +441,7 @@ struct StrataSwitchboard: View {
             case .left: if index > 0 { selectedKey = liveBoardAppKey(items[index - 1]) }
             case .right: if index + 1 < items.count { selectedKey = liveBoardAppKey(items[index + 1]) }
             case .confirm: if let app = selected { activate(app) }
-            case .details: if let app = selected { controller.stop(); manage(app) }
+            case .details: audio.play(.confirm); if let app = selected { controller.stop(); manage(app) }
             case .back: openInterface()
             default: break
             }

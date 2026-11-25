@@ -42,6 +42,7 @@ struct StrataGalleryScreen: View {
     @State private var details = false
     @State private var detailsIndex = 0
     @State private var picking: ArtRequest?
+    @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var artworkError: String?
     @State private var shownBackground: Background?
     @State private var lastGradient: [Color] = [Color(white: 0.16), Color(white: 0.06)]
@@ -120,6 +121,13 @@ struct StrataGalleryScreen: View {
             LiveBoardWallpaperPicker { image in
                 if let image { do { try artwork.save(image, for: request.key, kind: request.kind, mode: request.mode) } catch { artworkError = error.localizedDescription } }
                 picking = nil
+            }
+        }
+        .sheet(item: $onlineArtwork, onDismiss: bind) { request in
+            StrataSteamGridDBArtworkSearch(title: request.title, background: request.kind == .background) { image in
+                do { try artwork.save(image, for: request.key, kind: request.kind, mode: request.mode) }
+                catch { artworkError = error.localizedDescription }
+                onlineArtwork = nil
             }
         }
         .sheet(isPresented: $editingLibrary, onDismiss: bind) { librarySheet }
@@ -330,6 +338,8 @@ struct StrataGalleryScreen: View {
         list.append(Action(title: "App settings", symbol: "gearshape") { details = false; controller.stop(); manage(app) })
         list.append(Action(title: "Choose background", symbol: "photo") { details = false; controller.stop(); picking = ArtRequest(key: key, kind: .background, mode: "cinematic") })
         list.append(Action(title: style == .shelf ? "Choose poster" : "Choose cover", symbol: "rectangle.portrait") { details = false; controller.stop(); picking = style == .shelf ? ArtRequest(key: key, kind: .portrait, mode: "bigPicture") : ArtRequest(key: key, kind: .cover, mode: "switchboard") })
+        list.append(Action(title: "Search cover on SteamGridDB", symbol: "sparkles") { details = false; controller.stop(); onlineArtwork = StrataArtworkOnlineRequest(key: key, title: customization.name(app), kind: style == .shelf ? .portrait : .cover, mode: style == .shelf ? "bigPicture" : "switchboard") })
+        list.append(Action(title: "Search background on SteamGridDB", symbol: "sparkles") { details = false; controller.stop(); onlineArtwork = StrataArtworkOnlineRequest(key: key, title: customization.name(app), kind: .background, mode: "cinematic") })
         if arrange {
         list.append(Action(title: "Move Left", symbol: "arrow.left") { StrataLauncherOrder.move(app, by: -1, visible: filtered, all: apps) })
         list.append(Action(title: "Move Right", symbol: "arrow.right") { StrataLauncherOrder.move(app, by: 1, visible: filtered, all: apps) })
@@ -423,8 +433,8 @@ struct StrataGalleryScreen: View {
                 switch command {
                 case .up: detailsIndex = max(0, detailsIndex - 1)
                 case .down: detailsIndex = min(max(0, count - 1), detailsIndex + 1)
-                case .confirm: if let app = selected { let list = actions(app); if list.indices.contains(detailsIndex) { list[detailsIndex].run() } }
-                case .back, .details: details = false
+                case .confirm: audio.play(.confirm); if let app = selected { let list = actions(app); if list.indices.contains(detailsIndex) { list[detailsIndex].run() } }
+                case .back, .details: audio.play(.back); details = false
                 default: break
                 }
                 return
@@ -437,7 +447,7 @@ struct StrataGalleryScreen: View {
             case .up: if style.isGrid { select(index - step) }
             case .down: if style.isGrid { select(min(filtered.count - 1, index + step)) }
             case .confirm: if let app = selected { activate(app) }
-            case .details: showDetails()
+            case .details: audio.play(.confirm); showDetails()
             case .favorite: if let app = selected { toggleFavorite(liveBoardAppKey(app)) }
             case .previousSection: changeCategory(-1)
             case .nextSection: changeCategory(1)

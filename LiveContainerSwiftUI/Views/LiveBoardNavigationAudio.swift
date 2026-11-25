@@ -8,19 +8,22 @@ import Darwin
     enum Cue: String { case selection, confirm, back }
     private var sounds: [Cue: SystemSoundID] = [:]
     private var urls: [URL] = []
+    private var loadedStyle = ""
     private var lastPlay = Date.distantPast
     func play() { play(.selection, preview: false) }
     func play(_ cue: Cue, preview: Bool = false) {
         let defaults = LCUtils.appGroupUserDefault
         let enabled = defaults.object(forKey: "LiveBoardConsoleSounds") as? Bool
             ?? defaults.object(forKey: "ZNBetaNavigationAudio") as? Bool ?? true
-        guard enabled, !defaults.bool(forKey: "ZNBetaLowMemory") else { return }
+        let available = os_proc_available_memory()
+        guard enabled, !defaults.bool(forKey: "ZNBetaLowMemory"), available == 0 || available >= 512 * 1024 * 1024 else { return }
         guard ProcessInfo.processInfo.thermalState != .serious && ProcessInfo.processInfo.thermalState != .critical else { return }
         guard !UIAccessibility.isVoiceOverRunning else { return }
+        let style = defaults.string(forKey: "ZNBetaSoundStyle") ?? "classic"
+        if style != loadedStyle { stop(); loadedStyle = style }
         guard Date().timeIntervalSince(lastPlay) > (preview ? 0.02 : 0.07) else { return }
         lastPlay = Date()
         guard let id = sounds[cue] else {
-            let style = defaults.string(forKey: "ZNBetaSoundStyle") ?? "classic"
             let base: Double = style == "soft" ? 440 : (style == "arcade" ? 1040 : 740)
             let frequency = base * (cue == .confirm ? 1.25 : cue == .back ? 0.72 : 1)
             let rate = 22050, count = cue == .selection ? 1102 : 1654

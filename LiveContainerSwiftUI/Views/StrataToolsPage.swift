@@ -21,6 +21,7 @@ struct StrataToolsPage: View {
     @State private var editing = false
     @State private var adding = false
     @State private var dragged: String?
+    @State private var restoreDefaultsConfirm = false
     private var layout: StrataToolsLayout { StrataToolsLayout(saved: savedLayout) }
     private var available: [String] { tools.map(\.id) }
     private var visibleTools: [Tool] {
@@ -47,6 +48,8 @@ struct StrataToolsPage: View {
                     HStack {
                         Button { adding = true } label: { Image(systemName: "plus").frame(width: 42, height: 36) }.liveBoardGlass(radius: 18)
                             .accessibilityLabel("Add tools widgets").accessibilityIdentifier("tools.add")
+                        Button { restoreDefaultsConfirm = true } label: { Image(systemName: "arrow.counterclockwise").frame(width: 42, height: 36) }.liveBoardGlass(radius: 18)
+                            .accessibilityLabel("Restore default shortcuts").accessibilityIdentifier("tools.restoreDefaults")
                         Spacer()
                         Button { editing.toggle(); dragged = nil } label: {
                             Image(systemName: editing ? "checkmark" : "slider.horizontal.3").frame(width: 42, height: 36)
@@ -71,6 +74,10 @@ struct StrataToolsPage: View {
             .accessibilityIdentifier("home.controls.scroll")
         }
         .sheet(isPresented: $adding) { catalogue }
+        .confirmationDialog("Restore default shortcuts?", isPresented: $restoreDefaultsConfirm, titleVisibility: .visible) {
+            Button("Restore Defaults", role: .destructive) { savedLayout = ""; widths = "{}"; styles = "{}" }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("This restores the original quick access tools, order, and sizes. It does not change your game library or settings.") }
     }
     private var catalogue: some View {
         NavigationView {

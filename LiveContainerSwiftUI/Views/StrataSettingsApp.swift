@@ -56,6 +56,7 @@ struct StrataSettingsApp: View {
             Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape pearl light amoled dark black graphite glass built-in nxnative controller skin") { AnyView(StrataNxPortraitSkinSettings()) },
             Entry(id: "sounds", title: "Navigation Sounds", symbol: "speaker.wave.2.fill", tint: .pink, section: "Interface", keywords: "classic soft arcade selection confirm back preview sound effects") { AnyView(StrataNavigationSoundSettings()) },
             Entry(id: "controllermapping", title: "Controller Mapping", symbol: "gamecontroller", tint: .cyan, section: "Interface", keywords: "bluetooth controller profile custom map buttons swap a b x y gamepad library navigation") { AnyView(LiveBoardControllerMappingSettings()) },
+            Entry(id: "steamgriddb", title: "SteamGridDB", symbol: "square.stack.3d.up", tint: .indigo, section: "Interface", keywords: "artwork covers backgrounds api key automatic search steam grid") { AnyView(StrataSteamGridDBKeySettings()) },
             Entry(id: "iphone", title: "iPhone Apps", symbol: "iphone", tint: .blue, section: "Apps", keywords: "iphone native ios apps shortcut url add") { AnyView(StrataPhoneAppsView()) },
             Entry(id: "extensions", title: "App Extensions", symbol: "puzzlepiece.extension", tint: .teal, section: "Apps", keywords: "extensions share widgets plugins helper") { AnyView(StrataExtensionsView(apps: sharedModel.apps)) },
             Entry(id: "sources", title: "Sources", symbol: "books.vertical", tint: .orange, section: "Apps", keywords: "sources repositories install altstore") { AnyView(LCSourcesView()) },
@@ -152,6 +153,7 @@ struct StrataSettingsApp: View {
             Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
             link("sounds")
             link("controllermapping")
+            link("steamgriddb")
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
             link("portraitskin")
