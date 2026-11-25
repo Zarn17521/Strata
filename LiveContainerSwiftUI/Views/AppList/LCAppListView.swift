@@ -575,7 +575,10 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         recents.removeAll { $0 == recentKey }; recents.insert(recentKey, at: 0)
         LCUtils.appGroupUserDefault.set(Array(recents.prefix(12)), forKey: "StrataRecentApps")
         if let shortcut = app.appInfo as? StrataPhoneAppInfo {
-            do { try await phoneApps.open(shortcut.entryID) } catch { errorInfo = error.localizedDescription; errorShow = true }
+            do { try await phoneApps.open(shortcut.entryID) } catch {
+                errorInfo = error.localizedDescription; errorShow = true
+                NotificationCenter.default.post(name: LiveBoardControllerInput.launchFailedNotification, object: nil)
+            }
             return
         }
         StrataControlsLibrary.publish(launcherApps)
@@ -598,6 +601,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
+            NotificationCenter.default.post(name: LiveBoardControllerInput.launchFailedNotification, object: nil)
         }
     }
 

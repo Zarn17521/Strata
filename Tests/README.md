@@ -45,5 +45,5 @@ python3 Tests/launcher-stability-tests.py
 ```
 
 This verifies source-level invariants for separately bounded thumbnail caching,
-cover retention during asynchronous replacement, and selected-item restoration.
-It does not replace iOS rendering or interaction tests.
+cover retention during asynchronous replacement, selected-item restoration, and
+launch lifecycle recovery. It does not replace iOS rendering or interaction tests.

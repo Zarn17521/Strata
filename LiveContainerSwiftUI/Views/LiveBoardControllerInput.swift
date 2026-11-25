@@ -6,6 +6,7 @@ import GameController
 final class LiveBoardControllerInput: ObservableObject {
     static let pauseNotification = Notification.Name("LiveBoardPauseController")
     static let resumeNotification = Notification.Name("LiveBoardResumeController")
+    static let launchFailedNotification = Notification.Name("LiveBoardLaunchFailed")
     enum Command: Equatable { case left, right, up, down, confirm, back, details, favorite, previousSection, nextSection }
     @Published private(set) var connected = false
     @Published private(set) var confirmSymbol = "a.circle"

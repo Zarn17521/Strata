@@ -138,6 +138,10 @@ struct StrataSwitchboard: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; if visible && phase == .active { artwork.resumeDecoding(); bind() } }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.launchFailedNotification)) { _ in
+            busy = false
+            if visible && phase == .active { artwork.resumeDecoding(); bind() }
+        }
         .sheet(isPresented: $showingWhatsNew, onDismiss: {
             lastSeenWhatsNew = ZNWhatsNewView.releaseID
             bind()
@@ -516,11 +520,9 @@ struct StrataSwitchboard: View {
         audio.stop()
         trimPresentationCaches(pause: true)
         action(app)
-        // Recover if a launch is cancelled while the library remains visible.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            busy = false
-            if visible && phase == .active { artwork.resumeDecoding(); bind() }
-        }
+        // Stay paused until the app lifecycle confirms a return, or the launch
+        // reports an error. A timeout here resumed thumbnail work while a
+        // multitasked guest was still running.
     }
     private func changeCategory(_ delta: Int) {
         let categories = library.visibleCategories(apps)

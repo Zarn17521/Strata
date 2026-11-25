@@ -17,6 +17,8 @@ checks = {
     "library appearance preserves a still-valid selection": "if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey })" in switchboard,
     "filter changes repair only invalid selections": ".onChange(of: filtered.map(liveBoardAppKey))" in switchboard,
     "redundant tile identity override removed": ".id(key)" not in switchboard,
+    "launcher work does not restart on a fixed timer": "DispatchQueue.main.asyncAfter" not in switchboard,
+    "failed launches have an explicit recovery signal": "launchFailedNotification" in switchboard and "launchFailedNotification" in (ROOT / "LiveContainerSwiftUI/Views/AppList/LCAppListView.swift").read_text(),
 }
 
 failed = [name for name, passed in checks.items() if not passed]
