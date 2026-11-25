@@ -797,6 +797,8 @@ struct ZNWhatsNewView: View {
             Section("Customization") {
                 Label("Recently Played filter in every library layout", systemImage: "clock.arrow.circlepath")
                 Text("Successful game launches are timestamped and sorted without a background timer. Clear history in Settings → Recently Played.").font(.footnote)
+                Label("Per-game shortcut profiles", systemImage: "square.stack.3d.up")
+                Text("Save named launch profiles and choose the default from a game’s Shortcut Profiles menu. Profiles use the existing launch and cleanup paths.").font(.footnote)
                 Label("Selectable navigation sound styles with cue previews", systemImage: "speaker.wave.2")
                 Text("Classic, Soft and Arcade, with separate selection, confirmation and back samples. Original ZN sound synthesis; no ManicEMU audio code or dependency is bundled.").font(.footnote)
                 Label("Controller profiles for library navigation", systemImage: "gamecontroller")

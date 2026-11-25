@@ -29,6 +29,7 @@ struct StrataSwitchboard: View {
     @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var coverKey = ""
     @State private var artworkError: String?
+    @State private var shortcutProfilesApp: LiveBoardAppearanceSelection?
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var libraries: [String: LiveBoardModeLibrary] { LiveBoardLibraryCache.decode(savedLibrary) }
@@ -151,6 +152,11 @@ struct StrataSwitchboard: View {
                 onlineArtwork = nil
             }
         }
+        .sheet(item: $shortcutProfilesApp, onDismiss: bind) { selection in
+            LiveBoardShortcutProfilesSheet(app: selection.app) { action in
+                launchShortcut(selection.app, action)
+            }
+        }
         .alert("Artwork", isPresented: Binding(get: { artworkError != nil }, set: { if !$0 { artworkError = nil } })) { Button("OK") { artworkError = nil } } message: { Text(artworkError ?? "") }
         .onChange(of: filtered.map(liveBoardAppKey)) { keys in if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" } }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardRecentGames.changed)) { _ in if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" } }
@@ -217,8 +223,9 @@ struct StrataSwitchboard: View {
             .accessibilityLabel(customization.name(app))
             .accessibilityIdentifier("switchboard.tile." + key)
             .contextMenu {
-                Button("Launch", systemImage: "play.fill") { activate(app) }
+                Button("Launch default shortcut", systemImage: "play.fill") { activate(app) }
                 if !(app.appInfo is StrataPhoneAppInfo) && !(app.appInfo is BuiltInSideStoreAppInfo) {
+                    Button("Shortcut Profiles…", systemImage: "square.stack.3d.up") { controller.stop(); shortcutProfilesApp = LiveBoardAppearanceSelection(app: app) }
                     if let launchWithJIT {
                         Button("Launch with JIT", systemImage: "bolt.fill") {
                             prepareForLaunch(app, using: launchWithJIT)
@@ -424,7 +431,17 @@ struct StrataSwitchboard: View {
         customization.trimTransientImages()
     }
     private func activate(_ app: LCAppModel) {
-        prepareForLaunch(app, using: launch)
+        launchShortcut(app, LiveBoardShortcutProfiles.defaultProfile(for: app)?.action ?? .normal)
+    }
+    private func launchShortcut(_ app: LCAppModel, _ action: LiveBoardShortcutAction) {
+        switch action {
+        case .normal: prepareForLaunch(app, using: launch)
+        case .jit: if let launchWithJIT { prepareForLaunch(app, using: launchWithJIT) }
+        case .multitask: if let launchMultitask { prepareForLaunch(app, using: launchMultitask) }
+        case .gameMode: if let launchInGameMode { prepareForLaunch(app, using: launchInGameMode) }
+        case .gameModeJIT: if let launchInGameModeWithJIT { prepareForLaunch(app, using: launchInGameModeWithJIT) }
+        case .metalHUD: if let launchWithMetalHUD { prepareForLaunch(app, using: launchWithMetalHUD) }
+        }
     }
     private func prepareForLaunch(_ app: LCAppModel, using action: (LCAppModel) -> Void) {
         guard !busy else { return }
