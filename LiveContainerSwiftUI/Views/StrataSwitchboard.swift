@@ -413,27 +413,42 @@ struct StrataSwitchboard: View {
                 }
     }
 
-    // The system status bar already displays time, Wi-Fi and battery.
-    // Keep only Strata's wordmark to avoid a duplicated status bar.
     private var statusBar: some View {
-        // Personalized fantasy wordmark: a gold angular Z with a green,
-        // slanted Link-style cap, followed by a carved jade N.
-        HStack(alignment: .bottom, spacing: 3) {
-            ZNInitials(darkMode: darkMode)
-                .frame(width: 74, height: 43)
-            Text("’s")
-                .font(.system(size: 20, weight: .bold, design: .serif))
-                .padding(.bottom, 2)
-            Text("LIBRARY")
-                .font(.system(size: 15, weight: .bold, design: .serif))
-                .tracking(1.25)
-                .padding(.leading, 3)
-                .padding(.bottom, 4)
+        HStack(spacing: 8) {
+            HStack(alignment: .bottom, spacing: 3) {
+                ZNInitials(darkMode: darkMode)
+                    .frame(width: 74, height: 43)
+                Text("’s")
+                    .font(.system(size: 20, weight: .bold, design: .serif))
+                    .padding(.bottom, 2)
+                Text("LIBRARY")
+                    .font(.system(size: 15, weight: .bold, design: .serif))
+                    .tracking(1.25)
+                    .padding(.leading, 3)
+                    .padding(.bottom, 4)
+            }
+            .foregroundStyle(foreground)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("ZN's Library")
+            Spacer(minLength: 0)
+            Button {
+                lowMemory.toggle()
+            } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "memorychip")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(lowMemory ? "RAM ON" : "RAM OFF")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(lowMemory ? Color.green : foreground.opacity(0.65))
+                .frame(width: 54, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Low Memory Mode")
+            .accessibilityValue(lowMemory ? "On" : "Off")
+            .accessibilityIdentifier("switchboard.toggle.lowMemoryMode")
         }
-        .foregroundStyle(foreground)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("ZN's Library")
     }
     private var categoryStrip: some View {
         // Categories have the whole top row; AMOLED controls live on the
