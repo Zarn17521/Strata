@@ -9,7 +9,6 @@
 #include "LCAppInfo.h"
 #include "../LiveContainer/LCSharedUtils.h"
 #include "../LiveContainer/StrataGuestControls.h"
-#include "../LiveContainer/StrataRAMDonor.h"
 #include "Utilities/LCUtils.h"
 #include "Utilities/unarchive.h"
 #include "../MultitaskSupport/AppSceneViewController.h"
