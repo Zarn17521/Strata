@@ -83,7 +83,7 @@ struct StrataSwitchboard: View {
                         Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
                         Spacer()
                         Menu {
-                            ForEach(["Switchboard", "Cinematic", "Big Picture", "Shelf", "Arcade"], id: \.self) { name in
+                            ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
                                 Button { presentation = name } label: {
                                     if presentation == name { Label(name, systemImage: "checkmark") } else { Text(name) }
                                 }
@@ -102,7 +102,7 @@ struct StrataSwitchboard: View {
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
         .background(LiveBoardOrientationLock(mask: .portrait))
-        .onAppear { visible = true; artwork.resumeDecoding(); selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() } }
+        .onAppear { if !["Switchboard", "Cinematic", "Shelf"].contains(presentation) { presentation = "Switchboard" }; visible = true; artwork.resumeDecoding(); selectedKey = filtered.first.map(liveBoardAppKey) ?? ""; if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() } }
         .onDisappear { visible = false; controller.stop(); audio.stop(); trimPresentationCaches(pause: true) }
         .onChange(of: phase) { value in
             if value == .active { busy = false; artwork.resumeDecoding(); bind() }
@@ -181,10 +181,10 @@ struct StrataSwitchboard: View {
     }
     @ViewBuilder private func libraryContent(items: [LCAppModel], tile: CGFloat, width: CGFloat) -> some View {
         switch presentation {
-        case "Cinematic", "Big Picture":
+        case "Cinematic":
             VStack(spacing: 4) {
                 if let selected {
-                    gameTile(selected, size: max(72, tile * (presentation == "Cinematic" ? 0.68 : 0.78)))
+                    gameTile(selected, size: max(72, tile * 0.68))
                 }
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -197,8 +197,8 @@ struct StrataSwitchboard: View {
                     .onChange(of: selectedKey) { key in proxy.scrollTo(key, anchor: .center) }
                 }.frame(height: 76)
             }
-        case "Shelf", "Arcade":
-            let columns = presentation == "Shelf" ? 2 : 3
+        case "Shelf":
+            let columns = 2
             let size = max(48, min(132, (width - CGFloat(columns + 1) * 12) / CGFloat(columns)))
             ScrollViewReader { proxy in
                 ScrollView {
@@ -256,7 +256,7 @@ struct StrataSwitchboard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(width: tile + 10)
-                .opacity(isSelected || presentation == "Shelf" || presentation == "Arcade" ? 1 : 0)
+                .opacity(isSelected || presentation == "Shelf" ? 1 : 0)
 
             // Long press raises only this cover button (including its border).
             Button {

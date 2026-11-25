@@ -811,7 +811,7 @@ struct ZNWhatsNewView: View {
                 Text("Arrange, resize, add or remove Home tools and restore their defaults from edit mode.").font(.footnote)
             }
             Section("Library navigation") {
-                Label("Switchboard, Cinematic, Big Picture, Shelf and Arcade layouts", systemImage: "rectangle.grid.2x2")
+                Label("Switchboard, Cinematic and Shelf layouts", systemImage: "rectangle.grid.2x2")
                 Label("Controller navigation, favorites and custom categories", systemImage: "arrow.left.arrow.right")
             }
             Section("Compatibility") {
