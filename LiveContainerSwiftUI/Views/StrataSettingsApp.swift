@@ -349,6 +349,12 @@ struct StrataNxPortraitSkinSettings: View {
                 Text("Wide (default) enlarges the 16:9 game area and moves the landscape controls outward. Portrait uses the full screen width. Classic retains the original shell. Full Screen uses the largest uncropped 16:9 viewport with native translucent controls instead of the photo skin. Restart NxNative to apply. Render scale is unchanged.")
             }
 
+            Section("Custom Skins") {
+                NavigationLink("ZN Skin Studio") { ZNSkinStudioDraftEditor() }
+            } footer: {
+                Text("Create and save custom layout drafts. In-game custom skin support is not yet available.")
+            }
+
             Section("Portrait & Landscape") {
                 if displayLayout == "full" {
                     Label("Full Screen uses NxNative's own transparent controls; their appearance depends on the game.", systemImage: "arrow.up.left.and.arrow.down.right")
@@ -448,5 +454,135 @@ private struct StrataNxBuiltInSkinPreview: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(dark ? "AMOLED Dark controller skin preview"
                                  : "Pearl Light controller skin preview")
+    }
+}
+
+
+// Studio drafts are deliberately isolated from the existing guest skin preferences.
+private struct ZNSkinDraftControl: Codable, Identifiable {
+    var id: String
+    var x: Double
+    var y: Double
+    var size: Double = 0.10
+    var opacity: Double = 0.85
+}
+private struct ZNSkinDraft: Codable, Identifiable {
+    var id = UUID()
+    var name = "Custom Skin"
+    var portrait = ZNSkinDraft.defaults(false)
+    var landscape = ZNSkinDraft.defaults(true)
+    static func defaults(_ wide: Bool) -> [ZNSkinDraftControl] {
+        let names = ["L","ZL","R","ZR","D-Pad","Left Stick","Right Stick","A","B","X","Y","−","+","Menu"]
+        let xs: [Double] = [0.12,0.28,0.72,0.88,0.24,0.24,0.75,0.87,0.75,0.75,0.63,0.35,0.65,0.50]
+        let ys: [Double] = wide ? [0.15,0.15,0.15,0.15,0.38,0.68,0.38,0.65,0.78,0.52,0.65,0.90,0.90,0.90] : [0.50,0.50,0.50,0.50,0.65,0.84,0.65,0.81,0.88,0.74,0.81,0.95,0.95,0.95]
+        return names.indices.map { ZNSkinDraftControl(id: names[$0], x: xs[$0], y: ys[$0]) }
+    }
+}
+private struct ZNSkinStudioDraftEditor: View {
+    @AppStorage("ZNSkinStudioDraftsV1", store: LCUtils.appGroupUserDefault) private var stored = Data()
+    @State private var drafts: [ZNSkinDraft] = []
+    @State private var selected: UUID?
+    @State private var wide = false
+    @State private var controlID = "A"
+    private func save() {
+        if let data = try? JSONEncoder().encode(drafts) { stored = data }
+    }
+    var body: some View {
+        Form {
+            Section {
+                Text("Layout editor preview. Saved drafts do not change game controls yet.").font(.footnote)
+                Button("New Custom Skin") {
+                    guard drafts.count < 32 else { return }
+                    let draft = ZNSkinDraft()
+                    drafts.append(draft)
+                    selected = draft.id
+                    save()
+                }
+                ForEach(drafts) { draft in
+                    Button {
+                        selected = draft.id
+                    } label: {
+                        HStack {
+                            Text(draft.name)
+                            Spacer()
+                            if selected == draft.id { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            }
+            if let index = drafts.firstIndex(where: { $0.id == selected }) {
+                Section("Profile") {
+                    TextField("Name", text: $drafts[index].name)
+                    Button("Duplicate") {
+                        guard drafts.count < 32 else { return }
+                        var copy = drafts[index]
+                        copy.id = UUID()
+                        copy.name += " Copy"
+                        drafts.append(copy)
+                        selected = copy.id
+                        save()
+                    }
+                    Button("Delete", role: .destructive) {
+                        drafts.remove(at: index)
+                        selected = drafts.first?.id
+                        save()
+                    }
+                }
+                Section("Layout") {
+                    Picker("Orientation", selection: $wide) {
+                        Text("Portrait").tag(false)
+                        Text("Landscape").tag(true)
+                    }.pickerStyle(.segmented)
+                    editor(wide ? $drafts[index].landscape : $drafts[index].portrait)
+                    Button("Reset Layout") {
+                        if wide { drafts[index].landscape = ZNSkinDraft.defaults(true) }
+                        else { drafts[index].portrait = ZNSkinDraft.defaults(false) }
+                        save()
+                    }
+                }
+            }
+        }
+        .navigationTitle("ZN Skin Studio")
+        .onAppear {
+            drafts = (try? JSONDecoder().decode([ZNSkinDraft].self, from: stored)) ?? []
+            selected = drafts.first?.id
+        }
+        .onChange(of: drafts.map { $0.name }) { _ in save() }
+        .onDisappear { save() }
+    }
+    private func editor(_ controls: Binding<[ZNSkinDraftControl]>) -> some View {
+        VStack {
+            GeometryReader { geo in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14).fill(Color.black)
+                    RoundedRectangle(cornerRadius: 5).fill(Color.gray.opacity(0.35))
+                        .frame(width: geo.size.width * (wide ? 0.48 : 0.90), height: geo.size.height * (wide ? 0.60 : 0.34))
+                        .position(x: geo.size.width * 0.5, y: geo.size.height * (wide ? 0.48 : 0.25))
+                    ForEach(controls.wrappedValue.indices, id: \.self) { i in
+                        let item = controls.wrappedValue[i]
+                        Text(item.id).font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: max(20, geo.size.width * item.size), height: max(20, geo.size.width * item.size))
+                            .background(Circle().fill(Color.purple.opacity(item.opacity)))
+                            .overlay(Circle().stroke(controlID == item.id ? Color.white : Color.clear, lineWidth: 2))
+                            .position(x: geo.size.width * item.x, y: geo.size.height * item.y)
+                            .onTapGesture { controlID = item.id }
+                            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("ZNSkinCanvas"))
+                                .onChanged { value in
+                                    controlID = item.id
+                                    controls.wrappedValue[i].x = min(0.95, max(0.05, value.location.x / max(1, geo.size.width)))
+                                    controls.wrappedValue[i].y = min(0.95, max(0.05, value.location.y / max(1, geo.size.height)))
+                                }.onEnded { _ in save() })
+                    }
+                }.coordinateSpace(name: "ZNSkinCanvas")
+            }.aspectRatio(wide ? 16.0/9.0 : 9.0/19.5, contentMode: .fit)
+            if let i = controls.wrappedValue.firstIndex(where: { $0.id == controlID }) {
+                Text(controlID)
+                Slider(value: controls[i].size, in: 0.06...0.22, onEditingChanged: { if !$0 { save() } })
+                Text("Button Size").font(.caption)
+                Slider(value: controls[i].opacity, in: 0.2...1, onEditingChanged: { if !$0 { save() } })
+                Text("Opacity").font(.caption)
+            }
+        }
     }
 }
