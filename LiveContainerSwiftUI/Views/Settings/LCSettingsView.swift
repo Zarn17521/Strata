@@ -740,7 +740,7 @@ struct LCSettingsView: View {
 private struct ZNBetaControlsSettings: View {
     @AppStorage("ZNBetaSwapAB", store: LCUtils.appGroupUserDefault) private var swapAB = false
     @AppStorage("ZNBetaSwapXY", store: LCUtils.appGroupUserDefault) private var swapXY = false
-    @AppStorage("ZNBetaNavigationAudio", store: LCUtils.appGroupUserDefault) private var audio = true
+    @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var audio = true
     @AppStorage("ZNBetaSoundStyle", store: LCUtils.appGroupUserDefault) private var soundStyle = "classic"
     @AppStorage("ZNBetaLowMemory", store: LCUtils.appGroupUserDefault) private var lowMemory = false
     var body: some View {
@@ -795,8 +795,8 @@ struct ZNWhatsNewView: View {
                 Label("Updated beta version information", systemImage: "info.circle")
             }
             Section("Customization") {
-                Label("Selectable navigation sounds", systemImage: "speaker.wave.2")
-                Text("Classic, Soft and Arcade. Inspired by ManicEMU FocusKit; original ZN sound synthesis.").font(.footnote)
+                Label("Selectable navigation sound styles with cue previews", systemImage: "speaker.wave.2")
+                Text("Classic, Soft and Arcade, with separate selection, confirmation and back samples. Original ZN sound synthesis; no ManicEMU audio code or dependency is bundled.").font(.footnote)
             }
             Section("Compatibility") {
                 Text("Existing JIT, Game Mode, Metal HUD, graphics settings and Bundle ID remain unchanged.")
