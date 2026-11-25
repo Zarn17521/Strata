@@ -28,6 +28,9 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
     NSURL *latest = [directory URLByAppendingPathComponent:@"guest-memory.json"];
     NSURL *byPID = [directory URLByAppendingPathComponent:[NSString stringWithFormat:@"%d-memory.json", pid]];
     NSTimeInterval startedAt = NSDate.date.timeIntervalSince1970;
+    const NSTimeInterval startedUptime = NSProcessInfo.processInfo.systemUptime;
+    const NSUInteger recentSampleLimit = 12;
+    NSMutableArray<NSDictionary *> *recentSamples = [NSMutableArray arrayWithCapacity:recentSampleLimit];
     __block uint64_t peakFootprint = 0;
     __block uint64_t minimumAvailable = UINT64_MAX;
     __block dispatch_source_t diagnosticsTimer = nil;
@@ -74,7 +77,14 @@ void StrataStartProcessMemoryDiagnostics(NSString *group, NSString *guestName, N
                 dispatch_source_set_timer(diagnosticsTimer, dispatch_time(DISPATCH_TIME_NOW, nextInterval * NSEC_PER_SEC), nextInterval * NSEC_PER_SEC, NSEC_PER_SEC / 2);
             }
 #endif
-            record[@"sessionSeconds"] = @(MAX(0, NSDate.date.timeIntervalSince1970 - startedAt));
+            NSNumber *elapsed = @(NSProcessInfo.processInfo.systemUptime - startedUptime);
+            record[@"sessionSeconds"] = elapsed;
+            NSMutableDictionary *point = [@{@"sessionSeconds": elapsed} mutableCopy];
+            if (hasFootprint) point[@"footprintBytes"] = @(vm.phys_footprint);
+            if (available > 0) point[@"availableBytes"] = @(available);
+            if (recentSamples.count == recentSampleLimit) [recentSamples removeObjectAtIndex:0];
+            [recentSamples addObject:point];
+            record[@"recentSamples"] = recentSamples;
             record[@"thermalState"] = @(NSProcessInfo.processInfo.thermalState);
             NSData *json = [NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted error:nil];
             [json writeToURL:byPID options:NSDataWritingAtomic error:nil];
