@@ -307,12 +307,26 @@ struct StrataNxPortraitSkinSettings: View {
     @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault)
     private var style = "pearl"
     @AppStorage("ZNCustomSkinThemeID", store: LCUtils.appGroupUserDefault)
-    private var themeID = "zelda"
+    private var themeID = ""
     @AppStorage("StrataNxDisplayLayout", store: LCUtils.appGroupUserDefault)
     private var displayLayout = "wide"
 
     private var dark: Bool { style == "amoled" }
-    private var activeTheme: StrataNxBuiltInSkin { StrataNxBuiltInSkin.all.first { $0.id == themeID } ?? StrataNxBuiltInSkin.all[0] }
+    private let originalSkins = [
+        StrataNxBuiltInSkin(id: "pearl", title: "Pearl Light", tint: .clear),
+        StrataNxBuiltInSkin(id: "amoled", title: "AMOLED Dark", tint: .clear)
+    ]
+
+    private var availableSkins: [StrataNxBuiltInSkin] { originalSkins + StrataNxBuiltInSkin.all }
+    private var activeTheme: StrataNxBuiltInSkin {
+        availableSkins.first { $0.id == themeID } ?? originalSkins[dark ? 1 : 0]
+    }
+    private var finishSelection: Binding<String> {
+        Binding(get: { style }, set: { finish in
+            if originalSkins.contains(where: { $0.id == themeID }) { themeID = finish }
+            style = finish
+        })
+    }
     private let themeGridColumns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
@@ -366,11 +380,11 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
-                skinChoices([("Pearl Light", "pearl"), ("AMOLED Dark", "amoled")], selection: $style)
+                skinChoices([("Pearl Light", "pearl"), ("AMOLED Dark", "amoled")], selection: finishSelection)
                 .accessibilityIdentifier("settings.nxnative.builtinStyle")
 
                 HStack {
-                    Text("\(StrataNxBuiltInSkin.all.count) built-in skins")
+                    Text("\(availableSkins.count) built-in skins")
                         .font(.subheadline.weight(.semibold))
                     Spacer()
                     Text("Selected: \(activeTheme.title)")
@@ -378,7 +392,7 @@ struct StrataNxPortraitSkinSettings: View {
                 }
 
                 LazyVGrid(columns: themeGridColumns, spacing: 10) {
-                    ForEach(StrataNxBuiltInSkin.all) { item in
+                    ForEach(availableSkins) { item in
                         builtInThemeCard(item)
                     }
                 }
@@ -396,7 +410,7 @@ struct StrataNxPortraitSkinSettings: View {
         .navigationTitle("NxNative Controller Skins")
         .onAppear {
             if LCUtils.appGroupUserDefault.string(forKey: "ZNCustomSkinThemeID") == nil {
-                LCUtils.appGroupUserDefault.set(themeID, forKey: "ZNCustomSkinThemeID")
+                themeID = style
             }
         }
     }
@@ -428,18 +442,21 @@ struct StrataNxPortraitSkinSettings: View {
 
     @ViewBuilder
     private func builtInThemeCard(_ theme: StrataNxBuiltInSkin) -> some View {
-        let selected = themeID == theme.id
+        let original = originalSkins.contains { $0.id == theme.id }
+        let cardDark = original ? theme.id == "amoled" : dark
+        let selected = activeTheme.id == theme.id
         Button {
+            if original { style = theme.id }
             themeID = theme.id
             enabled = true
         } label: {
             VStack(spacing: 8) {
                 ZStack(alignment: .topTrailing) {
                     HStack(spacing: 5) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: "classic",
+                        StrataNxBuiltInSkinPreview(dark: cardDark, landscape: false, layout: "classic",
                                                   theme: theme, portraitTemplateName: theme.portraitTemplateName)
                             .aspectRatio(9.0 / 16.0, contentMode: .fit)
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: "classic", theme: theme)
+                        StrataNxBuiltInSkinPreview(dark: cardDark, landscape: true, layout: "classic", theme: theme)
                             .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     }
                     .padding(5)
@@ -500,7 +517,8 @@ private struct StrataNxBuiltInSkinPreview: View {
                     .aspectRatio(contentMode: .fit)
                     .overlay {
                         Rectangle().fill(theme.tint.opacity(0.24)).blendMode(.color)
-                        if let artwork = StrataNxThemeArtworkPreview(theme.id, !landscape) {
+                        if theme.id != "pearl", theme.id != "amoled",
+                           let artwork = StrataNxThemeArtworkPreview(theme.id, !landscape) {
                             Image(uiImage: artwork).resizable().allowsHitTesting(false)
                         }
                     }

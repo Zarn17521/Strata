@@ -31,7 +31,7 @@ checks = {
     "Shelf long-press opens scrollable options": 'Button("Options…"' in switchboard and 'shelfOptionsApp = LiveBoardAppearanceSelection(app: app)' in switchboard and '.sheet(item: $shelfOptionsApp' in switchboard and 'Form {' in switchboard and 'appOptions(selection.app' in switchboard,
     "Skin Collection and Skin Studio are removed": "Skin Collections" not in settings and "Strata Custom Skin Studio" not in settings and "customskin" not in settings and not (ROOT / "LiveContainerSwiftUI/Views/StrataCustomSkinStudio.swift").exists(),
     "Built-in skin page follows the requested section order": settings.index('Toggle("Enable NxNative Skin"') < settings.index('Text("Game Display")') < settings.index('Section("Portrait & Landscape")') < settings.index('Text("Built-in Skin")'),
-    "Built-in skin grid shows pictures for all 26 themes": 'LazyVGrid(columns: themeGridColumns' in settings and 'Image(uiImage: image)' in settings and 'ForEach(StrataNxBuiltInSkin.all)' in settings and 'StrataNxBuiltInSkin.all.count' in settings,
+    "Built-in skin grid shows pictures for all 26 themes": 'LazyVGrid(columns: themeGridColumns' in settings and 'Image(uiImage: image)' in settings and 'ForEach(availableSkins)' in settings and 'originalSkins + StrataNxBuiltInSkin.all' in settings,
     "Custom Skin Main templates exist": all((ROOT / path).is_file() for path in (
         "LiveContainerSwiftUI/Assets.xcassets/MainLandscape.imageset/MainLandscape.jpg",
         "LiveContainerSwiftUI/Assets.xcassets/MainPortrait.imageset/MainPortrait.jpg",
