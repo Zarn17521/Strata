@@ -23,7 +23,7 @@ checks = {
     "thumbnail budget is bounded": "thumbnailCache.totalCostLimit = lowMemory ? 512 * 1024 : 2 * 1024 * 1024" in store,
     "thumbnail cache is trimmed": "thumbnailCache.removeAllObjects()" in store,
     "cover retains the previous decoded image": "loaded ?? lastReady" in switchboard,
-    "mapped artwork avoids icon flash": "store.hasArtwork(for: key, kind: .cover, mode: \"switchboard\")" in switchboard,
+    "mapped artwork avoids icon flash": "store.hasArtwork(for: key, kind: .cover, mode: \"switchboard\", thumbnail: thumbnail, shelf: shelf)" in switchboard,
     "layout appearance restores selection": "proxy.scrollTo(selectedKey, anchor: .center)" in switchboard,
     "library appearance preserves a still-valid selection": "if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey })" in switchboard,
     "filter changes repair only invalid selections": ".onChange(of: filtered.map(liveBoardAppKey))" in switchboard,
@@ -54,9 +54,9 @@ checks = {
         and "NxThemeArtwork in Resources" in project.split("E1292BD42DCA3B660065E12D /* Resources */ = {", 1)[1].split("runOnlyForDeploymentPostprocessing", 1)[0],
     "picker and gameplay use the same source with bounded picker decoding":
         'StrataNxSkinPreviewImageForTheme(!landscape, dark, layout, theme.id)' in settings
-        and 'StrataNxLoadThemeArtwork(identifier, portrait, YES)' in guest_controls
-        and 'StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO)' in guest_controls
-        and 'kCGImageSourceThumbnailMaxPixelSize: @640' in guest_controls,
+        and 'StrataNxLoadThemeArtwork(identifier, portrait, YES, NO)' in guest_controls
+        and 'StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO, lowMemory)' in guest_controls
+        and 'kCGImageSourceThumbnailMaxPixelSize: (thumbnail ? @640' in guest_controls,
     "theme colors are shared with the guest renderer": set(re.findall(r'\.init\(id: "([^"]+)"', built_in_skins)) == set(re.findall(r'@"([^"]+)": @\[@', guest_controls)),
     "controller presses glow and depress then release": all(key in guest_controls for key in ("zn.press.glow", "zn.press.down", "zn.press.lift")),
     "all themes share Classic Wide and Full Screen options": all(f'("{name}", "{tag}")' in settings for name, tag in (("Classic", "classic"), ("Wide", "wide"), ("Full Screen", "full"))) and '"StrataNxDisplayLayout"' in settings,

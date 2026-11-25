@@ -270,7 +270,7 @@ struct StrataSwitchboard: View {
                 ScrollView {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 12) {
                         ForEach(items, id: \.self) { app in
-                            gameTile(app, size: size).id(liveBoardAppKey(app))
+                            gameTile(app, size: size, shelf: true).id(liveBoardAppKey(app))
                         }
                     }.padding(12)
                 }
@@ -293,11 +293,11 @@ struct StrataSwitchboard: View {
     // Keep tile identity and scroll state while dropping the image views and
     // their retained last-ready bitmaps during guest launch or backgrounding.
     @ViewBuilder
-    private func tileArtwork(_ app: LCAppModel, key: String, thumbnail: Bool = false) -> some View {
+    private func tileArtwork(_ app: LCAppModel, key: String, thumbnail: Bool = false, shelf: Bool = false) -> some View {
         if busy || phase == .background {
             tilePlaceholder
         } else {
-            LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode, thumbnail: thumbnail)
+            LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode, thumbnail: thumbnail, shelf: shelf)
                 .id(key)
         }
     }
@@ -316,7 +316,7 @@ struct StrataSwitchboard: View {
         }.buttonStyle(.plain)
     }
 
-    private func gameTile(_ app: LCAppModel, size tile: CGFloat) -> some View {
+    private func gameTile(_ app: LCAppModel, size tile: CGFloat, shelf: Bool = false) -> some View {
         let key = liveBoardAppKey(app)
         let isSelected = key == liveBoardAppKey(selected ?? app)
         let radius = tile * 0.035
@@ -339,7 +339,7 @@ struct StrataSwitchboard: View {
             } label: {
                 ZStack {
                     tilePlaceholder
-                    tileArtwork(app, key: key)
+                    tileArtwork(app, key: key, shelf: shelf)
                 }
                 .frame(width: tile, height: tile)
                 .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -678,14 +678,15 @@ private struct LiveBoardCoverImage: View {
     let app: LCAppModel
     let darkMode: Bool
     var thumbnail = false
+    var shelf = false
     @State private var lastReady: UIImage?
 
     var body: some View {
-        let loaded = store.image(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail)
+        let loaded = store.image(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail, shelf: shelf)
         Group {
             if let image = loaded ?? lastReady {
                 Image(uiImage: image).resizable().scaledToFill()
-            } else if store.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
+            } else if store.hasArtwork(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail, shelf: shelf) {
                 Rectangle().fill(darkMode ? Color(white: 0.10) : Color(white: 0.95))
             } else {
                 LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
@@ -697,9 +698,9 @@ private struct LiveBoardCoverImage: View {
     }
 
     private func refresh() {
-        if let image = store.cachedImage(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail) {
+        if let image = store.cachedImage(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail, shelf: shelf) {
             lastReady = image
-        } else if !store.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
+        } else if !store.hasArtwork(for: key, kind: .cover, mode: "switchboard", thumbnail: thumbnail, shelf: shelf) {
             // The app icon is already an available replacement when the game
             // has no custom image, so don't retain the previous game's cover.
             lastReady = nil

@@ -11,6 +11,7 @@ import Darwin
     // thumbnails cannot evict the selected game's full size cover.
     private let cache = NSCache<NSString, UIImage>()
     private let thumbnailCache = NSCache<NSString, UIImage>()
+    private let shelfCache = NSCache<NSString, UIImage>()
     private var requests: [String: UUID] = [:]
     private struct DecodeJob {
         let id: String
@@ -50,6 +51,8 @@ import Darwin
         cache.countLimit = 16
         thumbnailCache.totalCostLimit = 2 * 1024 * 1024
         thumbnailCache.countLimit = 32
+        shelfCache.totalCostLimit = 4 * 1024 * 1024
+        shelfCache.countLimit = 12
         reloadFromDisk()
     }
     private func imageCost(_ image: UIImage) -> Int {
@@ -67,12 +70,15 @@ import Darwin
         pendingDecodes.removeAll()
         cache.removeAllObjects()
         thumbnailCache.removeAllObjects()
+        shelfCache.removeAllObjects()
         // Apply Low Memory Mode limits immediately, rather than waiting for the
         // next image lookup to update NSCache's eviction budget.
         cache.totalCostLimit = constrained ? 4 * 1024 * 1024 : 8 * 1024 * 1024
         cache.countLimit = constrained ? 4 : 8
         thumbnailCache.totalCostLimit = constrained ? 512 * 1024 : 2 * 1024 * 1024
         thumbnailCache.countLimit = constrained ? 8 : 32
+        shelfCache.totalCostLimit = (constrained ? 2 : 4) * 1024 * 1024
+        shelfCache.countLimit = constrained ? 6 : 12
         revision += 1
     }
     /// Give cancelled ImageIO jobs a short opportunity to release their buffers.
@@ -97,7 +103,7 @@ import Darwin
             defaults.set(migrated, forKey: "LiveBoardConsoleArtwork"); mappingCache = migrated
         }
         writeIndex()
-        cache.removeAllObjects(); thumbnailCache.removeAllObjects(); requests.removeAll(); pendingDecodes.removeAll(); missing.removeAll(); revision += 1
+        cache.removeAllObjects(); thumbnailCache.removeAllObjects(); shelfCache.removeAllObjects(); requests.removeAll(); pendingDecodes.removeAll(); missing.removeAll(); revision += 1
     }
     private func writeIndex() {
         guard let data = try? JSONSerialization.data(withJSONObject: mappings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -109,17 +115,22 @@ import Darwin
             if let url = files.existingURL(filename) { try? FileManager.default.removeItem(at: url) }
         }
     }
-    func image(for key: String, kind: Kind, mode: String = "bigPicture", thumbnail: Bool = false) -> UIImage? {
+    func image(for key: String, kind: Kind, mode: String = "bigPicture", thumbnail: Bool = false, shelf: Bool = false) -> UIImage? {
         let id = mode + ":" + kind.rawValue + ":" + key
-        let requestID = thumbnail ? id + ":thumbnail" : id
-        let targetCache = thumbnail ? thumbnailCache : cache
+        let requestID = shelf ? id + ":shelf" : (thumbnail ? id + ":thumbnail" : id)
+        let targetCache = shelf ? shelfCache : (thumbnail ? thumbnailCache : cache)
         if let cached = targetCache.object(forKey: requestID as NSString) { return cached }
         guard !decodingPaused, !missing.contains(requestID), requests[requestID] == nil else { return nil }
-        guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(id); return nil }
+        guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(requestID); return nil }
         let token = UUID(); requests[requestID] = token
         let lowMemory = constrained
-        let maximum = thumbnail ? 192 : kind == .background ? (lowMemory ? 1280 : 1920) : (lowMemory ? 640 : 1024)
-        if thumbnail {
+        let defaultMaximum = thumbnail ? 192 : kind == .background ? (lowMemory ? 1280 : 1920) : (lowMemory ? 640 : 1024)
+        // Shelf tiles are capped at 132 points, or 396 pixels at 3×.
+        let maximum = shelf ? (lowMemory ? 288 : 400) : defaultMaximum
+        if shelf {
+            shelfCache.totalCostLimit = (lowMemory ? 2 : 4) * 1024 * 1024
+            shelfCache.countLimit = lowMemory ? 6 : 12
+        } else if thumbnail {
             thumbnailCache.totalCostLimit = lowMemory ? 512 * 1024 : 2 * 1024 * 1024
             thumbnailCache.countLimit = lowMemory ? 8 : 32
         } else {
@@ -159,7 +170,7 @@ import Darwin
                 if !self.decodingPaused, self.requests[job.id] == job.token {
                     self.requests[job.id] = nil
                     if let image {
-                        let targetCache = job.id.hasSuffix(":thumbnail") ? self.thumbnailCache : self.cache
+                        let targetCache = job.id.hasSuffix(":shelf") ? self.shelfCache : (job.id.hasSuffix(":thumbnail") ? self.thumbnailCache : self.cache)
                         targetCache.setObject(image, forKey: job.id as NSString, cost: self.imageCost(image))
                     }
                     else { self.missing.insert(job.id) }
@@ -171,16 +182,18 @@ import Darwin
     }
 
     /// Cache-only lookup; never starts a decode. Used for same-frame fallbacks.
-    func cachedImage(for key: String, kind: Kind, mode: String = "bigPicture", thumbnail: Bool = false) -> UIImage? {
-        let id = mode + ":" + kind.rawValue + ":" + key + (thumbnail ? ":thumbnail" : "")
-        return (thumbnail ? thumbnailCache : cache).object(forKey: id as NSString)
+    func cachedImage(for key: String, kind: Kind, mode: String = "bigPicture", thumbnail: Bool = false, shelf: Bool = false) -> UIImage? {
+        let id = mode + ":" + kind.rawValue + ":" + key + (shelf ? ":shelf" : (thumbnail ? ":thumbnail" : ""))
+        return (shelf ? shelfCache : (thumbnail ? thumbnailCache : cache)).object(forKey: id as NSString)
     }
     /// True when user artwork is assigned (and not known to be unreadable), even if it is still decoding.
     /// Lets the backdrop keep the outgoing image instead of flashing the icon-derived fallback.
-    func hasArtwork(for key: String, kind: Kind, mode: String = "bigPicture") -> Bool {
+    func hasArtwork(for key: String, kind: Kind, mode: String = "bigPicture", thumbnail: Bool = false, shelf: Bool = false) -> Bool {
         let id = mode + ":" + kind.rawValue + ":" + key
-        if cache.object(forKey: id as NSString) != nil { return true }
-        guard !missing.contains(id) else { return false }
+        let requestID = shelf ? id + ":shelf" : (thumbnail ? id + ":thumbnail" : id)
+        let targetCache = shelf ? shelfCache : (thumbnail ? thumbnailCache : cache)
+        if targetCache.object(forKey: requestID as NSString) != nil { return true }
+        guard !missing.contains(requestID) else { return false }
         return mappings[id] != nil || (mode == "bigPicture" && mappings[kind.rawValue + ":" + key] != nil)
     }
     /// Starts background decodes so neighbouring selections are ready before the user reaches them.
@@ -207,9 +220,9 @@ import Darwin
         map[id] = filename; mappingCache = map; defaults.set(map, forKey: "LiveBoardConsoleArtwork")
         removeUnreferenced(previousFiles, mappings: map)
         writeIndex()
-        requests[id] = nil; requests[id + ":thumbnail"] = nil
-        missing.remove(id); missing.remove(id + ":thumbnail")
-        cache.removeObject(forKey: id as NSString); thumbnailCache.removeObject(forKey: (id + ":thumbnail") as NSString); revision += 1
+        requests[id] = nil; requests[id + ":thumbnail"] = nil; requests[id + ":shelf"] = nil
+        missing.remove(id); missing.remove(id + ":thumbnail"); missing.remove(id + ":shelf")
+        cache.removeObject(forKey: id as NSString); thumbnailCache.removeObject(forKey: (id + ":thumbnail") as NSString); shelfCache.removeObject(forKey: (id + ":shelf") as NSString); revision += 1
     }
     func remove(for key: String, kind: Kind, mode: String = "bigPicture") {
         let id = mode + ":" + kind.rawValue + ":" + key
@@ -220,8 +233,8 @@ import Darwin
         defaults.set(map, forKey: "LiveBoardConsoleArtwork")
         removeUnreferenced(removed, mappings: map)
         writeIndex()
-        requests[id] = nil; requests[id + ":thumbnail"] = nil
-        missing.remove(id); missing.remove(id + ":thumbnail")
-        cache.removeObject(forKey: id as NSString); thumbnailCache.removeObject(forKey: (id + ":thumbnail") as NSString); revision += 1
+        requests[id] = nil; requests[id + ":thumbnail"] = nil; requests[id + ":shelf"] = nil
+        missing.remove(id); missing.remove(id + ":thumbnail"); missing.remove(id + ":shelf")
+        cache.removeObject(forKey: id as NSString); thumbnailCache.removeObject(forKey: (id + ":thumbnail") as NSString); shelfCache.removeObject(forKey: (id + ":shelf") as NSString); revision += 1
     }
 }
