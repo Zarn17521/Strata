@@ -30,6 +30,8 @@ struct StrataSwitchboard: View {
     @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var coverKey = ""
     @State private var artworkError: String?
+    @State private var shelfOptionsApp: LiveBoardAppearanceSelection?
+    @State private var pendingShelfAction: (() -> Void)?
     @State private var shortcutProfilesApp: LiveBoardAppearanceSelection?
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -167,6 +169,26 @@ struct StrataSwitchboard: View {
                 onlineArtwork = nil
             }
         }
+        .sheet(item: $shelfOptionsApp, onDismiss: {
+            let action = pendingShelfAction
+            pendingShelfAction = nil
+            if let action { action() } else { bind() }
+        }) { selection in
+            NavigationView {
+                Form {
+                    appOptions(selection.app, perform: { action in
+                        pendingShelfAction = action
+                        shelfOptionsApp = nil
+                    })
+                }
+                .navigationTitle(customization.name(selection.app))
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { shelfOptionsApp = nil }
+                    }
+                }
+            }.navigationViewStyle(.stack)
+        }
         .sheet(item: $shortcutProfilesApp, onDismiss: bind) { selection in
             LiveBoardShortcutProfilesSheet(app: selection.app) { action in
                 launchShortcut(selection.app, action)
@@ -199,6 +221,7 @@ struct StrataSwitchboard: View {
             VStack(spacing: 4) {
                 if let selected {
                     gameTile(selected, size: max(72, tile * 0.68))
+                        .id(liveBoardAppKey(selected))
                 }
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -277,6 +300,7 @@ struct StrataSwitchboard: View {
                 ZStack {
                     tilePlaceholder
                     LiveBoardCoverImage(store: artwork, key: key, app: app, darkMode: darkMode)
+                        .id(key)
                 }
                 .frame(width: tile, height: tile)
                 .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -294,52 +318,64 @@ struct StrataSwitchboard: View {
             .accessibilityLabel(customization.name(app))
             .accessibilityIdentifier("switchboard.tile." + key)
             .contextMenu {
-                Button("Launch default shortcut", systemImage: "play.fill") { activate(app) }
+                if presentation == "Shelf" {
+                    Button("Options…", systemImage: "ellipsis.circle") {
+                        controller.stop()
+                        shelfOptionsApp = LiveBoardAppearanceSelection(app: app)
+                    }
+                } else {
+                    appOptions(app, perform: { action in action() })
+                }
+            }
+        }
+        .frame(width: tile + 10)
+    }
+
+    @ViewBuilder private func appOptions(_ app: LCAppModel, perform: @escaping (@escaping () -> Void) -> Void) -> some View {
+        let key = liveBoardAppKey(app)
+                Button("Launch default shortcut", systemImage: "play.fill") { perform { activate(app) } }
                 if !(app.appInfo is StrataPhoneAppInfo) && !(app.appInfo is BuiltInSideStoreAppInfo) {
-                    Button("Shortcut Profiles…", systemImage: "square.stack.3d.up") { controller.stop(); shortcutProfilesApp = LiveBoardAppearanceSelection(app: app) }
+                    Button("Shortcut Profiles…", systemImage: "square.stack.3d.up") { perform { controller.stop(); shortcutProfilesApp = LiveBoardAppearanceSelection(app: app) } }
                     if let launchWithJIT {
                         Button("Launch with JIT", systemImage: "bolt.fill") {
-                            prepareForLaunch(app, using: launchWithJIT)
+                            perform { prepareForLaunch(app, using: launchWithJIT) }
                         }
                     }
                     if let launchMultitask {
                         Button("Multitask", systemImage: "rectangle.on.rectangle") {
-                            prepareForLaunch(app, using: launchMultitask)
+                            perform { prepareForLaunch(app, using: launchMultitask) }
                         }
                     }
                     if let launchInGameMode {
                         Button("Request Game Mode", systemImage: "gamecontroller.fill") {
-                            prepareForLaunch(app, using: launchInGameMode)
+                            perform { prepareForLaunch(app, using: launchInGameMode) }
                         }
                     }
                     if let launchInGameModeWithJIT {
                         Button("Request Game Mode + JIT", systemImage: "bolt.circle.fill") {
-                            prepareForLaunch(app, using: launchInGameModeWithJIT)
+                            perform { prepareForLaunch(app, using: launchInGameModeWithJIT) }
                         }
                     }
                     if let launchWithMetalHUD {
                         Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") {
-                            prepareForLaunch(app, using: launchWithMetalHUD)
+                            perform { prepareForLaunch(app, using: launchWithMetalHUD) }
                         }
                     }
                 }
-                Button("App settings", systemImage: "gearshape") { controller.stop(); manage(app) }
+                Button("App settings", systemImage: "gearshape") { perform { controller.stop(); manage(app) } }
                 Button("Choose cover artwork", systemImage: "photo") {
-                    coverKey = key; choosingCover = true; controller.stop()
+                    perform { coverKey = key; choosingCover = true; controller.stop() }
                 }
                 Button("Search cover on SteamGridDB", systemImage: "sparkles") {
-                    onlineArtwork = StrataArtworkOnlineRequest(key: key, title: customization.name(app), kind: .cover, mode: "switchboard"); controller.stop()
+                    perform { onlineArtwork = StrataArtworkOnlineRequest(key: key, title: customization.name(app), kind: .cover, mode: "switchboard"); controller.stop() }
                 }
                 StrataArrangeMenus(
                     app: app, visible: filtered, all: apps,
                     categories: library.categories, current: library.assignments[key]
                 ) { value in update { $0.assignments[key] = value } }
                 Button("Hide", systemImage: "eye.slash") {
-                    update { _ = $0.hidden.insert(key) }
+                    perform { update { _ = $0.hidden.insert(key) } }
                 }
-            }
-        }
-        .frame(width: tile + 10)
     }
 
     // The system status bar already displays time, Wi-Fi and battery.
