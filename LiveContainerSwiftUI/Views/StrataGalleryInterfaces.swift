@@ -34,6 +34,7 @@ struct StrataGalleryScreen: View {
 
     @State private var selectedKey = ""
     @State private var category: String?
+    @State private var recentOnly = false
     @State private var gridColumns = 1
     @State private var editingLibrary = false
     @State private var newCategory = ""
@@ -59,7 +60,8 @@ struct StrataGalleryScreen: View {
     }
     private var filtered: [LCAppModel] {
         let state = library
-        return apps.filter { !state.hidden.contains(liveBoardAppKey($0)) && (category == nil || state.assignments[liveBoardAppKey($0)] == category) }
+        let visible = apps.filter { !state.hidden.contains(liveBoardAppKey($0)) && (category == nil || state.assignments[liveBoardAppKey($0)] == category) }
+        return recentOnly ? LiveBoardRecentGames.sorted(visible) : visible
     }
     private var selected: LCAppModel? { filtered.first { liveBoardAppKey($0) == selectedKey } ?? filtered.first }
     private var selectedIndex: Int { filtered.firstIndex { liveBoardAppKey($0) == selectedKey } ?? 0 }
@@ -113,6 +115,7 @@ struct StrataGalleryScreen: View {
         .onDisappear { visible = false; controller.stop(); audio.stop() }
         .onChange(of: selectedKey) { _ in if sounds && phase == .active { audio.play() }; prefetch() }
         .onChange(of: filtered.map(liveBoardAppKey)) { keys in if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" } }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardRecentGames.changed)) { _ in if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" }; prefetch() }
         .onChange(of: phase) { value in if value == .active { busy = false; bind() } else { controller.stop() } }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; bind() }
@@ -173,8 +176,8 @@ struct StrataGalleryScreen: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: selectedStyle ? 8 : 20) {
                 ForEach([nil] + library.visibleCategories(apps).map { Optional($0) }, id: \.self) { value in
-                    let active = category == value
-                    Button { category = value } label: {
+                    let active = value == nil ? category == nil && !recentOnly : category == value && !recentOnly
+                    Button { category = value; recentOnly = false } label: {
                         Text(value ?? "All").font(.subheadline.weight(.semibold))
                             .padding(.horizontal, selectedStyle ? 14 : 0).padding(.vertical, selectedStyle ? 6 : 4)
                             .background { if selectedStyle && active { Capsule().fill(.white) } }
@@ -182,6 +185,7 @@ struct StrataGalleryScreen: View {
                             .overlay(alignment: .bottom) { if !selectedStyle && active { Capsule().fill(.white).frame(height: 2).offset(y: 4) } }
                     }.buttonStyle(.plain)
                 }
+                Button("Recently Played") { category = nil; recentOnly = true }.opacity(recentOnly ? 1 : 0.55)
             }.padding(.vertical, 4)
         }
     }
@@ -420,10 +424,12 @@ struct StrataGalleryScreen: View {
         selectedKey = liveBoardAppKey(items[index])
     }
     private func changeCategory(_ delta: Int) {
-        guard style != .shelf else { return }
-        let all: [String?] = [nil] + library.visibleCategories(apps).map { Optional($0) }
-        let current = all.firstIndex(of: category) ?? 0
-        category = all[(current + delta + all.count) % all.count]
+        let categories = library.visibleCategories(apps)
+        let count = categories.count + 2
+        let current = category.flatMap { categories.firstIndex(of: $0).map { $0 + 2 } } ?? (recentOnly ? 1 : 0)
+        let index = (current + delta + count) % count
+        recentOnly = index == 1
+        category = index >= 2 ? categories[index - 2] : nil
     }
     private func bind() {
         guard visible, !editingLibrary, picking == nil, !busy else { return }

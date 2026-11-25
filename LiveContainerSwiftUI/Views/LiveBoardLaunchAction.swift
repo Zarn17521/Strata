@@ -15,7 +15,7 @@ extension LCAppModel {
                 found = MultitaskWindowManager.openExistingAppWindow(dataUUID: folder)
             }
             if !found { found = MultitaskDockManager.shared.bringMultitaskViewToFront(uuid: folder) }
-            if found { return }
+            if found { LiveBoardRecentGames.record(self); return }
         }
         if appInfo.isLocked && !DataManager.shared.model.isHiddenAppUnlocked {
             guard try await LCUtils.authenticateUser() else { return }
@@ -28,7 +28,10 @@ extension LCAppModel {
         var hud = LCUtils.appGroupUserDefault.dictionary(forKey: "StrataMetalHUDApps") as? [String: Bool] ?? [:]
         hud[liveBoardAppKey(self)] = metalHUD
         LCUtils.appGroupUserDefault.set(hud, forKey: "StrataMetalHUDApps")
-        do { try await runApp(multitask: gameMode ? false : multitask, forceJIT: forceJIT ? true : nil) }
+        do {
+            try await runApp(multitask: gameMode ? false : multitask, forceJIT: forceJIT ? true : nil)
+            LiveBoardRecentGames.record(self)
+        }
         catch {
             var pending = LCUtils.appGroupUserDefault.dictionary(forKey: "StrataMetalHUDApps") as? [String: Bool] ?? [:]
             pending.removeValue(forKey: liveBoardAppKey(self)); LCUtils.appGroupUserDefault.set(pending, forKey: "StrataMetalHUDApps")

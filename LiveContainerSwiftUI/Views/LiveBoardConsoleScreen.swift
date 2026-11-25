@@ -46,6 +46,7 @@ struct LiveBoardConsoleScreen: View {
     }
     @State private var navigation = LiveBoardConsoleNavigation()
     @State private var favoritesOnly = false
+    @State private var recentOnly = false
     @State private var details = false
     @State private var detailsIndex = 0
     @State private var searching = false
@@ -78,10 +79,11 @@ struct LiveBoardConsoleScreen: View {
     private var visibleApps: [LCAppModel] {
         let state = library
         let favorites = Set(favoriteKeys)
-        return apps.filter { app in
+        let visible = apps.filter { app in
             let key = liveBoardAppKey(app)
             return !state.hidden.contains(key) && (!favoritesOnly || favorites.contains(key)) && (activeCategory == nil || state.assignments[key] == activeCategory)
         }
+        return recentOnly ? LiveBoardRecentGames.sorted(visible) : visible
     }
     private var selected: LCAppModel? { visibleApps.indices.contains(navigation.selectedIndex) ? visibleApps[navigation.selectedIndex] : visibleApps.first }
     private var keys: [String] { visibleApps.map(liveBoardAppKey) }
@@ -194,7 +196,8 @@ struct LiveBoardConsoleScreen: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active { bindController() } else { controller.stop() }
         }
-        .onChange(of: mode) { _ in activeCategory = nil; favoritesOnly = false; navigation = LiveBoardConsoleNavigation(); bindController() }
+        .onChange(of: mode) { _ in activeCategory = nil; favoritesOnly = false; recentOnly = false; navigation = LiveBoardConsoleNavigation(); bindController() }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardRecentGames.changed)) { _ in navigation.selectedIndex = 0 }
         .onChange(of: keys) { _ in navigation.selectedIndex = min(navigation.selectedIndex, max(0, visibleApps.count - 1)) }
     }
 
@@ -247,31 +250,34 @@ struct LiveBoardConsoleScreen: View {
     }
     private func header(landscape: Bool) -> some View {
         HStack(spacing: landscape ? 18 : 8) {
-            ForEach(0..<2, id: \.self) { index in
+            ForEach(0..<3, id: \.self) { index in
                 Button {
                     favoritesOnly = index == 1
+                    recentOnly = index == 2
                     activeCategory = nil
                     navigation.selectedIndex = 0
                 } label: {
-                    Text(index == 0 ? "Library" : "Favorites")
-                        .font(.system(size: landscape ? 20 : 18, weight: (activeCategory == nil && favoritesOnly == (index == 1)) ? .semibold : .regular))
-                        .foregroundStyle(.white.opacity((activeCategory == nil && favoritesOnly == (index == 1)) ? 1 : 0.5))
+                    let title = ["Library", "Favorites", "Recently Played"][index]
+                    let active = activeCategory == nil && favoritesOnly == (index == 1) && recentOnly == (index == 2)
+                    Text(title)
+                        .font(.system(size: landscape ? 20 : 18, weight: active ? .semibold : .regular))
+                        .foregroundStyle(.white.opacity(active ? 1 : 0.5))
                         .fixedSize(horizontal: true, vertical: false)
                         .padding(.vertical, 8)
                         .overlay(alignment: .bottom) {
                             if navigation.focus == .header && navigation.headerIndex == index { Capsule().fill(.white).frame(height: 2) }
                         }
-                }.accessibilityIdentifier(index == 0 ? "console.library" : "console.favorites")
+                }.accessibilityIdentifier(["console.library", "console.favorites", "console.recent"][index])
             }
             Spacer(minLength: 0)
             Button { openSearch() } label: { Image(systemName: "magnifyingglass").frame(width: 36, height: 36) }.accessibilityLabel("Search").accessibilityIdentifier("console.search")
             Button { controller.stop(); openManagement() } label: {
                 Image(systemName: "square.grid.2x2").frame(width: 36, height: 36)
-                    .overlay(Circle().stroke(navigation.focus == .header && navigation.headerIndex == 2 ? .white : .clear, lineWidth: 2))
+                    .overlay(Circle().stroke(navigation.focus == .header && navigation.headerIndex == 3 ? .white : .clear, lineWidth: 2))
             }.accessibilityLabel("Manage apps").accessibilityIdentifier("console.manage")
             Button { controller.stop(); NotificationCenter.default.post(name: .strataOpenSettings, object: nil) } label: {
                 Image(systemName: "gearshape").frame(width: 36, height: 36)
-                    .overlay(Circle().stroke(navigation.focus == .header && navigation.headerIndex == 3 ? .white : .clear, lineWidth: 2))
+                    .overlay(Circle().stroke(navigation.focus == .header && navigation.headerIndex == 4 ? .white : .clear, lineWidth: 2))
             }.accessibilityLabel("Settings").accessibilityIdentifier("console.settings")
         }.buttonStyle(.plain).frame(maxWidth: .infinity).frame(height: 40)
     }
@@ -291,7 +297,7 @@ struct LiveBoardConsoleScreen: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 18) {
                     ForEach(library.visibleCategories(apps), id: \.self) { name in
-                        Button { activeCategory = activeCategory == name ? nil : name; favoritesOnly = false; navigation.selectedIndex = 0 } label: {
+                        Button { activeCategory = activeCategory == name ? nil : name; favoritesOnly = false; recentOnly = false; navigation.selectedIndex = 0 } label: {
                             Text(name).font(.system(size: 13, weight: activeCategory == name ? .bold : .regular)).foregroundStyle(.white.opacity(activeCategory == name ? 1 : 0.55)).padding(.vertical, 6)
                         }.accessibilityIdentifier("console.category." + name)
                     }
@@ -329,10 +335,11 @@ struct LiveBoardConsoleScreen: View {
         }.navigationViewStyle(.stack)
     }
     private func changeSection(_ delta: Int) {
-        let sections = ["Library", "Favorites"] + library.visibleCategories(apps)
-        let current = activeCategory.flatMap { sections.firstIndex(of: $0) } ?? (favoritesOnly ? 1 : 0)
-        let index = (current + delta + sections.count) % sections.count
-        favoritesOnly = index == 1; activeCategory = index >= 2 ? sections[index] : nil; navigation.selectedIndex = 0
+        let categories = library.visibleCategories(apps)
+        let sectionCount = categories.count + 3
+        let current = activeCategory.flatMap { categories.firstIndex(of: $0).map { $0 + 3 } } ?? (recentOnly ? 2 : favoritesOnly ? 1 : 0)
+        let index = (current + delta + sectionCount) % sectionCount
+        favoritesOnly = index == 1; recentOnly = index == 2; activeCategory = index >= 3 ? categories[index - 3] : nil; navigation.selectedIndex = 0
     }
     private func carousel(landscape: Bool, scale: CGFloat) -> some View {
         ScrollViewReader { proxy in
@@ -607,7 +614,8 @@ struct LiveBoardConsoleScreen: View {
                 switch navigation.headerIndex {
                 case 0: favoritesOnly = false
                 case 1: favoritesOnly = true
-                case 2: controller.stop(); openManagement()
+                case 2: favoritesOnly = false; recentOnly = true; activeCategory = nil
+                case 3: controller.stop(); openManagement()
                 default: controller.stop(); NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
                 }
             } else if navigation.focus == .details { showDetails() }

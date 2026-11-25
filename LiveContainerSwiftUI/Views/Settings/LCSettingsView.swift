@@ -772,7 +772,7 @@ private struct ZNBetaControlsSettings: View {
 
 // Shared release notes for the first-launch sheet and Settings.
 struct ZNWhatsNewView: View {
-    static let releaseID = "0.1.1-beta.2"
+    static let releaseID = "0.1.1-beta.3"
     var body: some View {
         List {
             Section {
@@ -795,6 +795,8 @@ struct ZNWhatsNewView: View {
                 Label("Updated beta version information", systemImage: "info.circle")
             }
             Section("Customization") {
+                Label("Recently Played filter in every library layout", systemImage: "clock.arrow.circlepath")
+                Text("Successful game launches are timestamped and sorted without a background timer. Clear history in Settings → Recently Played.").font(.footnote)
                 Label("Selectable navigation sound styles with cue previews", systemImage: "speaker.wave.2")
                 Text("Classic, Soft and Arcade, with separate selection, confirmation and back samples. Original ZN sound synthesis; no ManicEMU audio code or dependency is bundled.").font(.footnote)
                 Label("Controller profiles for library navigation", systemImage: "gamecontroller")

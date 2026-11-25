@@ -54,6 +54,7 @@ struct StrataSettingsApp: View {
             Entry(id: "storage", title: "Storage", symbol: "internaldrive", tint: .gray, section: "Performance", keywords: "storage space size cache data") { AnyView(LCStorageManagementView()) },
             Entry(id: "switcher", title: "App Switcher", symbol: "rectangle.stack", tint: .indigo, section: "Interface", keywords: "switcher three finger multitask pinned running cards") { AnyView(StrataSwitcherSettings(apps: allApps)) },
             Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape pearl light amoled dark black graphite glass built-in nxnative controller skin") { AnyView(StrataNxPortraitSkinSettings()) },
+            Entry(id: "recentgames", title: "Recently Played", symbol: "clock.arrow.circlepath", tint: .orange, section: "Interface", keywords: "recent played history last launched clear") { AnyView(LiveBoardRecentGamesSettings()) },
             Entry(id: "sounds", title: "Navigation Sounds", symbol: "speaker.wave.2.fill", tint: .pink, section: "Interface", keywords: "classic soft arcade selection confirm back preview sound effects") { AnyView(StrataNavigationSoundSettings()) },
             Entry(id: "controllermapping", title: "Controller Mapping", symbol: "gamecontroller", tint: .cyan, section: "Interface", keywords: "bluetooth controller profile custom map buttons swap a b x y gamepad library navigation") { AnyView(LiveBoardControllerMappingSettings()) },
             Entry(id: "steamgriddb", title: "SteamGridDB", symbol: "square.stack.3d.up", tint: .indigo, section: "Interface", keywords: "artwork covers backgrounds api key automatic search steam grid") { AnyView(StrataSteamGridDBKeySettings()) },
@@ -157,6 +158,7 @@ struct StrataSettingsApp: View {
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
             link("portraitskin")
+            link("recentgames")
             link("switcher")
         } header: {
             Text("Interface")

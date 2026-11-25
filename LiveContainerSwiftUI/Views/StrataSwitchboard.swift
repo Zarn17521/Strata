@@ -17,6 +17,7 @@ struct StrataSwitchboard: View {
     @AppStorage("LiveBoardModeLibraries", store: LCUtils.appGroupUserDefault) private var savedLibrary = "{}"
     @State private var selectedKey = ""
     @State private var category: String?
+    @State private var recentOnly = false
     @State private var editingLibrary = false
     @State private var newCategory = ""
     @State private var visible = false
@@ -42,7 +43,11 @@ struct StrataSwitchboard: View {
     private var tilePlaceholder: Color { darkMode ? Color(white: 0.10) : Color(white: 0.95) }
     @StateObject private var audio = LiveBoardNavigationAudio()
     private var library: LiveBoardModeLibrary { _ = universalCategories; return LiveBoardSharedCategories.library(libraries, mode: "switchboard") }
-    private var filtered: [LCAppModel] { let state = library; return apps.filter { !state.hidden.contains(liveBoardAppKey($0)) && (category == nil || state.assignments[liveBoardAppKey($0)] == category) } }
+    private var filtered: [LCAppModel] {
+        let state = library
+        let visible = apps.filter { !state.hidden.contains(liveBoardAppKey($0)) && (category == nil || state.assignments[liveBoardAppKey($0)] == category) }
+        return recentOnly ? LiveBoardRecentGames.sorted(visible) : visible
+    }
     private var selected: LCAppModel? { filtered.first { liveBoardAppKey($0) == selectedKey } ?? filtered.first }
     private func update(_ change: (inout LiveBoardModeLibrary) -> Void) {
         var all = libraries; var state = library; change(&state); LiveBoardSharedCategories.store(state, mode: "switchboard", into: &all)
@@ -148,6 +153,7 @@ struct StrataSwitchboard: View {
         }
         .alert("Artwork", isPresented: Binding(get: { artworkError != nil }, set: { if !$0 { artworkError = nil } })) { Button("OK") { artworkError = nil } } message: { Text(artworkError ?? "") }
         .onChange(of: filtered.map(liveBoardAppKey)) { keys in if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" } }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardRecentGames.changed)) { _ in if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" } }
         .sheet(isPresented: $editingLibrary, onDismiss: bind) {
             NavigationView {
                 Form {
@@ -286,9 +292,10 @@ struct StrataSwitchboard: View {
         // shortcut rail at the far right, not beside All / Games / Tools.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 18) {
-                Button("All") { category = nil }.opacity(category == nil ? 1 : 0.55)
+                Button("All") { category = nil; recentOnly = false }.opacity(category == nil && !recentOnly ? 1 : 0.55)
+                Button("Recently Played") { category = nil; recentOnly = true }.opacity(recentOnly ? 1 : 0.55)
                 ForEach(library.visibleCategories(apps), id: \.self) { value in
-                    Button(value) { category = value }.opacity(category == value ? 1 : 0.55)
+                    Button(value) { category = value; recentOnly = false }.opacity(category == value && !recentOnly ? 1 : 0.55)
                 }
             }
             .font(.subheadline.weight(.semibold))
@@ -432,6 +439,14 @@ struct StrataSwitchboard: View {
             if visible && phase == .active { artwork.resumeDecoding(); bind() }
         }
     }
+    private func changeCategory(_ delta: Int) {
+        let categories = library.visibleCategories(apps)
+        let count = categories.count + 2
+        let current = category.flatMap { categories.firstIndex(of: $0).map { $0 + 2 } } ?? (recentOnly ? 1 : 0)
+        let index = (current + delta + count) % count
+        recentOnly = index == 1
+        category = index >= 2 ? categories[index - 2] : nil
+    }
     private func bind() {
         guard visible, !showingWhatsNew, !editingLibrary, !choosingCover, !busy else { return }
         controller.onCommand = { command in
@@ -442,6 +457,8 @@ struct StrataSwitchboard: View {
             case .right: if index + 1 < items.count { selectedKey = liveBoardAppKey(items[index + 1]) }
             case .confirm: if let app = selected { activate(app) }
             case .details: audio.play(.confirm); if let app = selected { controller.stop(); manage(app) }
+            case .previousSection: changeCategory(-1)
+            case .nextSection: changeCategory(1)
             case .back: openInterface()
             default: break
             }
