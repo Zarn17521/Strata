@@ -306,10 +306,14 @@ struct StrataNxPortraitSkinSettings: View {
     private var enabled = true
     @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault)
     private var style = "pearl"
+    @AppStorage("ZNCustomSkinThemeID", store: LCUtils.appGroupUserDefault)
+    private var themeID = "zelda"
     @AppStorage("StrataNxDisplayLayout", store: LCUtils.appGroupUserDefault)
     private var displayLayout = "wide"
 
     private var dark: Bool { style == "amoled" }
+    private var activeTheme: StrataNxBuiltInSkin { StrataNxBuiltInSkin.all.first { $0.id == themeID } ?? StrataNxBuiltInSkin.all[0] }
+    private let themeGridColumns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
         Form {
@@ -323,19 +327,6 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
-                HStack(spacing: 10) {
-                    skinStyleCard(name: "Pearl Light", value: "pearl",
-                                  detail: "Pearl white · warm silver")
-                    skinStyleCard(name: "AMOLED Dark", value: "amoled",
-                                  detail: "Wii U graphite · smoked glass")
-                }
-            } header: {
-                Text("Built-in Skins")
-            } footer: {
-                Text("Both styles use the user's original portrait and landscape photo geometry. AMOLED Dark keeps the same controls, with OLED black and graphite buttons plus white glyphs. The input remapping and lower-left ZN logo are identical.")
-            }
-
-            Section {
                 Picker("Display Size", selection: $displayLayout) {
                     Text("Classic").tag("classic")
                     Text("Wide").tag("wide")
@@ -346,26 +337,17 @@ struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Game Display")
             } footer: {
-                Text("Wide (default) enlarges the 16:9 game area and moves the landscape controls outward. Portrait uses the full screen width. Classic retains the original shell. Full Screen uses the largest uncropped 16:9 viewport with native translucent controls instead of the photo skin. Restart NxNative to apply. Render scale is unchanged.")
-            }
-
-            Section {
-                NavigationLink("Skin Collections") { ZNSkinCollectionsView() }
-                NavigationLink("ZN Skin Studio") { ZNSkinStudioDraftEditor() }
-            } header: {
-                Text("Custom Skins")
-            } footer: {
-                Text("Create and save custom layout drafts. In-game custom skin support is not yet available.")
+                Text("Classic and Wide show the selected controller skin with mapped touch controls. Full Screen keeps the largest uncropped 16:9 game view and native touch mapping; the bezel is hidden, while the selected theme colors the press feedback. Restart NxNative to apply. Render scale is unchanged.")
             }
 
             Section("Portrait & Landscape") {
                 if displayLayout == "full" {
-                    Label("Full Screen uses NxNative's own transparent controls; their appearance depends on the game.", systemImage: "arrow.up.left.and.arrow.down.right")
+                    Label("Full Screen keeps NxNative's native control positions and touch mapping. The selected theme still colors press feedback; shell artwork stays hidden so it cannot cover the game.", systemImage: "arrow.up.left.and.arrow.down.right")
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: false, layout: displayLayout, themeTint: activeTheme.tint, portraitTemplateName: activeTheme.portraitTemplateName)
                             .frame(width: 96, height: 208)
                         Text("Portrait")
                             .font(.caption)
@@ -373,7 +355,7 @@ struct StrataNxPortraitSkinSettings: View {
                     }
                     Spacer(minLength: 0)
                     VStack(spacing: 6) {
-                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: displayLayout)
+                        StrataNxBuiltInSkinPreview(dark: dark, landscape: true, layout: displayLayout, themeTint: activeTheme.tint)
                             .frame(maxWidth: 232)
                             .aspectRatio(displayLayout == "wide" ? 852.0/393.0 : 1792.0/1008.0, contentMode: .fit)
                         Text("Landscape")
@@ -386,47 +368,99 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
-                Label("Touch mapping, low-latency pearl/graphite press feedback and the small ZN logo are included with both styles.",
+                Picker("Shell Finish", selection: $style) {
+                    Text("Pearl Light").tag("pearl")
+                    Text("AMOLED Dark").tag("amoled")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.nxnative.builtinStyle")
+
+                HStack {
+                    Text("\(StrataNxBuiltInSkin.all.count) built-in skins")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("Selected: \(activeTheme.title)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                LazyVGrid(columns: themeGridColumns, spacing: 10) {
+                    ForEach(StrataNxBuiltInSkin.all) { item in
+                        builtInThemeCard(item)
+                    }
+                }
+
+                Label("Touch mapping and press effects are shared by all built-in skins. Full Screen keeps native touch mapping and themed press feedback.",
                       systemImage: "gamecontroller.fill")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Built-in Skin")
             } footer: {
-                Text("Existing imported artwork files, if any, are left untouched on disk. These two built-in styles do not require them.")
+                Text("Choose a picture to apply its theme. Pearl Light and AMOLED Dark remain available as finishes. Restart NxNative to apply.")
             }
         }
         .navigationTitle("NxNative Controller Skins")
+        .onAppear {
+            if LCUtils.appGroupUserDefault.string(forKey: "ZNCustomSkinThemeID") == nil {
+                LCUtils.appGroupUserDefault.set(themeID, forKey: "ZNCustomSkinThemeID")
+            }
+        }
     }
 
     @ViewBuilder
-    private func skinStyleCard(name: String, value: String, detail: String) -> some View {
+    private func builtInThemeCard(_ theme: StrataNxBuiltInSkin) -> some View {
+        let selected = themeID == theme.id
+        let assetName = theme.portraitTemplateName ?? "MainPortrait"
         Button {
-            style = value
+            themeID = theme.id
             enabled = true
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: style == value ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(style == value ? Color.accentColor : Color.secondary)
-                    Spacer()
-                    Circle()
-                        .fill(value == "amoled" ? Color(white: 0.13) : Color(white: 0.94))
-                        .frame(width: 23, height: 23)
-                        .overlay(Circle().strokeBorder(Color.gray.opacity(0.5)))
+            VStack(spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    if let image = UIImage(named: assetName, in: Bundle.main, compatibleWith: nil) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 112, maxHeight: 146)
+                            .overlay {
+                                if theme.portraitTemplateName == nil {
+                                    Rectangle().fill(theme.tint.opacity(0.28)).blendMode(.color)
+                                }
+                            }
+                    } else {
+                        Image(systemName: "gamecontroller.fill")
+                            .resizable().scaledToFit()
+                            .foregroundStyle(theme.tint)
+                            .frame(maxWidth: 92, maxHeight: 100)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                            .padding(7)
+                    }
                 }
-                Text(name).font(.subheadline.bold()).foregroundStyle(.primary)
-                Text(detail).font(.caption2).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .background(Color.black.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+
+                Text(theme.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground)))
-            .overlay(RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(style == value ? Color.accentColor : Color.gray.opacity(0.19),
-                              lineWidth: style == value ? 2 : 1))
+            .padding(9)
+            .frame(maxWidth: .infinity)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(selected ? Color.accentColor : Color.gray.opacity(0.20), lineWidth: selected ? 2 : 1))
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("settings.nxnative.style." + value)
+        .accessibilityIdentifier("settings.nxnative.theme." + theme.id)
     }
 }
 
@@ -437,13 +471,23 @@ private struct StrataNxBuiltInSkinPreview: View {
     let dark: Bool
     let landscape: Bool
     let layout: String
+    let themeTint: Color
+    var portraitTemplateName: String? = nil
 
     var body: some View {
         GeometryReader { geo in
-            if let image = StrataNxSkinPreviewImageForLayout(!landscape, dark, layout) {
+            if !landscape, let name = portraitTemplateName,
+               let template = UIImage(named: name, in: Bundle.main, compatibleWith: nil) {
+                Image(uiImage: template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            } else if let image = StrataNxSkinPreviewImageForLayout(!landscape, dark, layout) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .overlay(Rectangle().fill(themeTint.opacity(0.24)).blendMode(.color))
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
             } else {
@@ -457,216 +501,5 @@ private struct StrataNxBuiltInSkinPreview: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(dark ? "AMOLED Dark controller skin preview"
                                  : "Pearl Light controller skin preview")
-    }
-}
-
-
-// Studio drafts are deliberately isolated from the existing guest skin preferences.
-private struct ZNSkinDraftControl: Codable, Identifiable {
-    var id: String
-    var x: Double
-    var y: Double
-    var size: Double = 0.10
-    var opacity: Double = 0.85
-}
-private struct ZNSkinDraft: Codable, Identifiable {
-    var id = UUID()
-    var name = "Custom Skin"
-    var portrait = ZNSkinDraft.defaults(false)
-    var landscape = ZNSkinDraft.defaults(true)
-    static func defaults(_ wide: Bool) -> [ZNSkinDraftControl] {
-        let names = ["L","ZL","R","ZR","D-Pad","Left Stick","Right Stick","A","B","X","Y","−","+","Menu"]
-        let xs: [Double] = [0.12,0.28,0.72,0.88,0.24,0.24,0.75,0.87,0.75,0.75,0.63,0.35,0.65,0.50]
-        let ys: [Double] = wide ? [0.15,0.15,0.15,0.15,0.38,0.68,0.38,0.65,0.78,0.52,0.65,0.90,0.90,0.90] : [0.50,0.50,0.50,0.50,0.65,0.84,0.65,0.81,0.88,0.74,0.81,0.95,0.95,0.95]
-        return names.indices.map { ZNSkinDraftControl(id: names[$0], x: xs[$0], y: ys[$0]) }
-    }
-}
-private struct ZNSkinStudioDraftEditor: View {
-    @AppStorage("ZNSkinStudioDraftsV1", store: LCUtils.appGroupUserDefault) private var stored = Data()
-    @State private var drafts: [ZNSkinDraft] = []
-    @State private var selected: UUID?
-    @State private var wide = false
-    @State private var controlID = "A"
-    private func save() {
-        if let data = try? JSONEncoder().encode(drafts) { stored = data }
-    }
-    var body: some View {
-        Form {
-            Section {
-                Text("Layout editor preview. Saved drafts do not change game controls yet.").font(.footnote)
-                Button("New Custom Skin") {
-                    guard drafts.count < 32 else { return }
-                    let draft = ZNSkinDraft()
-                    drafts.append(draft)
-                    selected = draft.id
-                    save()
-                }
-                ForEach(drafts) { draft in
-                    Button {
-                        selected = draft.id
-                    } label: {
-                        HStack {
-                            Text(draft.name)
-                            Spacer()
-                            if selected == draft.id { Image(systemName: "checkmark") }
-                        }
-                    }
-                }
-            }
-            if let index = drafts.firstIndex(where: { $0.id == selected }) {
-                Section("Profile") {
-                    TextField("Name", text: $drafts[index].name)
-                    Button("Duplicate") {
-                        guard drafts.count < 32 else { return }
-                        var copy = drafts[index]
-                        copy.id = UUID()
-                        copy.name += " Copy"
-                        drafts.append(copy)
-                        selected = copy.id
-                        save()
-                    }
-                    Button("Delete", role: .destructive) {
-                        drafts.remove(at: index)
-                        selected = drafts.first?.id
-                        save()
-                    }
-                }
-                Section("Layout") {
-                    Picker("Orientation", selection: $wide) {
-                        Text("Portrait").tag(false)
-                        Text("Landscape").tag(true)
-                    }.pickerStyle(.segmented)
-                    editor(wide ? $drafts[index].landscape : $drafts[index].portrait)
-                    Button("Reset Layout") {
-                        if wide { drafts[index].landscape = ZNSkinDraft.defaults(true) }
-                        else { drafts[index].portrait = ZNSkinDraft.defaults(false) }
-                        save()
-                    }
-                }
-            }
-        }
-        .navigationTitle("ZN Skin Studio")
-        .onAppear {
-            drafts = (try? JSONDecoder().decode([ZNSkinDraft].self, from: stored)) ?? []
-            selected = drafts.first?.id
-        }
-        .onChange(of: drafts.map { $0.name }) { _ in save() }
-        .onDisappear { save() }
-    }
-    private func editor(_ controls: Binding<[ZNSkinDraftControl]>) -> some View {
-        VStack {
-            GeometryReader { geo in
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14).fill(Color.black)
-                    RoundedRectangle(cornerRadius: 5).fill(Color.gray.opacity(0.35))
-                        .frame(width: geo.size.width * (wide ? 0.48 : 0.90), height: geo.size.height * (wide ? 0.60 : 0.34))
-                        .position(x: geo.size.width * 0.5, y: geo.size.height * (wide ? 0.48 : 0.25))
-                    ForEach(controls.wrappedValue.indices, id: \.self) { i in
-                        let item = controls.wrappedValue[i]
-                        Text(item.id).font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.white)
-                            .frame(width: max(20, geo.size.width * item.size), height: max(20, geo.size.width * item.size))
-                            .background(Circle().fill(Color.purple.opacity(item.opacity)))
-                            .overlay(Circle().stroke(controlID == item.id ? Color.white : Color.clear, lineWidth: 2))
-                            .position(x: geo.size.width * item.x, y: geo.size.height * item.y)
-                            .onTapGesture { controlID = item.id }
-                            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("ZNSkinCanvas"))
-                                .onChanged { value in
-                                    controlID = item.id
-                                    controls.wrappedValue[i].x = min(0.95, max(0.05, value.location.x / max(1, geo.size.width)))
-                                    controls.wrappedValue[i].y = min(0.95, max(0.05, value.location.y / max(1, geo.size.height)))
-                                }.onEnded { _ in save() })
-                    }
-                }.coordinateSpace(name: "ZNSkinCanvas")
-            }.aspectRatio(wide ? 16.0/9.0 : 9.0/19.5, contentMode: .fit)
-            if let i = controls.wrappedValue.firstIndex(where: { $0.id == controlID }) {
-                Text(controlID)
-                Slider(value: controls[i].size, in: 0.06...0.22, onEditingChanged: { if !$0 { save() } })
-                Text("Button Size").font(.caption)
-                Slider(value: controls[i].opacity, in: 0.2...1, onEditingChanged: { if !$0 { save() } })
-                Text("Opacity").font(.caption)
-            }
-        }
-    }
-}
-
-
-// Collections only activate skins whose guest renderer and input map already
-// exist. ManicEMU packages are references until their assets and mapping have
-// been validated; a Git LFS pointer is not an installable skin.
-private struct ZNSkinCollectionsView: View {
-    @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var enabled = true
-    @AppStorage("StrataNxSkinStyle", store: LCUtils.appGroupUserDefault) private var style = "pearl"
-    @AppStorage("StrataNxDisplayLayout", store: LCUtils.appGroupUserDefault) private var layout = "wide"
-    @State private var previewLandscape = false
-    @State private var showReferences = false
-
-    private let references = ["NGC", "NGC_FLEX", "Wii", "Wii_FLEX",
-                              "PSV", "PSP", "PSP_FLEX", "DC", "DC_FLEX",
-                              "PS1", "PS1_FLEX", "N64", "N64_FLEX"]
-
-    var body: some View {
-        Form {
-            Section {
-                Picker("Preview", selection: $previewLandscape) {
-                    Text("Portrait").tag(false)
-                    Text("Landscape").tag(true)
-                }.pickerStyle(.segmented)
-                collectionCard("Pearl Light", value: "pearl")
-                collectionCard("AMOLED Dark", value: "amoled")
-            } header: {
-                Text("Ready to Play")
-            } footer: {
-                Text("Restart NxNative after selecting a skin. The existing game display setting is preserved.")
-            }
-            Section("My Skins") {
-                NavigationLink("Create or Edit Skin") { ZNSkinStudioDraftEditor() }
-                Text("Custom drafts are not yet playable.").font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                DisclosureGroup("ManicEMU layout references", isExpanded: $showReferences) {
-                    ForEach(references, id: \.self) { name in
-                        if let url = URL(string: "https://github.com/Zarn17521/manicemu/blob/5840a80d333753c22038420da5c111a7fa9103a4/System.core/" + name + ".manicskin") {
-                            Link(destination: url) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(name.replacingOccurrences(of: "_FLEX", with: " Flex"))
-                                    Text("Reference only · Not imported")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("ManicEMU")
-            } footer: {
-                Text("Original ManicEMU assets and input maps require inspection before conversion. These references do not install or activate a skin. Credit: ManicEMU contributors (AGPL-3.0 source repository).")
-            }
-        }
-        .navigationTitle("Skin Collections")
-    }
-
-    private func collectionCard(_ name: String, value: String) -> some View {
-        Button {
-            style = value
-            enabled = true
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(name).font(.headline)
-                    Spacer()
-                    Image(systemName: enabled && style == value ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(Color.accentColor)
-                }
-                // Decode only the selected preview. No extra persistent artwork cache.
-                if style == value {
-                    StrataNxBuiltInSkinPreview(dark: value == "amoled",
-                        landscape: previewLandscape, layout: layout == "full" ? "classic" : layout)
-                        .frame(height: previewLandscape ? 125 : 200)
-                }
-                Text(enabled && style == value ? "Selected" : "Tap to select")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }.buttonStyle(.plain)
     }
 }

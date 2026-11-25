@@ -27,8 +27,19 @@ import CoreImage
            let replacement = UIImage(named: "LiveBoardByeTunes", in: .main, compatibleWith: nil) {
             return replacement
         }
-        let key = (app.appInfo.bundlePath() + (dark ? ":dark" : ":light") + ":" + String(LiveBoardAppCustomization.shared.revision)) as NSString
+        let isBuiltInSideStore = app.appInfo is BuiltInSideStoreAppInfo
+        // The built-in app has a logical launcher identity rather than a guest
+        // bundle identity. Keep its cached image distinct from the framework
+        // bundle path used to extract other apps' icons.
+        let sourceKey = isBuiltInSideStore ? "builtin:sidestore" : app.appInfo.bundlePath()
+        let key = (sourceKey + (dark ? ":dark" : ":light") + ":" + String(LiveBoardAppCustomization.shared.revision)) as NSString
         if let image = icons.object(forKey: key) { return image }
+        if let sideStore = app.appInfo as? BuiltInSideStoreAppInfo,
+           let extracted = sideStore.iconIsDarkIcon(dark) {
+            let image = LiveBoardIconEdges.clean(extracted)
+            icons.setObject(image, forKey: key, cost: imageCost(image))
+            return image
+        }
         if let phone = app.appInfo as? StrataPhoneAppInfo, let image = phone.iconIsDarkIcon(dark) { icons.setObject(image, forKey: key, cost: imageCost(image)); return image }
         guard let image = UIImage.generateIcon(forBundleURL: URL(fileURLWithPath: app.appInfo.bundlePath()), style: dark ? .Dark : .Light, hasBorder: false) else { return nil }
         let cleaned = LiveBoardIconEdges.clean(image)

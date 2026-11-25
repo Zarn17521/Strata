@@ -786,6 +786,33 @@ static BOOL StrataNxSkinIsEnabled(NSString *group) {
 }
 static const NSInteger StrataNxSkinViewTag = 877144;
 
+static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
+    static NSDictionary<NSString *, NSArray<NSNumber *> *> *palette;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        palette = @{
+            @"zelda": @[@0.20,@0.53,@0.29], @"mario": @[@0.88,@0.16,@0.14],
+            @"kirby": @[@0.95,@0.42,@0.67], @"luigi": @[@0.18,@0.55,@0.29],
+            @"peach": @[@0.96,@0.57,@0.70], @"bowser": @[@0.82,@0.25,@0.12],
+            @"zelda-classic-edition": @[@0.20,@0.53,@0.29],
+            @"zelda-1": @[@0.83,@0.64,@0.18], @"adventure-of-link": @[@0.60,@0.25,@0.21],
+            @"a-link-to-the-past": @[@0.28,@0.48,@0.25], @"links-awakening": @[@0.91,@0.54,@0.69],
+            @"ocarina-of-time": @[@0.25,@0.48,@0.33], @"majoras-mask": @[@0.42,@0.31,@0.62],
+            @"oracle-of-ages": @[@0.25,@0.49,@0.77], @"oracle-of-seasons": @[@0.78,@0.28,@0.20],
+            @"wind-waker": @[@0.15,@0.61,@0.78], @"minish-cap": @[@0.29,@0.58,@0.30],
+            @"twilight-princess": @[@0.34,@0.39,@0.51], @"phantom-hourglass": @[@0.19,@0.58,@0.75],
+            @"spirit-tracks": @[@0.28,@0.48,@0.75], @"skyward-sword": @[@0.24,@0.51,@0.78],
+            @"a-link-between-worlds": @[@0.75,@0.40,@0.54], @"triforce-heroes": @[@0.77,@0.47,@0.24],
+            @"breath-of-the-wild": @[@0.24,@0.56,@0.72], @"tears-of-the-kingdom": @[@0.57,@0.52,@0.26],
+            @"echoes-of-wisdom": @[@0.79,@0.47,@0.61]
+        };
+    });
+    NSArray<NSNumber *> *rgb = palette[identifier];
+    if (rgb.count != 3) return nil;
+    return [UIColor colorWithRed:rgb[0].doubleValue green:rgb[1].doubleValue
+                            blue:rgb[2].doubleValue alpha:1];
+}
+
 // Press feedback uses the EXACT control geometry of the touch remapper,
 // with no extra view hitboxes or replacement input handler.
 static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
@@ -858,12 +885,22 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic, strong) UIImage *activeArtwork;
 @property(nonatomic) BOOL activeArtworkPortrait;
 @property(nonatomic) CGRect lastArtworkLayoutBounds;
+@property(nonatomic) BOOL fullScreenMode;
 - (UIImage *)artworkForPortrait:(BOOL)portrait;
 @property(nonatomic) BOOL darkTheme;
+@property(nonatomic, copy) NSString *sharedGroup;
+@property(nonatomic, copy) NSArray<NSDictionary *> *customSkinItems;
+@property(nonatomic, copy) NSArray<UIImage *> *customSkinImages;
+@property(nonatomic, strong) UIColor *customThemeTint;
 @property(nonatomic, weak) UIView *mappedPad;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
 @property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending;
+- (void)loadCustomSkinLayers;
+- (void)drawCustomThemeInArtworkFrame:(CGRect)artworkFrame;
+- (void)drawCustomSkinLayersPortrait:(BOOL)portrait artworkFrame:(CGRect)artworkFrame;
+- (NSInteger)nativeRoleForPoint:(CGPoint)point pad:(UIView *)pad;
+- (CGRect)nativeFeedbackFrameForRole:(NSInteger)role point:(CGPoint)point pad:(UIView *)pad;
 @end
 @implementation StrataNxSkinView
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -905,9 +942,12 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 }
 - (void)setDarkTheme:(BOOL)darkTheme {
     _darkTheme = darkTheme;
-    // Recolor the pooled, zero-hit-test premium press texture to match the
-    // selected built-in Pearl Light / graphite glass controls.
-    NSArray *colors = darkTheme ? @[
+    // The active theme also colors the press response in Full Screen mode.
+    NSArray *colors = self.customThemeTint ? @[
+        (__bridge id)[self.customThemeTint colorWithAlphaComponent:0.64].CGColor,
+        (__bridge id)[self.customThemeTint colorWithAlphaComponent:0.36].CGColor,
+        (__bridge id)[self.customThemeTint colorWithAlphaComponent:0.18].CGColor
+    ] : darkTheme ? @[
         (__bridge id)[UIColor colorWithRed:0.75 green:0.81 blue:0.88 alpha:0.39].CGColor,
         (__bridge id)[UIColor colorWithRed:0.59 green:0.65 blue:0.73 alpha:0.28].CGColor,
         (__bridge id)[UIColor colorWithRed:0.33 green:0.40 blue:0.48 alpha:0.16].CGColor
@@ -916,13 +956,74 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         (__bridge id)[UIColor colorWithWhite:1 alpha:0.24].CGColor,
         (__bridge id)[UIColor colorWithRed:0.88 green:0.80 blue:0.64 alpha:0.14].CGColor
     ];
-    UIColor *edge = darkTheme
+    UIColor *edge = self.customThemeTint ? [self.customThemeTint colorWithAlphaComponent:0.72] : darkTheme
         ? [UIColor colorWithRed:0.57 green:0.64 blue:0.72 alpha:0.53]
         : [UIColor colorWithRed:0.77 green:0.65 blue:0.44 alpha:0.55];
     for (CAGradientLayer *layer in self.sparePressLayers) {
         layer.colors = colors;
         layer.borderColor = edge.CGColor;
     }
+}
+- (void)loadCustomSkinLayers {
+    self.customSkinItems = @[];
+    self.customSkinImages = @[];
+    if (!self.sharedGroup.length) return;
+    NSURL *container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:self.sharedGroup];
+    if (!container) return;
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:self.sharedGroup];
+    self.customThemeTint = StrataNxCustomThemeColor([defaults stringForKey:@"ZNCustomSkinThemeID"]);
+    if (self.fullScreenMode) { [self setDarkTheme:self.darkTheme]; return; }
+    NSData *data = [defaults dataForKey:@"ZNCustomSkinMainLayersV1"];
+    NSArray *items = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![items isKindOfClass:NSArray.class]) return;
+    NSURL *folder = [container URLByAppendingPathComponent:@"ZNCustomSkins" isDirectory:YES];
+    NSMutableArray *validItems = [NSMutableArray array];
+    NSMutableArray *images = [NSMutableArray array];
+    for (id value in items) {
+        if (validItems.count >= 6) break;
+        if (![value isKindOfClass:NSDictionary.class]) continue;
+        NSDictionary *item = value;
+        NSString *filename = item[@"filename"];
+        if (![filename isKindOfClass:NSString.class] || !filename.length ||
+            ![filename.lastPathComponent isEqualToString:filename] || [filename containsString:@".."] ||
+            ![item[@"x"] isKindOfClass:NSNumber.class] || ![item[@"y"] isKindOfClass:NSNumber.class] ||
+            ![item[@"width"] isKindOfClass:NSNumber.class] || ![item[@"portrait"] isKindOfClass:NSNumber.class]) continue;
+        UIImage *image = [UIImage imageWithContentsOfFile:[[folder URLByAppendingPathComponent:filename] path]];
+        if (!image || !image.CGImage) continue;
+        [validItems addObject:item]; [images addObject:image];
+    }
+    self.customSkinItems = validItems;
+    self.customSkinImages = images;
+}
+- (void)drawCustomThemeInArtworkFrame:(CGRect)artworkFrame {
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    if (!context || !self.customThemeTint || CGRectIsEmpty(artworkFrame)) return;
+    CGContextSaveGState(context);
+    CGContextSetBlendMode(context, kCGBlendModeColor);
+    CGContextSetAlpha(context, 0.24);
+    CGContextSetFillColorWithColor(context, self.customThemeTint.CGColor);
+    CGContextFillRect(context, artworkFrame);
+    CGContextRestoreGState(context);
+}
+- (void)drawCustomSkinLayersPortrait:(BOOL)portrait artworkFrame:(CGRect)artworkFrame {
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    if (!context || self.customSkinItems.count == 0 || CGRectIsEmpty(artworkFrame)) return;
+    CGContextSaveGState(context);
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    for (NSUInteger index = 0; index < self.customSkinItems.count; index++) {
+        NSDictionary *item = self.customSkinItems[index];
+        if ([item[@"portrait"] boolValue] != portrait) continue;
+        UIImage *image = self.customSkinImages[index];
+        CGFloat x = MIN(0.97, MAX(0.03, [item[@"x"] doubleValue]));
+        CGFloat y = MIN(0.97, MAX(0.03, [item[@"y"] doubleValue]));
+        CGFloat width = MIN(0.75, MAX(0.08, [item[@"width"] doubleValue])) * artworkFrame.size.width;
+        CGFloat height = width * image.size.height / MAX(1, image.size.width);
+        CGRect frame = CGRectMake(CGRectGetMinX(artworkFrame) + x * artworkFrame.size.width - width * 0.5,
+                                  CGRectGetMinY(artworkFrame) + y * artworkFrame.size.height - height * 0.5,
+                                  width, height);
+        [image drawInRect:frame blendMode:kCGBlendModeNormal alpha:1];
+    }
+    CGContextRestoreGState(context);
 }
 // Load only the current orientation. The old image is released on rotation;
 // no image allocation during steady-state input or gameplay.
@@ -937,6 +1038,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 - (UIImage *)landscapeArtwork { return [self artworkForPortrait:NO]; }
 - (void)layoutSubviews {
     [super layoutSubviews];
+    if (self.fullScreenMode) return;
     // Skip bitmap redraws on repeated layout passes with identical bounds.
     // The game-layout hook still invalidates when the display aperture moves.
     if (CGRectIsEmpty(self.bounds)) return;
@@ -946,12 +1048,75 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         [self setNeedsDisplay];
     }
 }
+- (NSInteger)nativeRoleForPoint:(CGPoint)point pad:(UIView *)pad {
+    if (!pad || CGRectIsEmpty(pad.bounds)) return StrataArtNoMapping;
+    CGFloat rx = MAX(22, pad.bounds.size.width * 0.065);
+    CGFloat ry = MAX(20, pad.bounds.size.height * 0.065);
+    const int nativeButtons[] = {6, 8, 9, 7};
+    const NSInteger roles[] = {StrataArtL, StrataArtZL, StrataArtZR, StrataArtR};
+    for (NSUInteger i = 0; i < 4; i++) {
+        CGPoint center = StrataArtNativeButton(pad, @selector(dropCenter:), nativeButtons[i]);
+        if (isfinite(center.x) && fabs(point.x-center.x) <= rx && fabs(point.y-center.y) <= ry) return roles[i];
+    }
+    CGRect minus = StrataArtNativePill(pad, 11);
+    if (!CGRectIsNull(minus) && CGRectContainsPoint(CGRectInset(minus, -12, -12), point)) return StrataArtMinus;
+    CGRect plus = StrataArtNativePill(pad, 10);
+    if (!CGRectIsNull(plus) && CGRectContainsPoint(CGRectInset(plus, -12, -12), point)) return StrataArtPlus;
+    CGFloat faceRadius = MIN(pad.bounds.size.width * 0.075, pad.bounds.size.height * 0.075);
+    for (int i = 0; i < 4; i++) {
+        CGPoint center = StrataArtNativeButton(pad, @selector(facePos:), i);
+        if (isfinite(center.x) && hypot(point.x-center.x, point.y-center.y) <= faceRadius) return StrataArtFace;
+    }
+    CGPoint dpad = StrataArtNativePoint(pad, @selector(dpadCenter));
+    CGFloat dpadRadius = 0;
+    if ([pad respondsToSelector:@selector(dpadR)]) {
+        CGFloat (*imp)(id, SEL) = (void *)[pad methodForSelector:@selector(dpadR)];
+        dpadRadius = imp(pad, @selector(dpadR));
+    }
+    if (isfinite(dpad.x) && dpadRadius > 0 && fabs(point.x-dpad.x) <= dpadRadius*1.25 && fabs(point.y-dpad.y) <= dpadRadius*1.25) return StrataArtDpad;
+    CGPoint left = StrataArtNativePoint(pad, @selector(stickHome));
+    CGFloat leftRadius = StrataArtNativeRadius(pad, 0);
+    if (isfinite(left.x) && leftRadius > 0 && hypot(point.x-left.x,point.y-left.y) <= leftRadius*1.4) return StrataArtLeftStick;
+    CGRect safe = CGRectNull;
+    SEL safeSelector = NSSelectorFromString(@"safe");
+    if ([pad respondsToSelector:safeSelector]) {
+        CGRect (*get)(id, SEL) = (void *)[pad methodForSelector:safeSelector];
+        safe = get(pad, safeSelector);
+    }
+    if (CGRectIsNull(safe) || CGRectIsEmpty(safe)) safe = pad.bounds;
+    CGPoint right = CGPointMake(CGRectGetMaxX(safe)-MAX(8,safe.size.width*0.055), CGRectGetMinY(safe)+safe.size.height*0.52);
+    CGFloat rightRadius = StrataArtNativeRadius(pad, 1);
+    if (rightRadius > 0 && hypot(point.x-right.x,point.y-right.y) <= rightRadius*1.4) return StrataArtRightStick;
+    return StrataArtNoMapping;
+}
+- (CGRect)nativeFeedbackFrameForRole:(NSInteger)role point:(CGPoint)point pad:(UIView *)pad {
+    if (role == StrataArtMinus) return [self convertRect:StrataArtNativePill(pad, 11) fromView:pad];
+    if (role == StrataArtPlus) return [self convertRect:StrataArtNativePill(pad, 10) fromView:pad];
+    CGPoint center = point;
+    CGFloat side = MIN(pad.bounds.size.width*0.14,pad.bounds.size.height*0.11);
+    if (role == StrataArtL || role == StrataArtZL || role == StrataArtZR || role == StrataArtR) {
+        int button = role == StrataArtL ? 6 : role == StrataArtZL ? 8 : role == StrataArtZR ? 9 : 7;
+        center = StrataArtNativeButton(pad,@selector(dropCenter:),button); side = MIN(pad.bounds.size.width*0.16,pad.bounds.size.height*0.10);
+    } else if (role == StrataArtFace) {
+        CGFloat best=CGFLOAT_MAX;
+        for (int i=0;i<4;i++) { CGPoint candidate=StrataArtNativeButton(pad,@selector(facePos:),i); CGFloat d=hypot(point.x-candidate.x,point.y-candidate.y); if (d<best) { best=d;center=candidate; } }
+        side=MIN(pad.bounds.size.width*0.105,pad.bounds.size.height*0.085);
+    } else if (role == StrataArtDpad) {
+        CGFloat radius=MAX(14,pad.bounds.size.width*0.055); side=radius*1.25;
+    } else if (role == StrataArtLeftStick || role == StrataArtRightStick) {
+        CGFloat radius=StrataArtNativeRadius(pad,role==StrataArtRightStick?1:0);
+        side=MAX(24,radius*0.95);
+    }
+    if (!isfinite(center.x) || !isfinite(center.y)) center=point;
+    CGRect frame=CGRectMake(center.x-side*0.5,center.y-side*0.5,side,side);
+    return [self convertRect:frame fromView:pad];
+}
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending {
     UIView *pad=self.mappedPad;
     if (!pad||!self.superview||touches.count==0) return;
     BOOL land=self.bounds.size.width>self.bounds.size.height;
-    UIImage *image=land?self.landscapeArtwork:self.portraitArtwork;
-    if (!image) return;
+    UIImage *image=self.fullScreenMode ? nil : (land?self.landscapeArtwork:self.portraitArtwork);
+    if (!self.fullScreenMode && !image) return;
     BOOL wide=StrataNxIsWideSkin(self);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -960,34 +1125,52 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         CAGradientLayer *shine=self.pressLayers[key];
         if (ending) {
             if (!shine) continue;
-            // Native touch-up already completed; release sheen never delays HID.
+            // Native touch-up already completed; visual spring never delays HID.
             [shine removeAllAnimations];
             CABasicAnimation *fade=[CABasicAnimation animationWithKeyPath:@"opacity"];
             fade.fromValue=@(shine.opacity);fade.toValue=@0;
             fade.duration=0.075;
             fade.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            CABasicAnimation *lift=[CABasicAnimation animationWithKeyPath:@"transform"];
+            lift.fromValue=[NSValue valueWithCATransform3D:shine.transform];
+            lift.toValue=[NSValue valueWithCATransform3D:CATransform3DIdentity];
+            lift.duration=0.075;
+            lift.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
             shine.opacity=0;
+            shine.transform=CATransform3DIdentity;
             [shine addAnimation:fade forKey:@"zn.press.release"];
+            [shine addAnimation:lift forKey:@"zn.press.lift"];
             [self.pressLayers removeObjectForKey:key];
             [self.sparePressLayers addObject:shine];
             continue;
         }
         NSNumber *number=objc_getAssociatedObject(touch,&StrataNxTouchArtRoleKey);
         NSInteger role=number?number.integerValue:StrataArtNoMapping;
+        CGPoint raw=StrataOriginalLocationInView
+            ? StrataOriginalLocationInView(touch,@selector(locationInView:),pad)
+            : [touch locationInView:pad];
+        CGPoint local=self.fullScreenMode ? raw : [self convertPoint:raw fromView:pad];
+        if (self.fullScreenMode && role==StrataArtNoMapping) {
+            role=[self nativeRoleForPoint:local pad:pad];
+            if (role!=StrataArtNoMapping)
+                objc_setAssociatedObject(touch,&StrataNxTouchArtRoleKey,@(role),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         if (role==StrataArtNoMapping) continue;
         BOOL moving=role==StrataArtLeftStick||role==StrataArtRightStick||
                     role==StrataArtFace||role==StrataArtDpad;
         if (shine&&!moving) continue; // no work each frame for digital keys
-        CGPoint raw=StrataOriginalLocationInView
-            ? StrataOriginalLocationInView(touch,@selector(locationInView:),pad)
-            : [touch locationInView:pad];
-        CGPoint local=[self convertPoint:raw fromView:pad];
-        CGPoint norm=StrataNxNormalizeControlPoint(self.bounds,image,local,wide,role);
-        if (!isfinite(norm.x)||!isfinite(norm.y)) continue;
-        CGPoint centre=StrataNxPressCentre(norm,role,land);
-        CGRect art=StrataNxControlFrame(self.bounds,image,wide,centre.x);
-        CGRect frame=StrataNxPressFrame(art,norm,role,land);
+        CGRect frame=CGRectNull;
+        if (self.fullScreenMode) {
+            frame=[self nativeFeedbackFrameForRole:role point:local pad:pad];
+        } else {
+            CGPoint norm=StrataNxNormalizeControlPoint(self.bounds,image,local,wide,role);
+            if (!isfinite(norm.x)||!isfinite(norm.y)) continue;
+            CGPoint centre=StrataNxPressCentre(norm,role,land);
+            CGRect art=StrataNxControlFrame(self.bounds,image,wide,centre.x);
+            frame=StrataNxPressFrame(art,norm,role,land);
+        }
         if (CGRectIsNull(frame)||CGRectIsEmpty(frame)) continue;
+        BOOL newPress = shine == nil;
         if (!shine) {
             shine=self.sparePressLayers.lastObject;
             if (!shine) continue; // gameplay still accepts every extra touch
@@ -999,8 +1182,21 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         shine.cornerRadius=MIN(frame.size.width,frame.size.height)*
                            ((role==StrataArtL||role==StrataArtZL||
                              role==StrataArtR||role==StrataArtZR)?0.42:0.50);
-        shine.transform=CATransform3DMakeScale(0.94,0.94,1);
+        CATransform3D pressed=CATransform3DConcat(CATransform3DMakeScale(0.91,0.91,1),
+                                                   CATransform3DMakeTranslation(0,1.4,0));
+        shine.transform=pressed;
         shine.opacity=0.92;
+        if (newPress) {
+            CABasicAnimation *glow=[CABasicAnimation animationWithKeyPath:@"opacity"];
+            glow.fromValue=@0;glow.toValue=@0.92;glow.duration=0.055;
+            glow.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            CABasicAnimation *press=[CABasicAnimation animationWithKeyPath:@"transform"];
+            press.fromValue=[NSValue valueWithCATransform3D:CATransform3DIdentity];
+            press.toValue=[NSValue valueWithCATransform3D:pressed];press.duration=0.055;
+            press.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            [shine addAnimation:glow forKey:@"zn.press.glow"];
+            [shine addAnimation:press forKey:@"zn.press.down"];
+        }
     }
     [CATransaction commit];
 }
@@ -1323,6 +1519,7 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
 }
 
 - (void)drawRect:(CGRect)rect {
+    if (self.fullScreenMode) return; // leave the edge-to-edge game and native controls unobstructed
     UIView *parent = self.superview;
     if (!parent || CGRectIsEmpty(self.bounds)) return;
     UIView *picture = nil;
@@ -1361,6 +1558,9 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
 
     if (artwork && wide) {
         StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme);
+        CGRect artFrame = StrataNxArtworkFrame(bounds,artwork);
+        [self drawCustomThemeInArtworkFrame:artFrame];
+        [self drawCustomSkinLayersPortrait:portrait artworkFrame:artFrame];
         CGContextRestoreGState(ctx);
         return;
     }
@@ -1412,6 +1612,8 @@ UIImage *StrataNxSkinPreviewImage(BOOL portrait, BOOL dark) {
         // Built-ins are already laid out with Look above ABXY. Do not
         // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
+        [self drawCustomThemeInArtworkFrame:art];
+        [self drawCustomSkinLayersPortrait:portrait artworkFrame:art];
         CGContextRestoreGState(ctx);
     } else {
         if (grad) {
@@ -1626,6 +1828,18 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     if ([mode isEqualToString:@"full"]) {
         if (!gameRoot || [objc_getAssociatedObject(gameRoot,&StrataNxFullScreenRootKey) boolValue]) return;
         objc_setAssociatedObject(gameRoot,&StrataNxFullScreenRootKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        StrataNxSkinView *feedback = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
+        feedback.fullScreenMode = YES;
+        feedback.mappedPad = pad;
+        feedback.sharedGroup = group;
+        feedback.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
+        [feedback loadCustomSkinLayers];
+        [feedback setDarkTheme:feedback.darkTheme];
+        feedback.layer.zPosition = pad.layer.zPosition + 1; // feedback over native controls; no input interception
+        UIView *gameView = StrataNxChildOfClass(host,@"DmGameView");
+        if (gameView) [host insertSubview:feedback aboveSubview:gameView];
+        else [host insertSubview:feedback belowSubview:pad];
+        StrataNxHookPadVisualEvents(); // native positions and native touch mapping remain intact
         StrataNxHookRootLayout(gameRoot,group);
         [gameRoot.view setNeedsLayout];
         [gameRoot.view layoutIfNeeded];
@@ -1634,12 +1848,15 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     }
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
     skin.mappedPad = pad;
+    skin.sharedGroup = group;
+    skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
+    [skin loadCustomSkinLayers];
+    [skin setDarkTheme:skin.darkTheme];
     // The same immutable preset drives drawing, hit testing and press layers.
     objc_setAssociatedObject(skin,&StrataNxWideSkinKey,@([mode isEqualToString:@"wide"]),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     // Built-in vector skin: every NxNative guest has BOTH orientations
     // without importing or downloading any PNG. The user's old custom
     // artwork files remain untouched on disk for potential future restore.
-    skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
     BOOL portrait=host.bounds.size.height>host.bounds.size.width;
     BOOL hasArtwork=[skin artworkForPortrait:portrait]!=nil;
     if (hasArtwork) StrataEnableNxSkinTouchMapping(pad);

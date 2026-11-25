@@ -46,4 +46,10 @@ python3 Tests/launcher-stability-tests.py
 
 This verifies source-level invariants for separately bounded thumbnail caching,
 cover retention during asynchronous replacement, selected-item restoration, and
-launch lifecycle recovery. It does not replace iOS rendering or interaction tests.
+launch lifecycle recovery. It also guards SideStore's dedicated icon extraction
+and the compact Shelf long-press menu. Built-in skin checks cover the 26 theme cards, bundled image templates, and
+removal of Skin Collections and Skin Studio; controller press/release effects
+remain covered. It does not replace iOS rendering
+or interaction tests. The checks also cover shared Classic/Wide/Full Screen
+selection, the NxNative skin-settings section order, picture cards for all 26
+built-in themes, and Full Screen's native-input feedback path.
