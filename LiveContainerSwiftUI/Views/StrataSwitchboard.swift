@@ -15,6 +15,7 @@ struct StrataSwitchboard: View {
     @StateObject private var artwork = LiveBoardArtworkStore()
     @ObservedObject private var customization = LiveBoardAppCustomization.shared
     @AppStorage("LiveBoardModeLibraries", store: LCUtils.appGroupUserDefault) private var savedLibrary = "{}"
+    @AppStorage("ZNLibraryPresentation", store: LCUtils.appGroupUserDefault) private var presentation = "Switchboard"
     @State private var selectedKey = ""
     @State private var category: String?
     @State private var recentOnly = false
@@ -68,19 +69,11 @@ struct StrataSwitchboard: View {
                     // All / Games / Tools and AMOLED moon share one row.
                     categoryStrip.padding(.horizontal, margin).padding(.top, 4)
                     Spacer(minLength: 4)
-                    TabView(selection: $selectedKey) {
-                        ForEach(items, id: \.self) { app in
-                            gameTile(app, size: tile)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .tag(liveBoardAppKey(app))
+                    libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
+                        .frame(height: tile + 70)
+                        .onChange(of: selectedKey) { _ in
+                            if sounds && !lowMemory && !thermalConstrained && phase == .active { audio.play() }
                         }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: tile + 70)
-                    .accessibilityIdentifier("switchboard.pages")
-                    .onChange(of: selectedKey) { _ in
-                        if sounds && !lowMemory && !thermalConstrained && phase == .active { audio.play() }
-                    }
                     if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                     Spacer(minLength: 4)
                     shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
@@ -89,6 +82,14 @@ struct StrataSwitchboard: View {
                     HStack {
                         Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
                         Spacer()
+                        Menu {
+                            ForEach(["Switchboard", "Cinematic", "Big Picture", "Shelf", "Arcade"], id: \.self) { name in
+                                Button { presentation = name } label: {
+                                    if presentation == name { Label(name, systemImage: "checkmark") } else { Text(name) }
+                                }
+                            }
+                        } label: { Label("Layout", systemImage: "square.grid.2x2") }
+                        .accessibilityIdentifier("switchboard.libraryLayout")
                         if controller.connected {
                             HStack(spacing: 18) { Label("Options", systemImage: controller.detailsSymbol); Label("Open", systemImage: controller.confirmSymbol) }
                         }
@@ -178,6 +179,68 @@ struct StrataSwitchboard: View {
             }
         }.onChange(of: editingLibrary) { value in if value { controller.stop() } }
     }
+    @ViewBuilder private func libraryContent(items: [LCAppModel], tile: CGFloat, width: CGFloat) -> some View {
+        switch presentation {
+        case "Cinematic", "Big Picture":
+            VStack(spacing: 4) {
+                if let selected {
+                    gameTile(selected, size: max(72, tile * (presentation == "Cinematic" ? 0.68 : 0.78)))
+                }
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 8) {
+                            ForEach(items, id: \.self) { app in
+                                compactTile(app, size: 48).id(liveBoardAppKey(app))
+                            }
+                        }.padding(.horizontal, 12)
+                    }
+                    .onChange(of: selectedKey) { key in proxy.scrollTo(key, anchor: .center) }
+                }.frame(height: 76)
+            }
+        case "Shelf", "Arcade":
+            let columns = presentation == "Shelf" ? 2 : 3
+            let size = max(48, min(132, (width - CGFloat(columns + 1) * 12) / CGFloat(columns)))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 12) {
+                        ForEach(items, id: \.self) { app in
+                            gameTile(app, size: size).id(liveBoardAppKey(app))
+                        }
+                    }.padding(12)
+                }
+                .onChange(of: selectedKey) { key in proxy.scrollTo(key, anchor: .center) }
+            }
+        default:
+            TabView(selection: $selectedKey) {
+                ForEach(items, id: \.self) { app in
+                    gameTile(app, size: tile)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .tag(liveBoardAppKey(app))
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .accessibilityIdentifier("switchboard.pages")
+        }
+    }
+
+    private func compactTile(_ app: LCAppModel, size: CGFloat) -> some View {
+        let key = liveBoardAppKey(app)
+        return Button { selectedKey = key } label: {
+            VStack(spacing: 2) {
+                Group {
+                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
+                        Image(uiImage: cover).resizable().scaledToFill()
+                    } else {
+                        LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
+                    }
+                }.frame(width: size, height: size).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(foreground, lineWidth: selectedKey == key ? 2 : 0))
+                Text(customization.name(app)).font(.caption2).lineLimit(1).frame(width: size + 12)
+            }
+        }.buttonStyle(.plain)
+    }
+
     private func gameTile(_ app: LCAppModel, size tile: CGFloat) -> some View {
         let key = liveBoardAppKey(app)
         let isSelected = key == liveBoardAppKey(selected ?? app)
@@ -193,7 +256,7 @@ struct StrataSwitchboard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(width: tile + 10)
-                .opacity(isSelected ? 1 : 0)
+                .opacity(isSelected || presentation == "Shelf" || presentation == "Arcade" ? 1 : 0)
 
             // Long press raises only this cover button (including its border).
             Button {
