@@ -94,7 +94,7 @@ import Darwin
         guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(id); return nil }
         let token = UUID(); requests[id] = token
         let lowMemory = constrained
-        let maximum = kind == .background ? (lowMemory ? 800 : 1600) : (lowMemory ? 320 : 640)
+        let maximum = kind == .background ? (lowMemory ? 1280 : 1920) : (lowMemory ? 640 : 1024)
         cache.totalCostLimit = (lowMemory ? 4 : 16) * 1024 * 1024
         cache.countLimit = lowMemory ? 4 : 16
         guard pendingDecodes.count < (lowMemory ? 4 : 16) else { requests[id] = nil; return nil }

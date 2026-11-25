@@ -151,7 +151,6 @@ struct StrataSettingsApp: View {
 
     @ViewBuilder private var mainSections: some View {
         Section {
-            Toggle(isOn: $sounds) { row("Navigation sounds", symbol: "speaker.wave.2.fill", tint: .pink) }
             link("sounds")
             link("controllermapping")
             link("steamgriddb")
@@ -253,7 +252,7 @@ private struct StrataNavigationSoundSettings: View {
                 Button { audio.play(.back, preview: true) } label: { Label("Back", systemImage: "arrow.uturn.backward.circle") }
             }
             Section { Toggle("Navigation sounds", isOn: $enabled) }
-            Section { Text("Sound effects are generated only when previewed or used. Low Memory Mode and serious or critical thermal pressure suppress playback; audio objects are released when this screen closes or a game launches.").font(.footnote).foregroundStyle(.secondary) }
+            Section { Text("Sound effects are generated only when previewed or used. Low Memory Mode suppresses automatic cues but permits manual previews when memory and temperature allow. Serious or critical thermal pressure suppresses playback; audio objects are released when this screen closes or a game launches.").font(.footnote).foregroundStyle(.secondary) }
         }
         .navigationTitle("Navigation Sounds")
         .onChange(of: style) { _ in audio.stop() }

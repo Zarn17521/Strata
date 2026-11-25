@@ -16,7 +16,8 @@ import Darwin
         let enabled = defaults.object(forKey: "LiveBoardConsoleSounds") as? Bool
             ?? defaults.object(forKey: "ZNBetaNavigationAudio") as? Bool ?? true
         let available = os_proc_available_memory()
-        guard enabled, !defaults.bool(forKey: "ZNBetaLowMemory"), available == 0 || available >= 512 * 1024 * 1024 else { return }
+        guard enabled, available == 0 || available >= 512 * 1024 * 1024 else { return }
+        guard preview || !defaults.bool(forKey: "ZNBetaLowMemory") else { return }
         guard ProcessInfo.processInfo.thermalState != .serious && ProcessInfo.processInfo.thermalState != .critical else { return }
         guard !UIAccessibility.isVoiceOverRunning else { return }
         let style = defaults.string(forKey: "ZNBetaSoundStyle") ?? "classic"
@@ -31,14 +32,14 @@ import Darwin
             for index in 0..<count {
                 let t = Double(index) / Double(rate)
                 let envelope = sin(Double.pi * Double(index) / Double(count)) * exp(-t * (cue == .confirm ? 34 : 54))
-                var value = Int16(sin(t * 2 * Double.pi * frequency) * envelope * 2600).littleEndian
+                var value = Int16(sin(t * 2 * Double.pi * frequency) * envelope * 6500).littleEndian
                 withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
             }
             var data = Data("RIFF".utf8)
             func u32(_ value: UInt32) { var x = value.littleEndian; withUnsafeBytes(of: &x) { data.append(contentsOf: $0) } }
             func u16(_ value: UInt16) { var x = value.littleEndian; withUnsafeBytes(of: &x) { data.append(contentsOf: $0) } }
             u32(UInt32(36 + pcm.count)); data.append(Data("WAVEfmt ".utf8)); u32(16); u16(1); u16(1); u32(UInt32(rate)); u32(UInt32(rate * 2)); u16(2); u16(16); data.append(Data("data".utf8)); u32(UInt32(pcm.count)); data.append(pcm)
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Strata-Navigation-\(cue.rawValue).wav")
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Strata-Navigation-\(UUID().uuidString).wav")
             do { try data.write(to: url, options: .atomic) } catch { return }
             var created: SystemSoundID = 0
             guard AudioServicesCreateSystemSoundID(url as CFURL, &created) == kAudioServicesNoError else { try? FileManager.default.removeItem(at: url); return }
