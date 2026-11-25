@@ -84,7 +84,7 @@ struct StrataSwitchboard: View {
                         Spacer()
                         Menu {
                             ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
-                                Button { if presentation != name { presentation = name; audio.play(.confirm) } } label: {
+                                Button { presentation = name } label: {
                                     if presentation == name { Label(name, systemImage: "checkmark") } else { Text(name) }
                                 }
                             }
@@ -125,7 +125,7 @@ struct StrataSwitchboard: View {
             if visible && phase == .active && !busy { bind() }
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardArtworkStore.trimNotification)) { _ in
-            trimPresentationCaches(pause: busy || !visible || phase != .active)
+            trimPresentationCaches(pause: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; if visible && phase == .active { artwork.resumeDecoding(); bind() } }
@@ -229,10 +229,8 @@ struct StrataSwitchboard: View {
         return Button { selectedKey = key } label: {
             VStack(spacing: 2) {
                 Group {
-                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard", thumbnail: true) {
+                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
                         Image(uiImage: cover).resizable().scaledToFill()
-                    } else if artwork.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
-                        tilePlaceholder
                     } else {
                         LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
                     }
@@ -269,7 +267,7 @@ struct StrataSwitchboard: View {
                     tilePlaceholder
                     if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
                         Image(uiImage: cover).resizable().scaledToFill()
-                    } else if !artwork.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
+                    } else {
                         LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
                     }
                 }
