@@ -72,7 +72,7 @@ struct StrataSwitchboard: View {
                     libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
                         .frame(height: tile + 70)
                         .onChange(of: selectedKey) { _ in
-                            if sounds && !thermalConstrained && phase == .active && visible && !busy { audio.play() }
+                            if sounds && phase == .active && visible && !busy { audio.play() }
                         }
                     if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                     Spacer(minLength: 4)
@@ -84,7 +84,7 @@ struct StrataSwitchboard: View {
                         Spacer()
                         Menu {
                             ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
-                                Button { presentation = name } label: {
+                                Button { if presentation != name { presentation = name; audio.play(.confirm) } } label: {
                                     if presentation == name { Label(name, systemImage: "checkmark") } else { Text(name) }
                                 }
                             }
@@ -112,7 +112,7 @@ struct StrataSwitchboard: View {
         .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
             thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
             if thermalConstrained {
-                audio.stop()
+                if ProcessInfo.processInfo.thermalState == .critical { audio.stop() }
                 trimPresentationCaches(pause: busy || !visible || phase != .active)
             }
         }
@@ -121,10 +121,11 @@ struct StrataSwitchboard: View {
             // Keep the visible library usable so it can reload artwork on demand.
             controller.stop()
             audio.stop()
-            trimPresentationCaches(pause: !visible || phase != .active)
+            trimPresentationCaches(pause: busy || !visible || phase != .active)
+            if visible && phase == .active && !busy { bind() }
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardArtworkStore.trimNotification)) { _ in
-            trimPresentationCaches(pause: false)
+            trimPresentationCaches(pause: busy || !visible || phase != .active)
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.pauseNotification)) { _ in controller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: LiveBoardControllerInput.resumeNotification)) { _ in busy = false; if visible && phase == .active { artwork.resumeDecoding(); bind() } }
@@ -228,8 +229,10 @@ struct StrataSwitchboard: View {
         return Button { selectedKey = key } label: {
             VStack(spacing: 2) {
                 Group {
-                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
+                    if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard", thumbnail: true) {
                         Image(uiImage: cover).resizable().scaledToFill()
+                    } else if artwork.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
+                        tilePlaceholder
                     } else {
                         LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
                     }
@@ -266,7 +269,7 @@ struct StrataSwitchboard: View {
                     tilePlaceholder
                     if let cover = artwork.image(for: key, kind: .cover, mode: "switchboard") {
                         Image(uiImage: cover).resizable().scaledToFill()
-                    } else {
+                    } else if !artwork.hasArtwork(for: key, kind: .cover, mode: "switchboard") {
                         LiveBoardIconImage(app: app, dark: darkMode).scaledToFit()
                     }
                 }

@@ -87,18 +87,19 @@ import Darwin
             if let url = files.existingURL(filename) { try? FileManager.default.removeItem(at: url) }
         }
     }
-    func image(for key: String, kind: Kind, mode: String = "bigPicture") -> UIImage? {
+    func image(for key: String, kind: Kind, mode: String = "bigPicture", thumbnail: Bool = false) -> UIImage? {
         let id = mode + ":" + kind.rawValue + ":" + key
-        if let cached = cache.object(forKey: id as NSString) { return cached }
-        guard !decodingPaused, !missing.contains(id), requests[id] == nil else { return nil }
+        let cacheID = thumbnail ? id + ":thumbnail" : id
+        if let cached = cache.object(forKey: cacheID as NSString) { return cached }
+        guard !decodingPaused, !missing.contains(id), !missing.contains(cacheID), requests[cacheID] == nil else { return nil }
         guard let filename = mappings[id] ?? (mode == "bigPicture" ? mappings[kind.rawValue + ":" + key] : nil), let url = files.existingURL(filename) else { missing.insert(id); return nil }
-        let token = UUID(); requests[id] = token
+        let token = UUID(); requests[cacheID] = token
         let lowMemory = constrained
-        let maximum = kind == .background ? (lowMemory ? 1280 : 1920) : (lowMemory ? 640 : 1024)
+        let maximum = thumbnail ? 160 : kind == .background ? (lowMemory ? 1280 : 1920) : (lowMemory ? 640 : 1024)
         cache.totalCostLimit = (lowMemory ? 4 : 16) * 1024 * 1024
         cache.countLimit = lowMemory ? 4 : 16
-        guard pendingDecodes.count < (lowMemory ? 4 : 16) else { requests[id] = nil; return nil }
-        pendingDecodes.append(DecodeJob(id: id, token: token, url: url, maximum: maximum))
+        guard pendingDecodes.count < (lowMemory ? 4 : 16) else { requests[cacheID] = nil; return nil }
+        pendingDecodes.append(DecodeJob(id: cacheID, token: token, url: url, maximum: maximum))
         startPendingDecodes()
         return nil
     }
@@ -167,7 +168,7 @@ import Darwin
         map[id] = filename; mappingCache = map; defaults.set(map, forKey: "LiveBoardConsoleArtwork")
         removeUnreferenced(previousFiles, mappings: map)
         writeIndex()
-        requests[id] = nil; missing.remove(id); cache.removeObject(forKey: id as NSString); revision += 1
+        requests[id] = nil; requests[id + ":thumbnail"] = nil; missing.remove(id); missing.remove(id + ":thumbnail"); cache.removeObject(forKey: id as NSString); cache.removeObject(forKey: (id + ":thumbnail") as NSString); revision += 1
     }
     func remove(for key: String, kind: Kind, mode: String = "bigPicture") {
         let id = mode + ":" + kind.rawValue + ":" + key
@@ -178,6 +179,6 @@ import Darwin
         defaults.set(map, forKey: "LiveBoardConsoleArtwork")
         removeUnreferenced(removed, mappings: map)
         writeIndex()
-        requests[id] = nil; missing.remove(id); cache.removeObject(forKey: id as NSString); revision += 1
+        requests[id] = nil; requests[id + ":thumbnail"] = nil; missing.remove(id); missing.remove(id + ":thumbnail"); cache.removeObject(forKey: id as NSString); cache.removeObject(forKey: (id + ":thumbnail") as NSString); revision += 1
     }
 }
