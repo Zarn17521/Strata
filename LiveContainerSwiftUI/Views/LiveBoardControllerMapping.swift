@@ -38,12 +38,22 @@ enum LiveBoardControllerMapping {
 }
 
 struct LiveBoardControllerMappingSettings: View {
+    @AppStorage("ZNBetaSwapAB", store: LCUtils.appGroupUserDefault) private var swapAB = false
+    @AppStorage("ZNBetaSwapXY", store: LCUtils.appGroupUserDefault) private var swapXY = false
     @State private var profile = "Default"
     @State private var revision = 0
     private let buttons = ["A", "B", "X", "Y", "L", "R", "Menu"]
     private var knownProfiles: [String] { ["Default"] + LiveBoardControllerMapping.profiles().keys.filter { $0 != "Default" }.sorted() }
     var body: some View {
         Form {
+            Section {
+                Toggle("Swap A / B", isOn: $swapAB)
+                Toggle("Swap X / Y", isOn: $swapXY)
+            } header: {
+                Text("Default button mapping")
+            } footer: {
+                Text("These swaps apply to library navigation when a controller profile does not override the button.")
+            }
             Section("Controller profile") {
                 Picker("Profile", selection: $profile) { ForEach(knownProfiles, id: \.self) { Text($0).tag($0) } }
                 TextField("Controller vendor name", text: Binding(get: { profile == "Default" ? "" : profile }, set: { profile = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Default" : String($0.prefix(64)) }))

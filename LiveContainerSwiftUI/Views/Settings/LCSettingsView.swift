@@ -87,7 +87,6 @@ struct LCSettingsView: View {
                 Section("ZN") {
                     StrataCreditsButton(location: "settings.about")
                     NavigationLink { ZNWhatsNewView() } label: { Label("What’s New", systemImage: "sparkles") }
-                    NavigationLink("ZN Beta · Controller & Audio") { ZNBetaControlsSettings() }
                     NavigationLink("App Extensions") { StrataExtensionsView(apps: sharedModel.apps) }
                     NavigationLink("iPhone Apps") { StrataPhoneAppsView() }
                     NavigationLink("Refresh") { StrataAutoRefreshSettings() }
@@ -737,39 +736,6 @@ struct LCSettingsView: View {
 
 
 /// Beta preferences use new keys and do not change guest input or signing.
-private struct ZNBetaControlsSettings: View {
-    @AppStorage("ZNBetaSwapAB", store: LCUtils.appGroupUserDefault) private var swapAB = false
-    @AppStorage("ZNBetaSwapXY", store: LCUtils.appGroupUserDefault) private var swapXY = false
-    @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var audio = true
-    @AppStorage("ZNBetaSoundStyle", store: LCUtils.appGroupUserDefault) private var soundStyle = "classic"
-    @AppStorage("ZNBetaLowMemory", store: LCUtils.appGroupUserDefault) private var lowMemory = false
-    var body: some View {
-        Form {
-            Section("Launcher controller mapping") {
-                Toggle("Swap A / B (confirm / back)", isOn: $swapAB)
-                Toggle("Swap X / Y (details / favorite)", isOn: $swapXY)
-                Text("Applies to library navigation only, not in-game controls.").font(.footnote)
-            }
-            Section("Navigation sound") {
-                Toggle("Play navigation sounds", isOn: $audio)
-                Picker("Sound style", selection: $soundStyle) {
-                    Text("Classic").tag("classic")
-                    Text("Soft").tag("soft")
-                    Text("Arcade").tag("arcade")
-                }.disabled(!audio)
-            }
-            Section("Low memory") {
-                Toggle("Reduce controller visual updates", isOn: $lowMemory)
-                Text("Disables live stick and button visual feedback while retaining navigation.").font(.footnote)
-            }
-            Button("Restore beta defaults") {
-                swapAB = false; swapXY = false; audio = true; soundStyle = "classic"; lowMemory = false
-            }
-        }.navigationTitle("ZN Beta Controls")
-    }
-}
-
-
 // Shared release notes for the first-launch sheet and Settings.
 struct ZNWhatsNewView: View {
     static let releaseID = "0.1.1-beta.3-ram-shortcut"
