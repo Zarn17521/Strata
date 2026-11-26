@@ -14,6 +14,7 @@ private enum ZNMemoryLabFailure {
     }
 }
 
+@available(iOS 26.0, *)
 private final class ZNXPCRequestGate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<XPCDictionary, Error>?
@@ -124,7 +125,7 @@ final class ZNMemoryLabModel: ObservableObject {
             phase = "Starting helper process"
             let process: AppExtensionProcess
             do {
-                process = try AppExtensionProcess(configuration: .init(appExtensionIdentity: identity))
+                process = try await AppExtensionProcess(configuration: .init(appExtensionIdentity: identity))
             } catch {
                 throw ZNMemoryLabFailure.make("ExtensionFoundation discovered the helper but could not start its process.", domain: "ZNMemoryLab.ExtensionProcess", code: 23, underlying: error)
             }
@@ -190,7 +191,9 @@ final class ZNMemoryLabModel: ObservableObject {
     private func send(_ message: XPCDictionary, session: XPCSession) async throws -> XPCDictionary {
         let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<XPCDictionary, Error>) in
             let gate = ZNXPCRequestGate(continuation)
-            session.send(message: message) { result in gate.finish(result) }
+            session.send(message: message) { result in
+                _ = gate.finish(result.mapError { $0 as Error })
+            }
             DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
                 if gate.finish(.failure(ZNMemoryLabFailure.make("Memory Helper request timed out after five seconds.", domain: "ZNMemoryLab.Timeout", code: 30))) {
                     session.cancel(reason: "Memory Helper request timed out")
