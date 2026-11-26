@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 import ExtensionFoundation
 import Synchronization
 import XPC
