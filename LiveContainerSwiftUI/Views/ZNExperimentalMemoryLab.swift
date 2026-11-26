@@ -93,12 +93,7 @@ final class ZNMemoryLabModel: ObservableObject {
         var helperPID: pid_t?
         var phase = "Extension point lookup"
         do {
-            let point: AppExtensionPoint
-            do {
-                point = try AppExtensionPoint(identifier: "ZNMemoryHelper")
-            } catch {
-                throw ZNMemoryLabFailure.make("Could not construct the ZNMemoryHelper extension point.", domain: "ZNMemoryLab.ExtensionPoint", code: 20, underlying: error)
-            }
+            let point = AppExtensionPoint.znMemoryHelperForRuntime
 
             let monitor: AppExtensionPoint.Monitor
             do {
