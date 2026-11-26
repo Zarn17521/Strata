@@ -18,7 +18,11 @@ extension AppExtensionPoint {
 struct ZNMemoryHelperExtension: AppExtension {
     @AppExtensionPoint.Bind
     var boundExtensionPoint: AppExtensionPoint {
-        AppExtensionPoint.Identifier(host: Bundle.main.infoDictionary?["ZNMemoryHelperHostBundleIdentifier"] as? String ?? "com.kdt.livecontainer", name: "ZNMemoryHelper")
+        #if DEBUG
+        AppExtensionPoint.Identifier(host: "com.kdt.livecontainer.AAAAA11111", name: "ZNMemoryHelper")
+        #else
+        AppExtensionPoint.Identifier(host: "com.kdt.livecontainer", name: "ZNMemoryHelper")
+        #endif
     }
     var configuration: some AppExtensionConfiguration {
         ConnectionHandler(onSessionRequest: { request in request.accept { _ in MemoryPeer() } })
@@ -45,23 +49,27 @@ private final class MemoryPeer: XPCPeerHandler {
 
     private func releaseAllocation() {
         allocation.withLock { address in
-            if let base = address { vm_deallocate(mach_task_self_, base, 128 * 1024 * 1024); address = nil }
+            if let base = address {
+                let size: vm_size_t = 128 * 1024 * 1024
+                vm_deallocate(mach_task_self_, base, size)
+                address = nil
+            }
         }
     }
 
     private func allocate() throws -> xpc_object_t {
         try allocation.withLock { address in
             guard address == nil else { throw NSError(domain: "ZNMemoryHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "An allocation is already active."]) }
-            let size = 128 * 1024 * 1024
+            let size: vm_size_t = 128 * 1024 * 1024
             var base: vm_address_t = 0
             guard vm_allocate(mach_task_self_, &base, size, VM_FLAGS_ANYWHERE) == KERN_SUCCESS else {
                 throw NSError(domain: "ZNMemoryHelper", code: 2, userInfo: [NSLocalizedDescriptionKey: "Helper allocation failed."])
             }
-            guard let pointer = UnsafeMutableRawPointer(bitPattern: UInt(base)), let shared = mlx_create_shared_memory(pointer, size) else {
+            guard let pointer = UnsafeMutableRawPointer(bitPattern: UInt(base)), let shared = mlx_create_shared_memory(pointer, Int(size)) else {
                 vm_deallocate(mach_task_self_, base, size)
                 throw NSError(domain: "ZNMemoryHelper", code: 3, userInfo: [NSLocalizedDescriptionKey: "Shared memory export failed."])
             }
-            pointer.initializeMemory(as: UInt8.self, repeating: 0, count: size)
+            pointer.initializeMemory(as: UInt8.self, repeating: 0, count: Int(size))
             pointer.storeBytes(of: UInt64(0x5A4E4D454D4C4142), as: UInt64.self)
             address = base
             return shared
