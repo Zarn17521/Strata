@@ -46,6 +46,8 @@ final class ZNMemoryLabModel: ObservableObject {
     @Published var status = "Experimental helper is disabled."
     @Published var report = ""
     @Published var running = false
+    private var helperStage = "not started"
+    private var xpcRequestStatus = "not sent"
 
     private var expectedHostBundleIdentifier: String {
         #if DEBUG
@@ -70,6 +72,8 @@ final class ZNMemoryLabModel: ObservableObject {
         }
 
         running = true
+        helperStage = "not started"
+        xpcRequestStatus = "not sent"
         status = "Checking ExtensionFoundation registration…"
         report = makeReport(phase: "Starting", helperPID: nil, error: nil)
         Task { defer { running = false }; await diagnostic() }
@@ -136,6 +140,7 @@ final class ZNMemoryLabModel: ObservableObject {
                 throw ZNMemoryLabFailure.make("The helper did not report a distinct process identifier.", domain: "ZNMemoryLab.ProcessIdentity", code: 24)
             }
             helperPID = reportedPID
+            helperStage = pidReply["helperStage", as: String.self] ?? "identify reply received; helper PID verified"
 
             guard os_proc_available_memory() >= 768 * 1024 * 1024 else {
                 throw ZNMemoryLabFailure.make("The test stopped before allocation because process headroom fell below 768 MiB.", domain: "ZNMemoryLab.MemoryPressure", code: 25)
@@ -144,12 +149,15 @@ final class ZNMemoryLabModel: ObservableObject {
                 throw ZNMemoryLabFailure.make("The test stopped before allocation because the device entered a serious thermal state.", domain: "ZNMemoryLab.Thermal", code: 26)
             }
 
-            phase = "Allocating and mapping 128 MiB"
+            phase = "Requesting helper allocation (128 MiB)"
+            helperStage = "allocate request pending; helper allocation stage not yet confirmed"
             let regionReply = try await request("allocate", session: session)
+            helperStage = regionReply["helperStage", as: String.self] ?? "allocate reply received without helper stage"
             guard let region = regionReply["region", as: XPC_TYPE_SHMEM] else {
                 throw ZNMemoryLabFailure.make("The helper returned no shared-memory region.", domain: "ZNMemoryLab.SharedMemory", code: 27)
             }
 
+            phase = "Mapping shared-memory region in host"
             var scratch: UnsafeMutableRawPointer?
             let mappedSize = xpc_shmem_map(region, &scratch)
             guard let scratch else {
@@ -163,6 +171,7 @@ final class ZNMemoryLabModel: ObservableObject {
 
             let marker = scratch.load(as: UInt64.self)
             let verified = marker == 0x5A4E4D454D4C4142
+            helperStage += "; host marker read \(verified ? "matched" : "did not match")"
             guard munmap(scratch, mappedSize) == 0 else {
                 throw ZNMemoryLabFailure.make("The host could not unmap its shared-memory view.", domain: "ZNMemoryLab.SharedMemory", code: 31)
             }
@@ -180,26 +189,50 @@ final class ZNMemoryLabModel: ObservableObject {
     private func request(_ operation: String, session: XPCSession) async throws -> XPCDictionary {
         var message = XPCDictionary()
         message["operation"] = operation
-        return try await send(message, session: session)
+        return try await send(message, operation: operation, session: session)
     }
 
-    private func send(_ message: XPCDictionary, session: XPCSession) async throws -> XPCDictionary {
-        let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<XPCDictionary, Error>) in
-            let gate = ZNXPCRequestGate(continuation)
-            session.send(message: message) { result in
-                _ = gate.finish(result.mapError { $0 as Error })
-            }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
-                if gate.finish(.failure(ZNMemoryLabFailure.make("Memory Helper request timed out after five seconds.", domain: "ZNMemoryLab.Timeout", code: 30))) {
-                    session.cancel(reason: "Memory Helper request timed out")
+    private func send(_ message: XPCDictionary, operation: String, session: XPCSession) async throws -> XPCDictionary {
+        xpcRequestStatus = "\(operation) request sent; waiting for XPC completion"
+        let result: XPCDictionary
+        do {
+            result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<XPCDictionary, Error>) in
+                let gate = ZNXPCRequestGate(continuation)
+                session.send(message: message) { result in
+                    let mapped: Result<XPCDictionary, Error>
+                    switch result {
+                    case .success(let reply):
+                        mapped = .success(reply)
+                    case .failure(let error):
+                        mapped = .failure(ZNMemoryLabFailure.make(
+                            "The XPC send for '\(operation)' failed before a reply was received.",
+                            domain: "ZNMemoryLab.XPC",
+                            code: 40,
+                            underlying: error
+                        ))
+                    }
+                    _ = gate.finish(mapped)
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+                    if gate.finish(.failure(ZNMemoryLabFailure.make("Memory Helper request timed out after five seconds.", domain: "ZNMemoryLab.Timeout", code: 30))) {
+                        session.cancel(reason: "Memory Helper request timed out")
+                    }
                 }
             }
+        } catch {
+            xpcRequestStatus = "\(operation) request failed; no reply received"
+            throw error
+        }
+        xpcRequestStatus = "\(operation) reply received"
+        if let stage = result["helperStage", as: String.self] {
+            helperStage = stage
         }
         if let message = result["error", as: String.self] {
             let domain = result["errorDomain", as: String.self] ?? "ZNMemoryHelper"
             let code = Int(result["errorCode", as: Int64.self] ?? -1)
             var info: [String: Any] = [NSLocalizedDescriptionKey: message]
             if let reason = result["underlyingError", as: String.self] { info[NSLocalizedFailureReasonErrorKey] = reason }
+            if let stage = result["helperStage", as: String.self] { info["ZNMemoryHelperStage"] = stage }
             throw NSError(domain: domain, code: code, userInfo: info)
         }
         return result
@@ -236,6 +269,8 @@ final class ZNMemoryLabModel: ObservableObject {
         Physical RAM: \(ProcessInfo.processInfo.physicalMemory / 1_048_576) MiB
         Available process memory: \(availableMiB) MiB
         Thermal state: \(thermal)
+        XPC request status: \(xpcRequestStatus)
+        Helper allocation stage: \(helperStage)
         Shared-memory mapping: \(mappedSize > 0 ? "\(mappedSize / 1_048_576) MiB" : "not mapped")
         Shared-memory verification: \(verification)
         Helper connection: \(helperPID == nil ? "not established" : "connected")
@@ -253,6 +288,18 @@ final class ZNMemoryLabModel: ObservableObject {
         while let current = next, visited.insert(ObjectIdentifier(current)).inserted {
             var entry = "Domain: \(current.domain); code: \(current.code); description: \(current.localizedDescription)"
             if let reason = current.userInfo[NSLocalizedFailureReasonErrorKey] as? String { entry += "; reason: \(reason)" }
+            let extraDetails = current.userInfo
+                .filter { ![NSLocalizedDescriptionKey, NSLocalizedFailureReasonErrorKey, NSUnderlyingErrorKey].contains($0.key) }
+                .sorted { $0.key < $1.key }
+                .compactMap { key, value -> String? in
+                    let rendered: String
+                    if let string = value as? String { rendered = string }
+                    else if let number = value as? NSNumber { rendered = number.stringValue }
+                    else if let nested = value as? NSError { rendered = "\(nested.domain) (\(nested.code))" }
+                    else { return nil }
+                    return "\(key)=\(String(rendered.prefix(240)))"
+                }
+            if !extraDetails.isEmpty { entry += "; userInfo: \(extraDetails.joined(separator: ", "))" }
             chain.append(entry)
             next = current.userInfo[NSUnderlyingErrorKey] as? NSError
         }
