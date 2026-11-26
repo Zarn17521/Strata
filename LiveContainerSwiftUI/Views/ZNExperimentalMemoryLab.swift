@@ -1,6 +1,7 @@
 import Darwin
 import ExtensionFoundation
 import SwiftUI
+import UIKit
 import XPC
 
 @available(iOS 26.0, *)
