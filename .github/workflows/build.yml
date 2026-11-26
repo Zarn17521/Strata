@@ -218,6 +218,8 @@ jobs:
           name: ${{ env.archive_path }}.xcarchive.tar
           path: ${{ env.archive_path }}.xcarchive.tar
       - name: Create IPA
+        env:
+          ZN_INSTALLED_HOST_ID: ${{ inputs.installed_host_bundle_id }}
         run: |
           sh .github/build_github.sh
 
