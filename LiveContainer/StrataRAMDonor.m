@@ -2,7 +2,8 @@
 #import <os/proc.h>
 #import <mach/mach.h>
 #import <sys/sysctl.h>
-#import <mach/vm_map.h>
+#import <malloc/malloc.h>
+#import <unistd.h>
 
 @implementation StrataRAMDonorResult
 @end
@@ -47,112 +48,57 @@
 }
 
 - (StrataRAMDonorResult *)runCeilingTestWithTargetMB:(NSUInteger)targetMB {
-    StrataRAMDonorResult *result = [StrataRAMDonorResult new];
-    result.physicalRAM = [self physicalRAM];
-    result.osAvailable = [self osAvailable];
-    
-    NSMutableString *log = [NSMutableString new];
-    [log appendFormat:@"=== Ceiling Test ===\nTarget: %lu MB\n", (unsigned long)targetMB];
-    
-    size_t pageSize = getpagesize();
-    size_t chunkSize = 64 * 1024 * 1024;
-    size_t targetBytes = targetMB * 1024ULL * 1024ULL;
-    size_t allocated = 0;
-    uint64_t mismatches = 0;
-    
-    while (allocated < targetBytes) {
-        size_t thisChunk = MIN(chunkSize, targetBytes - allocated);
-        void *ptr = malloc(thisChunk);
-        if (!ptr) {
-            [log appendFormat:@"malloc failed at %zu MB\n", allocated / (1024*1024)];
-            break;
-        }
-        
-        for (size_t i = 0; i < thisChunk; i += pageSize) {
-            ((volatile char *)ptr)[i] = (char)(i & 0xFF);
-        }
-        
-        for (size_t i = 0; i < thisChunk; i += pageSize) {
-            if (((volatile char *)ptr)[i] != (char)(i & 0xFF)) {
-                mismatches++;
-            }
-        }
-        
-        [_allocations addObject:[NSData dataWithBytesNoCopy:ptr length:thisChunk freeWhenDone:YES]];
-        allocated += thisChunk;
-        
-        [log appendFormat:@"Allocated + touched: %zu MB | Footprint: %.1f MB\n",
-             allocated / (1024*1024), [self physFootprint] / (1024.0*1024.0)];
-    }
-    
-    result.physFootprint = [self physFootprint];
-    result.pooledTouched = allocated;
-    result.pagesVerified = allocated / pageSize;
-    result.mismatches = mismatches;
-    result.exceedsLimit = (result.physFootprint > result.osAvailable);
-    result.log = log;
-    
-    return result;
+    return [self runDonorTestWithTargetMB:targetMB donorCount:1];
 }
 
 - (StrataRAMDonorResult *)runDonorTestWithTargetMB:(NSUInteger)targetMB donorCount:(NSUInteger)donorCount {
-    StrataRAMDonorResult *result = [StrataRAMDonorResult new];
-    result.physicalRAM = [self physicalRAM];
-    result.osAvailable = [self osAvailable];
-    
-    NSMutableString *log = [NSMutableString new];
-    [log appendFormat:@"=== Donor Test ===\nTarget: %lu MB | Donors: %lu\n", (unsigned long)targetMB, (unsigned long)donorCount];
-    
-    size_t pageSize = getpagesize();
-    size_t perDonor = (targetMB * 1024ULL * 1024ULL) / MAX(donorCount, 1);
-    size_t totalAllocated = 0;
-    uint64_t mismatches = 0;
-    
-    for (NSUInteger d = 0; d < donorCount; d++) {
-        void *ptr = NULL;
-        kern_return_t kr = vm_allocate(mach_task_self(), (vm_address_t *)&ptr, perDonor, VM_FLAGS_ANYWHERE);
-        
-        if (kr != KERN_SUCCESS || !ptr) {
-            ptr = malloc(perDonor);
-            if (!ptr) {
-                [log appendFormat:@"Donor %lu failed to allocate\n", (unsigned long)d];
-                continue;
+    @synchronized (self) {
+        StrataRAMDonorResult *result = [StrataRAMDonorResult new];
+        result.physicalRAM = [self physicalRAM];
+        result.osAvailable = [self osAvailable];
+        NSMutableString *log = [NSMutableString stringWithString:@"Local allocation diagnostic; no cross-process donor or bypass.\n"];
+        NSMutableArray<NSData *> *blocks = [NSMutableArray new];
+        const size_t reserve = 768ULL * 1024 * 1024;
+        const size_t page = (size_t)getpagesize();
+        const size_t target = MIN(targetMB, 2048UL) * 1024ULL * 1024ULL;
+        size_t allocated = 0;
+        uint64_t peak = [self physFootprint];
+        while (allocated < target) {
+            size_t chunk = MIN(16ULL * 1024 * 1024, target - allocated);
+            if ([self osAvailable] < reserve + chunk) {
+                [log appendString:@"Stopped at reserved headroom.\n"];
+                break;
             }
-        }
-        
-        for (size_t i = 0; i < perDonor; i += pageSize) {
-            ((volatile char *)ptr)[i] = (char)((d + i) & 0xFF);
-        }
-        
-        for (size_t i = 0; i < perDonor; i += pageSize) {
-            if (((volatile char *)ptr)[i] != (char)((d + i) & 0xFF)) {
-                mismatches++;
+            void *ptr = malloc(chunk);
+            if (!ptr) { [log appendString:@"Allocation failed.\n"]; break; }
+            volatile uint8_t *bytes = ptr;
+            for (size_t k = 0; k < chunk; k += page) bytes[k] = (uint8_t)((allocated + k) / page);
+            for (size_t k = 0; k < chunk; k += page) {
+                if (bytes[k] != (uint8_t)((allocated + k) / page)) result.mismatches++;
+                result.pagesVerified++;
             }
+            [blocks addObject:[NSData dataWithBytesNoCopy:ptr length:chunk freeWhenDone:YES]];
+            allocated += chunk;
+            peak = MAX(peak, [self physFootprint]);
+            if (result.mismatches) break;
         }
-        
-        [_allocations addObject:[NSData dataWithBytesNoCopy:ptr length:perDonor freeWhenDone:YES]];
-        totalAllocated += perDonor;
-        
-        [log appendFormat:@"Donor %lu: +%zu MB | Total pooled: %zu MB\n",
-             (unsigned long)d, perDonor/(1024*1024), totalAllocated/(1024*1024)];
+        result.physFootprint = peak;
+        result.pooledTouched = allocated;
+        result.liveDonors = 0;
+        result.exceedsLimit = NO;
+        [blocks removeAllObjects];
+        malloc_zone_pressure_relief(NULL, 0);
+        [log appendFormat:@"Touched: %zu MiB; requested groups: %lu; peak: %llu MiB. Allocations released. No bypass established.\n", allocated / (1024*1024), (unsigned long)donorCount, (unsigned long long)(peak / (1024*1024))];
+        result.log = log;
+        return result;
     }
-    
-    result.physFootprint = [self physFootprint];
-    result.pooledTouched = totalAllocated;
-    result.liveDonors = (NSInteger)donorCount;
-    result.pagesVerified = totalAllocated / pageSize;
-    result.mismatches = mismatches;
-    result.exceedsLimit = (result.pooledTouched > result.osAvailable) || (result.physFootprint > result.osAvailable * 0.9);
-    
-    [log appendFormat:@"\nResult: %@\n", result.exceedsLimit ? @"EXCEEDS LIMIT, bypass works" : @"Within normal limit"];
-    result.log = log;
-    
-    return result;
 }
 
 - (void)releaseAll {
-    [_allocations removeAllObjects];
-    malloc_zone_pressure_relief(NULL, 0);
+    @synchronized (self) {
+        [_allocations removeAllObjects];
+        malloc_zone_pressure_relief(NULL, 0);
+    }
 }
 
 - (NSDictionary *)currentStats {
