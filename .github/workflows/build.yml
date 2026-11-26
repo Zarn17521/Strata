@@ -1,7 +1,10 @@
 name: ZN Beta - Build
 
-on: 
+on:
   workflow_dispatch:
+  push:
+    branches:
+      - beta/v0.1.1
 
 jobs:
   build:

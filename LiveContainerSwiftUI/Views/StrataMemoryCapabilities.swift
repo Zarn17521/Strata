@@ -135,6 +135,11 @@ struct StrataMemorySettings: View {
     }
     var body: some View {
         Form {
+            if #available(iOS 26.0, *) {
+                Section("Experimental") { NavigationLink("ZN Experimental Memory Lab") { ZNExperimentalMemoryLab() } }
+            } else {
+                Section("Experimental") { Text("The Memory Helper requires iOS 26 or later.").font(.footnote) }
+            }
             Section("Installed memory permissions") {
                 Label(snapshot["hostMemory"] as? Bool == true ? "ZN: extra memory allowed" : "ZN: standard memory permission", systemImage: "memorychip")
                 Label(snapshot["guestMemory"] as? Bool == true ? "Guest process: extra memory requested in signature" : "Guest process: standard memory signature", systemImage: "app.connected.to.app.below.fill")
