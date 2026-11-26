@@ -16,15 +16,5 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>EXAppExtensionAttributes</key>
-	<dict>
-		<key>EXExtensionPointIdentifier</key>
-		<string>com.apple.appintents-extension</string>
-	</dict>
-	<key>NSExtension</key>
-	<dict>
-		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.appintents-extension</string>
-	</dict>
 </dict>
 </plist>
