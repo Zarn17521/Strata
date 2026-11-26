@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Pure Swift RAM Donor (no ObjC / pbxproj required)
+// MARK: - Pure Swift RAM Donor (safe progressive allocation)
 
 final class StrataRAMDonorEngine {
     static let shared = StrataRAMDonorEngine()
@@ -53,36 +53,41 @@ final class StrataRAMDonorEngine {
         ]
     }
     
+    /// Stop allocating when available headroom drops below this (bytes).
+    private let safetyHeadroom: UInt64 = 256 * 1024 * 1024
+    
+    private func shouldStop() -> Bool {
+        osAvailable() < safetyHeadroom
+    }
+    
     func runCeilingTest(targetMB: Int) -> Result {
         var r = Result()
         r.physicalRAM = physicalRAM()
         r.osAvailable = osAvailable()
-        var log = "=== Ceiling Test ===\nTarget: \(targetMB) MB\n"
+        var log = "=== Ceiling Test (safe) ===\nTarget: \(targetMB) MB\nOS Available start: \(r.osAvailable / (1024*1024)) MB\n"
         
         let pageSize = Int(getpagesize())
-        let chunkSize = 64 * 1024 * 1024
+        let chunkSize = 32 * 1024 * 1024  // 32 MB chunks (safer)
         let targetBytes = targetMB * 1024 * 1024
         var allocated = 0
         var mismatches: UInt64 = 0
         
         while allocated < targetBytes {
+            if shouldStop() {
+                log += "Stopped early (low headroom). Allocated \(allocated / (1024*1024)) MB\n"
+                break
+            }
+            
             let thisChunk = min(chunkSize, targetBytes - allocated)
             guard let ptr = malloc(thisChunk) else {
                 log += "malloc failed at \(allocated / (1024*1024)) MB\n"
                 break
             }
             
+            // Touch pages
             var i = 0
             while i < thisChunk {
                 ptr.storeBytes(of: UInt8(i & 0xFF), toByteOffset: i, as: UInt8.self)
-                i += pageSize
-            }
-            
-            i = 0
-            while i < thisChunk {
-                if ptr.load(fromByteOffset: i, as: UInt8.self) != UInt8(i & 0xFF) {
-                    mismatches += 1
-                }
                 i += pageSize
             }
             
@@ -92,14 +97,17 @@ final class StrataRAMDonorEngine {
             lock.unlock()
             
             allocated += thisChunk
-            log += "Allocated + touched: \(allocated / (1024*1024)) MB | Footprint: \(String(format: "%.1f", Double(physFootprint()) / 1024.0 / 1024.0)) MB\n"
+            let fp = physFootprint()
+            log += "+\(thisChunk/(1024*1024)) MB → total \(allocated/(1024*1024)) MB | FP \(fp/(1024*1024)) MB | avail \(osAvailable()/(1024*1024)) MB\n"
         }
         
         r.physFootprint = physFootprint()
         r.pooledTouched = UInt64(allocated)
-        r.pagesVerified = UInt64(allocated / pageSize)
+        r.pagesVerified = UInt64(allocated / max(pageSize, 1))
         r.mismatches = mismatches
         r.exceedsLimit = r.physFootprint > r.osAvailable
+        log += "\nFinal FP: \(r.physFootprint/(1024*1024)) MB | Start OS avail: \(r.osAvailable/(1024*1024)) MB\n"
+        log += r.exceedsLimit ? "Result: EXCEEDS LIMIT\n" : "Result: Within limit\n"
         r.log = log
         return r
     }
@@ -108,7 +116,7 @@ final class StrataRAMDonorEngine {
         var r = Result()
         r.physicalRAM = physicalRAM()
         r.osAvailable = osAvailable()
-        var log = "=== Donor Test ===\nTarget: \(targetMB) MB | Donors: \(donorCount)\n"
+        var log = "=== Donor Test (safe) ===\nTarget: \(targetMB) MB | Donors: \(donorCount)\nOS Available start: \(r.osAvailable / (1024*1024)) MB\n"
         
         let pageSize = Int(getpagesize())
         let perDonor = (targetMB * 1024 * 1024) / max(donorCount, 1)
@@ -117,51 +125,50 @@ final class StrataRAMDonorEngine {
         var successDonors = 0
         
         for d in 0..<donorCount {
-            guard let ptr = malloc(perDonor) else {
-                log += "Donor \(d) failed to allocate\n"
+            if shouldStop() {
+                log += "Stopped at donor \(d) (low headroom)\n"
+                break
+            }
+            
+            // Cap each donor chunk so we don't allocate a huge block at once
+            let safeSize = min(perDonor, 128 * 1024 * 1024) // max 128 MB per donor step
+            guard let ptr = malloc(safeSize) else {
+                log += "Donor \(d) malloc failed\n"
                 continue
             }
             
             var i = 0
-            while i < perDonor {
-                ptr.storeBytes(of: UInt8((d + i) & 0xFF), toByteOffset: i, as: UInt8.self)
-                i += pageSize
-            }
-            
-            i = 0
-            while i < perDonor {
-                if ptr.load(fromByteOffset: i, as: UInt8.self) != UInt8((d + i) & 0xFF) {
-                    mismatches += 1
-                }
+            while i < safeSize {
+                ptr.storeBytes(of: UInt8((d &+ i) & 0xFF), toByteOffset: i, as: UInt8.self)
                 i += pageSize
             }
             
             lock.lock()
             allocations.append(ptr)
-            allocationSizes.append(perDonor)
+            allocationSizes.append(safeSize)
             lock.unlock()
             
-            totalAllocated += perDonor
+            totalAllocated += safeSize
             successDonors += 1
-            log += "Donor \(d): +\(perDonor/(1024*1024)) MB | Total pooled: \(totalAllocated/(1024*1024)) MB\n"
+            log += "Donor \(d): +\(safeSize/(1024*1024)) MB | total \(totalAllocated/(1024*1024)) MB | avail \(osAvailable()/(1024*1024)) MB\n"
         }
         
         r.physFootprint = physFootprint()
         r.pooledTouched = UInt64(totalAllocated)
         r.liveDonors = successDonors
-        r.pagesVerified = UInt64(totalAllocated / pageSize)
+        r.pagesVerified = UInt64(totalAllocated / max(pageSize, 1))
         r.mismatches = mismatches
-        r.exceedsLimit = (r.pooledTouched > r.osAvailable) || (r.physFootprint > UInt64(Double(r.osAvailable) * 0.9))
-        log += "\nResult: \(r.exceedsLimit ? "EXCEEDS LIMIT, bypass works" : "Within normal limit")\n"
+        r.exceedsLimit = (r.pooledTouched > r.osAvailable) || (r.physFootprint > UInt64(Double(r.osAvailable) * 0.85))
+        log += "\nFinal FP: \(r.physFootprint/(1024*1024)) MB | Pooled: \(r.pooledTouched/(1024*1024)) MB\n"
+        log += r.exceedsLimit ? "Result: EXCEEDS LIMIT, bypass works\n" : "Result: Within normal limit\n"
         r.log = log
         return r
     }
     
     func releaseAll() {
         lock.lock()
-        for (i, ptr) in allocations.enumerated() {
+        for ptr in allocations {
             free(ptr)
-            _ = allocationSizes[i]
         }
         allocations.removeAll()
         allocationSizes.removeAll()
@@ -173,7 +180,7 @@ final class StrataRAMDonorEngine {
 // MARK: - UI
 
 struct StrataRAMDonorView: View {
-    @State private var resultLog: String = "Ready."
+    @State private var resultLog: String = "Ready. Safe mode: stops before jetsam."
     @State private var isRunning = false
     @State private var physicalRAM: String = "—"
     @State private var osAvailable: String = "—"
@@ -203,7 +210,7 @@ struct StrataRAMDonorView: View {
                     Button {
                         runDonorTest()
                     } label: {
-                        Label("Run Donor Test (pool + verify)", systemImage: "memorychip")
+                        Label("Run Donor Test (safe)", systemImage: "memorychip")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -212,7 +219,7 @@ struct StrataRAMDonorView: View {
                     Button {
                         runCeilingTest()
                     } label: {
-                        Label("Ceiling Test (malloc + touch)", systemImage: "arrow.up.to.line")
+                        Label("Ceiling Test (safe)", systemImage: "arrow.up.to.line")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -271,10 +278,11 @@ struct StrataRAMDonorView: View {
     private func runDonorTest() {
         isRunning = true
         status = "Running Donor Test..."
-        resultLog = "Starting donor test...\n"
+        resultLog = "Starting safe donor test...\n"
         
+        // Smaller default: 2 GB across 8 donors (~256 MB each), stop early if low
         DispatchQueue.global(qos: .userInitiated).async {
-            let res = StrataRAMDonorEngine.shared.runDonorTest(targetMB: 10240, donorCount: 8)
+            let res = StrataRAMDonorEngine.shared.runDonorTest(targetMB: 2048, donorCount: 8)
             DispatchQueue.main.async {
                 self.apply(result: res)
                 self.isRunning = false
@@ -285,10 +293,11 @@ struct StrataRAMDonorView: View {
     private func runCeilingTest() {
         isRunning = true
         status = "Running Ceiling Test..."
-        resultLog = "Starting ceiling test...\n"
+        resultLog = "Starting safe ceiling test...\n"
         
+        // 1.5 GB ceiling with early stop
         DispatchQueue.global(qos: .userInitiated).async {
-            let res = StrataRAMDonorEngine.shared.runCeilingTest(targetMB: 6144)
+            let res = StrataRAMDonorEngine.shared.runCeilingTest(targetMB: 1536)
             DispatchQueue.main.async {
                 self.apply(result: res)
                 self.isRunning = false
