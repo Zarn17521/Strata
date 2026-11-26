@@ -726,8 +726,8 @@
 				17DCE99B2C7067EC00731D42 /* Resources */,
 				17DCE9D92C7067ED00731D42 /* Embed Foundation Extensions */,
 				17413FC12D9C0BAE00F3F928 /* Embed Frameworks */,
-				17D4DA692D9C495E008E7396 /* Run Script */,
 				17CAE6202F230449008B1977 /* Embed ExtensionKit Extensions */,
+				17D4DA692D9C495E008E7396 /* Run Script */,
 			);
 			buildRules = (
 			);
@@ -990,7 +990,6 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "Run Script";
 			outputFileListPaths = (
@@ -999,7 +998,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The processed app plist is an explicit input to this phase.\nINFO_PLIST=\"${TARGET_BUILD_DIR}\"/\"${INFOPLIST_PATH}\"\nif [ ! -f \"$INFO_PLIST\" ]; then\n  echo \"error: Processed application Info.plist is missing: $INFO_PLIST\" >&2\n  exit 1\nfi\n\n# Get current Git branch and commit hash\nCONFIG_BRANCH=$(git rev-parse --abbrev-ref HEAD)\nCONFIG_COMMIT=$(git log -1 --format=%h)\n\n# Combine values into a version info string\nLCVersionInfo=\"$CONFIGURATION ($CONFIG_BRANCH/$CONFIG_COMMIT)\"\n/usr/libexec/PlistBuddy -c \"Add :LCVersionInfo string $LCVersionInfo\" \"$INFO_PLIST\"\ncp -n -r \"$SRCROOT\"/Resources/*.lproj \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH\"\necho 1\nif [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  python3 \"$SRCROOT/Scripts/embed-jit-helper.py\" \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" \"$PRODUCT_BUNDLE_IDENTIFIER\"\nfi\n";
+			shellScript = "# App metadata is generated from LiveContainer/Info.plist before packaging.\ncp -n -r \"$SRCROOT\"/Resources/*.lproj \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH\"\necho 1\nif [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  python3 \"$SRCROOT/Scripts/embed-jit-helper.py\" \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" \"$PRODUCT_BUNDLE_IDENTIFIER\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -73,6 +73,8 @@
 	<true/>
 	<key>GCSupportsGameMode</key>
 	<true/>
+	<key>LCVersionInfo</key>
+	<string>$(CONFIGURATION) ($(CURRENT_PROJECT_VERSION))</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.games</string>
 	<key>LSApplicationQueriesSchemes</key>
