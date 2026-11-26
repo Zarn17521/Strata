@@ -163,10 +163,10 @@ jobs:
           expected = os.environ.get("ZN_INSTALLED_HOST_ID", "").strip() or "com.kdt.livecontainer"
           print("Archive host ID:", host_plist.get("CFBundleIdentifier"))
           print("Archive helper ID:", helper_plist.get("CFBundleIdentifier"))
-          files = [p for p in app.rglob("*.appext")
+          files = [p for p in app.rglob("*.appexpt")
                    if not any(part.endswith((".appex", ".framework", ".app"))
                               for part in p.relative_to(app).parts[:-1])]
-          print("Host .appext paths:", [str(p.relative_to(app)) for p in files])
+          print("Host .appexpt paths:", [str(p.relative_to(app)) for p in files])
           def read_registration(path):
               if path.is_file():
                   data = path.read_bytes()

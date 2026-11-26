@@ -118,7 +118,7 @@ final class ZNMemoryLabModel: ObservableObject {
                     "No Memory Helper extension was discovered.",
                     domain: "ZNMemoryLab.ExtensionDiscovery",
                     code: 22,
-                    reason: "Check that the embedded .appex is present, its provisioning profile allows it, and the .appext registration/binding metadata was generated."
+                    reason: "Check that the embedded .appex is present, its provisioning profile allows it, and the .appexpt registration/binding metadata was generated."
                 )
             }
 
@@ -219,8 +219,10 @@ final class ZNMemoryLabModel: ObservableObject {
         let actualHostBundleIdentifier = Bundle.main.bundleIdentifier ?? "(unavailable)"
         let availableMiB = os_proc_available_memory() / 1_048_576
         let thermal = ProcessInfo.processInfo.thermalState
-        let extensionMetadata = ((try? FileManager.default.contentsOfDirectory(at: Bundle.main.bundleURL, includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.pathExtension == "appext" }
+        // Xcode 27.2 writes custom extension-point registrations into Extensions/*.appexpt.
+        let extensionsDirectory = Bundle.main.bundleURL.appendingPathComponent("Extensions", isDirectory: true)
+        let extensionMetadata = ((try? FileManager.default.contentsOfDirectory(at: extensionsDirectory, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "appexpt" }
             .map { $0.path.replacingOccurrences(of: Bundle.main.bundlePath + "/", with: "") }
         let metadataList = extensionMetadata.isEmpty ? "not found in installed host bundle" : extensionMetadata.joined(separator: ", ")
         let errorText = error.map(describeError) ?? "none"
@@ -234,7 +236,7 @@ final class ZNMemoryLabModel: ObservableObject {
         Compiled helper host ID: \(expectedHostBundleIdentifier)
         Host ID matches binding: \(actualHostBundleIdentifier == expectedHostBundleIdentifier)
         Extension point: ZNMemoryHelper
-        Host .appext registration metadata: \(metadataList)
+        Host .appexpt registration metadata: \(metadataList)
         Helper PID: \(helperPID.map { String($0) } ?? "not connected")
         Physical RAM: \(ProcessInfo.processInfo.physicalMemory / 1_048_576) MiB
         Available process memory: \(availableMiB) MiB
