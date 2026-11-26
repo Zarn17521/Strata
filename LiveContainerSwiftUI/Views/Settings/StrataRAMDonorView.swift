@@ -54,13 +54,16 @@ final class StrataRAMDonorEngine {
     }
     
     /// Stop allocating when available headroom drops below this (bytes).
-    private let safetyHeadroom: UInt64 = 256 * 1024 * 1024
+    private let safetyHeadroom: UInt64 = 768 * 1024 * 1024
+    private let testLock = NSLock()
     
     private func shouldStop() -> Bool {
-        osAvailable() < safetyHeadroom
+        osAvailable() < safetyHeadroom + 128 * 1024 * 1024
     }
     
     func runCeilingTest(targetMB: Int) -> Result {
+        testLock.lock()
+        defer { releaseAll(); testLock.unlock() }
         var r = Result()
         r.physicalRAM = physicalRAM()
         r.osAvailable = osAvailable()
@@ -68,7 +71,7 @@ final class StrataRAMDonorEngine {
         
         let pageSize = Int(getpagesize())
         let chunkSize = 32 * 1024 * 1024  // 32 MB chunks (safer)
-        let targetBytes = targetMB * 1024 * 1024
+        let targetBytes = min(max(targetMB, 0), 2048) * 1024 * 1024
         var allocated = 0
         var mismatches: UInt64 = 0
         
@@ -87,10 +90,13 @@ final class StrataRAMDonorEngine {
             // Touch pages
             var i = 0
             while i < thisChunk {
-                ptr.storeBytes(of: UInt8(i & 0xFF), toByteOffset: i, as: UInt8.self)
+                ptr.storeBytes(of: UInt8(truncatingIfNeeded: i / pageSize), toByteOffset: i, as: UInt8.self)
                 i += pageSize
             }
             
+            for offset in stride(from: 0, to: thisChunk, by: pageSize) {
+                if ptr.load(fromByteOffset: offset, as: UInt8.self) != UInt8(truncatingIfNeeded: offset / pageSize) { mismatches += 1 }
+            }
             lock.lock()
             allocations.append(ptr)
             allocationSizes.append(thisChunk)
@@ -105,26 +111,29 @@ final class StrataRAMDonorEngine {
         r.pooledTouched = UInt64(allocated)
         r.pagesVerified = UInt64(allocated / max(pageSize, 1))
         r.mismatches = mismatches
-        r.exceedsLimit = r.physFootprint > r.osAvailable
+        r.exceedsLimit = false
         log += "\nFinal FP: \(r.physFootprint/(1024*1024)) MB | Start OS avail: \(r.osAvailable/(1024*1024)) MB\n"
-        log += r.exceedsLimit ? "Result: EXCEEDS LIMIT\n" : "Result: Within limit\n"
+        log += "Local diagnostic only; allocations automatically released. No bypass established.\n"
         r.log = log
         return r
     }
     
     func runDonorTest(targetMB: Int, donorCount: Int) -> Result {
+        testLock.lock()
+        defer { releaseAll(); testLock.unlock() }
         var r = Result()
         r.physicalRAM = physicalRAM()
         r.osAvailable = osAvailable()
         var log = "=== Donor Test (safe) ===\nTarget: \(targetMB) MB | Donors: \(donorCount)\nOS Available start: \(r.osAvailable / (1024*1024)) MB\n"
         
         let pageSize = Int(getpagesize())
-        let perDonor = (targetMB * 1024 * 1024) / max(donorCount, 1)
+        let groups = max(1, min(donorCount, 64))
+        let perDonor = (min(max(targetMB, 0), 2048) * 1024 * 1024) / groups
         var totalAllocated = 0
         var mismatches: UInt64 = 0
         var successDonors = 0
         
-        for d in 0..<donorCount {
+        for d in 0..<groups {
             if shouldStop() {
                 log += "Stopped at donor \(d) (low headroom)\n"
                 break
@@ -132,17 +141,20 @@ final class StrataRAMDonorEngine {
             
             // Cap each donor chunk so we don't allocate a huge block at once
             let safeSize = min(perDonor, 128 * 1024 * 1024) // max 128 MB per donor step
-            guard let ptr = malloc(safeSize) else {
+            guard safeSize > 0, let ptr = malloc(safeSize) else {
                 log += "Donor \(d) malloc failed\n"
                 continue
             }
             
             var i = 0
             while i < safeSize {
-                ptr.storeBytes(of: UInt8((d &+ i) & 0xFF), toByteOffset: i, as: UInt8.self)
+                ptr.storeBytes(of: UInt8(truncatingIfNeeded: d + i / pageSize), toByteOffset: i, as: UInt8.self)
                 i += pageSize
             }
             
+            for offset in stride(from: 0, to: safeSize, by: pageSize) {
+                if ptr.load(fromByteOffset: offset, as: UInt8.self) != UInt8(truncatingIfNeeded: d + offset / pageSize) { mismatches += 1 }
+            }
             lock.lock()
             allocations.append(ptr)
             allocationSizes.append(safeSize)
@@ -158,9 +170,9 @@ final class StrataRAMDonorEngine {
         r.liveDonors = successDonors
         r.pagesVerified = UInt64(totalAllocated / max(pageSize, 1))
         r.mismatches = mismatches
-        r.exceedsLimit = (r.pooledTouched > r.osAvailable) || (r.physFootprint > UInt64(Double(r.osAvailable) * 0.85))
+        r.exceedsLimit = false
         log += "\nFinal FP: \(r.physFootprint/(1024*1024)) MB | Pooled: \(r.pooledTouched/(1024*1024)) MB\n"
-        log += r.exceedsLimit ? "Result: EXCEEDS LIMIT, bypass works\n" : "Result: Within normal limit\n"
+        log += "Local diagnostic only; allocations automatically released. No bypass established.\n"
         r.log = log
         return r
     }
@@ -180,7 +192,7 @@ final class StrataRAMDonorEngine {
 // MARK: - UI
 
 struct StrataRAMDonorView: View {
-    @State private var resultLog: String = "Ready. Safe mode: stops before jetsam."
+    @State private var resultLog: String = "Ready. Diagnostic reserves headroom; jetsam remains possible."
     @State private var isRunning = false
     @State private var physicalRAM: String = "—"
     @State private var osAvailable: String = "—"
@@ -195,10 +207,10 @@ struct StrataRAMDonorView: View {
                 GroupBox("Memory Status") {
                     VStack(alignment: .leading, spacing: 8) {
                         row("Physical RAM", physicalRAM)
-                        row("OS Available (limit)", osAvailable)
-                        row("Phys Footprint", physFootprint)
-                        row("Pooled + Touched", pooled)
-                        row("Live Donors", donors)
+                        row("Available headroom", osAvailable)
+                        row("Footprint / test peak", physFootprint)
+                        row("Test bytes touched", pooled)
+                        row("Local allocation groups", donors)
                         Text(status)
                             .font(.headline)
                             .foregroundColor(status.contains("EXCEEDS") ? .green : .primary)
@@ -316,11 +328,11 @@ struct StrataRAMDonorView: View {
     
     private func apply(result: StrataRAMDonorEngine.Result) {
         physicalRAM = mb(result.physicalRAM)
-        osAvailable = mb(result.osAvailable)
+        osAvailable = mb(StrataRAMDonorEngine.shared.osAvailable())
         physFootprint = mb(result.physFootprint)
         pooled = mb(result.pooledTouched)
         donors = "\(result.liveDonors)"
-        status = result.exceedsLimit ? "EXCEEDS LIMIT, bypass works" : "Within limit"
+        status = "Diagnostic ended; memory released"
         resultLog = result.log
     }
     
