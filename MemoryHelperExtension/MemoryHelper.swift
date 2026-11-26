@@ -37,12 +37,17 @@ private final class MemoryPeer: XPCPeerHandler {
                 reply["helperStage"] = "allocation request received"
                 let region = try allocate()
                 reply["region"] = region
-                reply["helperStage"] = "vm_allocate succeeded; xpc_shmem_create succeeded; marker initialized; shared-memory reply prepared"
+                reply["helperStage"] = "shm_open succeeded; ftruncate succeeded; mmap(MAP_SHARED) succeeded; xpc_shmem_create succeeded; marker initialized; shared-memory reply prepared"
             case "release":
                 let result = releaseAllocation()
                 guard result == KERN_SUCCESS else {
-                    let underlying = NSError(domain: NSMachErrorDomain, code: Int(result), userInfo: [NSLocalizedDescriptionKey: "vm_deallocate returned \(result)."])
-                    throw NSError(domain: "ZNMemoryHelper", code: 4, userInfo: [NSLocalizedDescriptionKey: "The helper could not release its 128 MiB allocation.", NSUnderlyingErrorKey: underlying])
+                    let errorCode = Int32(result)
+                    let underlying = NSError(domain: NSPOSIXErrorDomain, code: Int(errorCode), userInfo: [NSLocalizedDescriptionKey: "munmap failed: \(String(cString: strerror(errorCode)))."])
+                    throw NSError(domain: "ZNMemoryHelper", code: 4, userInfo: [
+                        NSLocalizedDescriptionKey: "The helper could not release its 128 MiB shared mapping.",
+                        "ZNMemoryHelperStage": "munmap failed (errno \(errorCode))",
+                        NSUnderlyingErrorKey: underlying
+                    ])
                 }
                 reply["released"] = true
             default:
@@ -68,12 +73,16 @@ private final class MemoryPeer: XPCPeerHandler {
     private func releaseAllocation() -> kern_return_t {
         allocation.withLock { address in
             guard let base = address else { return KERN_SUCCESS }
-            let size: vm_size_t = 128 * 1024 * 1024
-            let result = vm_deallocate(mach_task_self_, base, size)
-            if result == KERN_SUCCESS {
-                address = nil
+            let size = 128 * 1024 * 1024
+            guard let pointer = UnsafeMutableRawPointer(bitPattern: UInt(base)) else {
+                return KERN_INVALID_ADDRESS
             }
-            return result
+            guard munmap(pointer, size) == 0 else {
+                let errorCode = errno
+                return kern_return_t(errorCode == 0 ? EIO : errorCode)
+            }
+            address = nil
+            return KERN_SUCCESS
         }
     }
 
@@ -81,36 +90,80 @@ private final class MemoryPeer: XPCPeerHandler {
         try allocation.withLock { address in
             guard address == nil else {
                 throw NSError(domain: "ZNMemoryHelper", code: 1, userInfo: [
-                    NSLocalizedDescriptionKey: "An allocation is already active.",
-                    "ZNMemoryHelperStage": "allocation rejected: an earlier allocation is still active"
+                    NSLocalizedDescriptionKey: "A shared-memory allocation is already active.",
+                    "ZNMemoryHelperStage": "allocation rejected: an earlier mapping is still active"
                 ])
             }
-            let size: vm_size_t = 128 * 1024 * 1024
-            var base: vm_address_t = 0
-            let allocationResult = vm_allocate(mach_task_self_, &base, size, VM_FLAGS_ANYWHERE)
-            guard allocationResult == KERN_SUCCESS else {
-                let underlying = NSError(domain: NSMachErrorDomain, code: Int(allocationResult), userInfo: [NSLocalizedDescriptionKey: "vm_allocate returned \(allocationResult)."])
-                throw NSError(domain: "ZNMemoryHelper", code: 2, userInfo: [
-                    NSLocalizedDescriptionKey: "The helper could not allocate the fixed 128 MiB test region.",
-                    "ZNMemoryHelperStage": "vm_allocate failed (\(allocationResult))",
-                    NSUnderlyingErrorKey: underlying
-                ])
+
+            let size = 128 * 1024 * 1024
+            let name = "/zn-memory-lab-\(UUID().uuidString)"
+            let descriptor = name.withCString {
+                shm_open($0, O_CREAT | O_EXCL | O_RDWR, mode_t(S_IRUSR | S_IWUSR))
             }
-            guard let pointer = UnsafeMutableRawPointer(bitPattern: UInt(base)), let shared = mlx_create_shared_memory(pointer, Int(size)) else {
-                let releaseResult = vm_deallocate(mach_task_self_, base, size)
-                var info: [String: Any] = [
-                    NSLocalizedDescriptionKey: "xpc_shmem_create failed to export the fixed 128 MiB region.",
-                    "ZNMemoryHelperStage": "vm_allocate succeeded; xpc_shmem_create failed"
-                ]
-                if releaseResult != KERN_SUCCESS {
-                    info[NSUnderlyingErrorKey] = NSError(domain: NSMachErrorDomain, code: Int(releaseResult), userInfo: [NSLocalizedDescriptionKey: "Cleanup vm_deallocate returned \(releaseResult)."])
+            guard descriptor >= 0 else {
+                throw posixFailure(
+                    "shm_open",
+                    stage: "shm_open failed"
+                )
+            }
+            defer {
+                _ = close(descriptor)
+                name.withCString { _ = shm_unlink($0) }
+            }
+
+            guard ftruncate(descriptor, off_t(size)) == 0 else {
+                throw posixFailure(
+                    "ftruncate",
+                    stage: "shm_open succeeded; ftruncate failed"
+                )
+            }
+
+            let mapping = mmap(nil, size, PROT_READ | PROT_WRITE, MAP_SHARED, descriptor, 0)
+            guard let pointer = mapping, pointer != MAP_FAILED else {
+                throw posixFailure(
+                    "mmap(MAP_SHARED)",
+                    stage: "shm_open and ftruncate succeeded; mmap(MAP_SHARED) failed"
+                )
+            }
+
+            var mappingOwnedByHelper = true
+            defer {
+                if mappingOwnedByHelper {
+                    _ = munmap(pointer, size)
                 }
-                throw NSError(domain: "ZNMemoryHelper", code: 3, userInfo: info)
             }
-            pointer.initializeMemory(as: UInt8.self, repeating: 0, count: Int(size))
+
+            pointer.initializeMemory(as: UInt8.self, repeating: 0, count: size)
             pointer.storeBytes(of: UInt64(0x5A4E4D454D4C4142), as: UInt64.self)
-            address = base
+
+            guard let shared = mlx_create_shared_memory(pointer, size) else {
+                throw NSError(domain: "ZNMemoryHelper", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: "xpc_shmem_create failed to export the MAP_SHARED 128 MiB region.",
+                    "ZNMemoryHelperStage": "shm_open, ftruncate, and mmap(MAP_SHARED) succeeded; xpc_shmem_create returned nil"
+                ])
+            }
+
+            address = vm_address_t(UInt(bitPattern: pointer))
+            mappingOwnedByHelper = false
             return shared
         }
+    }
+
+    private func posixFailure(_ operation: String, stage: String) -> NSError {
+        let errorCode = errno
+        let underlying = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(errorCode),
+            userInfo: [NSLocalizedDescriptionKey: "\(operation) failed: \(String(cString: strerror(errorCode)))."]
+        )
+        return NSError(
+            domain: "ZNMemoryHelper",
+            code: 5,
+            userInfo: [
+                NSLocalizedDescriptionKey: "The helper could not create the shared 128 MiB test mapping.",
+                "ZNMemoryHelperStage": stage,
+                NSUnderlyingErrorKey: underlying
+            ]
+        )
     }
 }
