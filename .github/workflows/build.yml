@@ -61,9 +61,9 @@ jobs:
               if source.count(old) != 1:
                   raise SystemExit(f"Expected exactly one Release binding in {filename}")
               path.write_text(source.replace(old, new, 1))
-          # Keep the source IPA's original bundle identifier and app-group settings.
-          # SideStore must update the existing app using the same account and suffix.
-          print("Configured the helper and diagnostic for the final installed identity.")
+          # The Archive step also builds the host with this exact identifier so Xcode
+          # generates its .appexpt registration under the final installed identity.
+          print("Configured the host, helper, and diagnostic for the final installed identity.")
           PY
 
       - name: Restore pinned upstream idevice FFI library for StikJIT
@@ -134,11 +134,18 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.file_to_build.outputs.file_to_build }}
+          ZN_INSTALLED_HOST_ID: ${{ inputs.installed_host_bundle_id }}
         run: |
           set +e
           # Preserve the raw compiler output; xcpretty often hides the exact Swift
           # diagnostic while still reporting "SwiftCompile failed".
-          xcodebuild archive -archivePath "$archive_path" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" -sdk iphoneos -arch arm64 -configuration Release 2>&1 | tee "$RUNNER_TEMP/strata-xcodebuild.log" | xcpretty
+          bundle_id_setting=()
+          if [[ -n "$ZN_INSTALLED_HOST_ID" ]]; then
+            # The host bundle ID must match the ID compiled into the helper binding.
+            # This also makes Xcode generate the host .appexpt registration for that ID.
+            bundle_id_setting+=("LIVECONTAINER_BUNDLE_IDENTIFIER=$ZN_INSTALLED_HOST_ID")
+          fi
+          xcodebuild archive -archivePath "$archive_path" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" -sdk iphoneos -arch arm64 -configuration Release "${bundle_id_setting[@]}" 2>&1 | tee "$RUNNER_TEMP/strata-xcodebuild.log" | xcpretty
           result="${PIPESTATUS[0]}"
           set -e
           if [ "$result" -ne 0 ]; then
@@ -161,7 +168,8 @@ jobs:
           host_plist = plistlib.loads((app / "Info.plist").read_bytes())
           helper_plist = plistlib.loads((helper / "Info.plist").read_bytes())
           expected = os.environ.get("ZN_INSTALLED_HOST_ID", "").strip() or "com.kdt.livecontainer"
-          print("Archive host ID:", host_plist.get("CFBundleIdentifier"))
+          archive_host = host_plist.get("CFBundleIdentifier")
+          print("Archive host ID:", archive_host)
           print("Archive helper ID:", helper_plist.get("CFBundleIdentifier"))
           files = [p for p in app.rglob("*.appexpt")
                    if not any(part.endswith((".appex", ".framework", ".app"))
@@ -185,8 +193,10 @@ jobs:
           print("Helper plist names custom point:", helper_point)
           print("Helper plist includes expected host:", helper_host)
           if os.environ.get("ZN_INSTALLED_HOST_ID", "").strip():
-              if not (host_point and helper_point and helper_host):
-                  raise SystemExit("Personalized archive metadata not verified. Inspect this report before installing.")
+              host_matches = archive_host == expected
+              print("Archive host ID matches installed ID:", host_matches)
+              if not (host_matches and host_point and helper_point and helper_host):
+                  raise SystemExit("Personalized archive metadata or host identity not verified. Inspect this report before installing.")
           elif not (host_point and helper_point and helper_host):
               print("::warning::Memory Helper registration or binding could not be verified in the generic archive.")
           PY
