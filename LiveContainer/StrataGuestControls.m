@@ -2528,13 +2528,17 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
 @property(nonatomic) CGFloat deckLiftOffset;
 @property(nonatomic, weak) UIView *deckRoot;
 @end
+#include "ZNBootIntro.h"
+
 @implementation StrataGuestControls
 - (void)installInWindow:(UIWindow *)window {
     if (!window || [self.installedWindows containsObject:window]) return;
     StrataApplyNxGameOrientation(window, self.group);
     StrataInstallNxSkin(window, self.group);
-    if (!self.hostMode && ![window isKindOfClass:StrataControlsWindow.class])
+    if (!self.hostMode && ![window isKindOfClass:StrataControlsWindow.class]) {
         ZNInstallStandaloneHUD(window,self.group);
+        ZNBootInstall(window,self.group,self.currentKey);
+    }
     // The guest's Metal view can be created after the window becomes visible.
     // One-off retries are bounded; no periodic cleanup or render-thread hooks.
     __weak UIWindow *weakWindow = window;

@@ -597,6 +597,16 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         // A false JIT request uses the original normal-launch path, which
         // still honors a guest's mandatory/per-app JIT configuration.
         let prefs = LCUtils.appGroupUserDefault
+        // Intro eligibility is keyed by the guest, not a global one-shot flag.
+        // Ordinary tools and SideStore do not show a game boot animation.
+        let category = LiveBoardSharedCategories.category(forKey: recentKey)?.lowercased() ?? ""
+        let identifier = app.bundleIdentifier.lowercased()
+        let gameLike = ["games", "ports", "emulators", "game", "emu"].contains(category)
+            || ["nxnative", "melonx", "melocafe", "melovertex", "dolphin", "ppsspp", "retroarch", "manicemu", "folium", "delta", "cemu", "botwrecomp"].contains(where: { identifier.contains($0) })
+        var introKeys = prefs.stringArray(forKey: "ZNBootIntroEligibleKeys") ?? []
+        introKeys.removeAll { $0 == recentKey }
+        if gameLike { introKeys.append(recentKey) }
+        prefs.set(introKeys, forKey: "ZNBootIntroEligibleKeys")
         let automaticJIT = useDockLaunchPreferences && multitask != true
             && prefs.bool(forKey: "ZNAutoBuiltInJIT")
             && prefs.integer(forKey: "LCJITEnablerType") == JITEnablerType.BuiltIn.rawValue

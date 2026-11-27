@@ -90,6 +90,14 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/strata-skin-venv"
           "$RUNNER_TEMP/strata-skin-venv/bin/python" -m pip install --disable-pip-version-check "opencv-python-headless==4.13.0.92"
           "$RUNNER_TEMP/strata-skin-venv/bin/python" .github/scripts/embed_nxnative_skins.py
+      - name: Prepare ZN game boot intro
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg >/dev/null || brew install ffmpeg
+          "$RUNNER_TEMP/strata-skin-venv/bin/python" .github/scripts/prepare_zn_boot_intro.py
+          test -s Resources/ZN_Library_Boot_Intro_Elegant.mp4
+          test -s Resources/ZN_Boot_Intro_Elegant_Preview.png
       - name: Archive
         env:
           scheme: ${{ steps.scheme.outputs.scheme }}
