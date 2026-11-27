@@ -431,8 +431,21 @@ struct StrataSwitchboard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("ZN's Library")
             Spacer(minLength: 0)
-            // Settings now occupies the former Optimize shortcut.
+            // Header shortcuts keep the dock focused on gameplay controls.
             // Low Memory Mode remains available in Settings > Performance.
+            Button {
+                controller.stop()
+                openManagement()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(foreground)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Manage apps")
+            .accessibilityIdentifier("switchboard.manageApps")
             Button {
                 controller.stop()
                 NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
@@ -468,13 +481,6 @@ struct StrataSwitchboard: View {
         // captions are visual labels only; tap and long-press actions stay on
         // their existing icon controls.
         HStack(spacing: 6) {
-            shortcutCell("Apps") {
-                roundButton("plus", label: "Manage apps") {
-                    controller.stop(); openManagement()
-                }
-                .accessibilityIdentifier("switchboard.manageApps")
-            }
-
             shortcutCell("Skin") {
                 skinShortcut
                     .accessibilityIdentifier("switchboard.toggle.skin")
@@ -500,7 +506,7 @@ struct StrataSwitchboard: View {
                 .accessibilityIdentifier("switchboard.toggle.darkMode")
             }
         }
-        // ONE continuous outline around all four icon+label columns.
+        // ONE continuous outline around all three icon+label columns.
         // The stroke and captions share the dark/light foreground.
         .padding(.horizontal, 8)
         .padding(.vertical, 10)
