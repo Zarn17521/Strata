@@ -585,7 +585,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         // Shared entry point for normal, JIT, Game Mode and HUD launches.
         NotificationCenter.default.post(name: LiveBoardArtworkStore.trimNotification, object: nil)
         let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }.first { $0.isKeyWindow }
-        LiveBoardOrientation.setLandscape(false, window: window)
+        LiveBoardOrientation.releaseForGuestLaunch(window: window)
         if app.appInfo is BuiltInSideStoreAppInfo {
             LCUtils.openSideStore(delegate: self)
             return

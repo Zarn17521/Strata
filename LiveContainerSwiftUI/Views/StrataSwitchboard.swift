@@ -118,7 +118,8 @@ struct StrataSwitchboard: View {
             }
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
-        .background(LiveBoardOrientationLock(mask: homeLandscape ? .landscape : .portrait))
+        .background(LiveBoardOrientationLock(mask: homeLandscape ? .landscape : .portrait,
+                                             active: visible && !busy))
         .onChange(of: selectedKey) { _ in
             if sounds && phase == .active && visible && !busy { audio.play() }
         }
@@ -465,7 +466,8 @@ struct StrataSwitchboard: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Library screen rotation")
+            .disabled(busy)
+            .accessibilityLabel("Library rotation")
             .accessibilityValue(homeLandscape ? "Landscape" : "Portrait")
             .accessibilityHint("Changes library orientation only, not game orientation.")
             .accessibilityIdentifier("switchboard.toggle.homeOrientation")
@@ -510,8 +512,8 @@ struct StrataSwitchboard: View {
                     .accessibilityIdentifier("switchboard.toggle.skin")
             }
 
-            shortcutCell("Rotation") {
-                if let selected {
+            shortcutCell("Game Rotation") {
+                if let selected, !(selected.appInfo is StrataPhoneAppInfo), !(selected.appInfo is BuiltInSideStoreAppInfo), !(selected.appInfo is StrataSettingsAppInfo) {
                     // The exact same per-app LCOrientationLock property used
                     // by App Settings > Orientation. No second global toggle.
                     StrataAppRotationShortcut(app: selected, surface: buttonSurface, foreground: foreground)
@@ -751,13 +753,17 @@ private struct StrataAppRotationShortcut: View {
         }
     }
     var body: some View {
-        Button {
-            // Mirror all three values from the actual App Settings picker:
-            // Disabled (Auto) -> Landscape -> Portrait -> Disabled.
-            switch app.uiOrientationLock {
-            case .Disabled: app.uiOrientationLock = .Landscape
-            case .Landscape: app.uiOrientationLock = .Portrait
-            default: app.uiOrientationLock = .Disabled
+        Menu {
+            // Only persist this selected guest's existing setting. Do not
+            // request UIKit geometry or touch the library preference here.
+            Button { app.uiOrientationLock = .Disabled } label: {
+                if mode == .Disabled { Label("Auto", systemImage: "checkmark") } else { Text("Auto") }
+            }
+            Button { app.uiOrientationLock = .Portrait } label: {
+                if mode == .Portrait { Label("Portrait", systemImage: "checkmark") } else { Text("Portrait") }
+            }
+            Button { app.uiOrientationLock = .Landscape } label: {
+                if mode == .Landscape { Label("Landscape", systemImage: "checkmark") } else { Text("Landscape") }
             }
         } label: {
             Image(systemName: symbol)
@@ -768,7 +774,8 @@ private struct StrataAppRotationShortcut: View {
                 .background(Circle().fill(surface))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("App orientation: " + modeName + ". Tap to change for " + app.displayName)
+        .accessibilityLabel("Game rotation for " + app.displayName)
+        .accessibilityValue(modeName)
         .accessibilityHint("Changes this app's Orientation Lock in App Settings. Applies on next launch.")
     }
 }
