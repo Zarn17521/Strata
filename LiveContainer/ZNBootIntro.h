@@ -36,7 +36,7 @@ static BOOL ZNBootLoadingText(UIView *node, NSString **title, NSString **detail,
                 *title=([lower containsString:@"pipeline"]||[lower containsString:@"pso"])?
                     @"Loading Pipelines…":@"Loading Shaders…";
                 for (UILabel *other in labels) {
-                    if (other!=label && [other.text rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet].location!=NSNotFound) {
+                    if (other!=label && other.text.length && [other.text rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet].location!=NSNotFound) {
                         *detail=other.text;
                         break;
                     }
@@ -50,6 +50,20 @@ static BOOL ZNBootLoadingText(UIView *node, NSString **title, NSString **detail,
     return NO;
 }
 
+static NSURL *ZNBootAsset(NSString *name, NSString *ext) {
+    NSBundle *host=NSUserDefaults.lcMainBundle;
+    NSURL *url=[host URLForResource:name withExtension:ext];
+    if (url) return url;
+    // LiveProcess may use its .appex as lcMainBundle; resources live in
+    // the containing host app, not the loaded guest's overwritten main bundle.
+    NSURL *root=host.bundleURL;
+    for (NSUInteger i=0;root && i<4;i++,root=[root URLByDeletingLastPathComponent]) {
+        if (![root.pathExtension isEqualToString:@"app"]) continue;
+        NSURL *candidate=[root URLByAppendingPathComponent:[name stringByAppendingPathExtension:ext]];
+        if ([NSFileManager.defaultManager fileExistsAtPath:candidate.path]) return candidate;
+    }
+    return nil;
+}
 @implementation ZNBootIntroView
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self=[super initWithFrame:frame])) return nil;
@@ -58,9 +72,8 @@ static BOOL ZNBootLoadingText(UIView *node, NSString **title, NSString **detail,
     self.layer.zPosition=20000;
     self.accessibilityViewIsModal=YES;
     self.began=CACurrentMediaTime();
-    NSBundle *bundle=NSUserDefaults.lcMainBundle;
-    NSURL *url=[bundle URLForResource:@"ZN_Library_Boot_Intro_Elegant" withExtension:@"mp4"];
-    NSString *posterPath=[bundle pathForResource:@"ZN_Boot_Intro_Elegant_Preview" ofType:@"png"];
+    NSURL *url=ZNBootAsset(@"ZN_Library_Boot_Intro_Elegant",@"mp4");
+    NSString *posterPath=ZNBootAsset(@"ZN_Boot_Intro_Elegant_Preview",@"png").path;
     UIImage *still=posterPath.length?[UIImage imageWithContentsOfFile:posterPath]:nil;
     self.poster=[[UIImageView alloc] initWithImage:still];
     self.poster.contentMode=UIViewContentModeScaleAspectFit;
@@ -78,6 +91,8 @@ static BOOL ZNBootLoadingText(UIView *node, NSString **title, NSString **detail,
         self.player.volume=.8;
         self.movie=[AVPlayerLayer playerLayerWithPlayer:self.player];
         self.movie.videoGravity=AVLayerVideoGravityResizeAspect;
+        self.movie.backgroundColor=UIColor.blackColor.CGColor;
+        self.poster.hidden=YES; self.fallbackLogo.hidden=YES;
         [self.layer addSublayer:self.movie];
         [self.player play];
     } else {
@@ -118,6 +133,7 @@ static BOOL ZNBootLoadingText(UIView *node, NSString **title, NSString **detail,
     self.frozen=YES;
     [self.player pause]; [self.movie removeFromSuperlayer];
     self.movie=nil; self.player=nil;
+    self.poster.hidden=self.poster.image==nil; self.fallbackLogo.hidden=self.poster.image!=nil;
     self.poster.alpha=1; self.fallbackLogo.alpha=1;
 }
 - (void)finish {
@@ -142,6 +158,11 @@ static BOOL ZNBootLoadingText(UIView *node, NSString **title, NSString **detail,
     if (loading) self.lastLoading=now;
     self.status.text=loading?title:nil; self.count.text=loading?detail:nil;
     if (now-self.began<5.0) return;
+    // A slow AVPlayer start can lag behind the wall clock. Let the short
+    // clip finish naturally, but never block forever on a broken resource.
+    if (self.player && now-self.began<8.0 &&
+        self.player.currentItem.status!=AVPlayerItemStatusFailed &&
+        CMTimeGetSeconds(self.player.currentTime)<4.95) return;
     [self freezeLogo]; // never loop or replay sound while loading
     if (loading || (self.lastLoading>0 && now-self.lastLoading<.65)) return;
     [self finish];
