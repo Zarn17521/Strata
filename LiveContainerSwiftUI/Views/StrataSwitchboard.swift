@@ -31,6 +31,7 @@ struct StrataSwitchboard: View {
     @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     @State private var showingSkinSettings = false
     @State private var showingJITSettings = false
+    @State private var informationPage: ZNLibraryInformationPage?
     @State private var choosingCover = false
     @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var coverKey = ""
@@ -125,11 +126,23 @@ struct StrataSwitchboard: View {
                     }
                     Spacer(minLength: 4)
                     Divider().overlay(foreground.opacity(0.15))
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "gamecontroller.fill")
                             .foregroundStyle(controller.connected ? Color.green : Color.gray)
                             .accessibilityLabel(controller.connected ? "Controller connected" : "Controller disconnected")
-                        Spacer()
+                        Button {
+                            openInformation(.guide)
+                        } label: {
+                            Text("Zn Library Guide")
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(busy)
+                        .accessibilityIdentifier("switchboard.open.guide")
+                        Spacer(minLength: 4)
                         Menu {
                             ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
                                 Button { if presentation != name { presentation = name } } label: {
@@ -138,10 +151,17 @@ struct StrataSwitchboard: View {
                             }
                         } label: { Label("Layout", systemImage: "square.grid.2x2") }
                         .accessibilityIdentifier("switchboard.libraryLayout")
-                        if controller.connected {
-                            HStack(spacing: 18) { Label("Options", systemImage: controller.detailsSymbol); Label("Open", systemImage: controller.confirmSymbol) }
+                    }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 3)
+                    if controller.connected {
+                        HStack(spacing: 18) {
+                            Label("Options", systemImage: controller.detailsSymbol)
+                            Label("Open", systemImage: controller.confirmSymbol)
                         }
-                    }.font(.subheadline).padding(.horizontal, margin).padding(.vertical, 10)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.horizontal, margin)
+                        .padding(.bottom, 4)
+                    }
                 }
 
                 // Keep the launcher unobstructed. The skin is a separate preview sheet,
@@ -221,6 +241,10 @@ struct StrataSwitchboard: View {
                     }
                 }
             }.navigationViewStyle(.stack)
+        }
+        .fullScreenCover(item: $informationPage, onDismiss: bind) { page in
+            ZNLibraryInformationView(page: page, darkMode: darkMode)
+                .preferredColorScheme(darkMode ? .dark : .light)
         }
         .fullScreenCover(isPresented: $showingJITSettings, onDismiss: bind) {
             LiveBoardJITSetup()
@@ -586,6 +610,20 @@ struct StrataSwitchboard: View {
             // Header shortcuts keep the dock focused on gameplay controls.
             // Low Memory Mode remains available in Settings > Performance.
             Button {
+                openInformation(.about)
+            } label: {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 26, weight: .semibold))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(foreground)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
+            .accessibilityLabel("About Me")
+            .accessibilityIdentifier("switchboard.open.aboutMe")
+            Button {
                 darkMode.toggle()
             } label: {
                 Image(systemName: darkMode ? "moon.fill" : "moon")
@@ -878,8 +916,14 @@ struct StrataSwitchboard: View {
         recentOnly = index == 1
         category = index >= 2 ? categories[index - 2] : nil
     }
+    private func openInformation(_ page: ZNLibraryInformationPage) {
+        guard !busy else { return }
+        controller.stop()
+        audio.stop()
+        informationPage = page
+    }
     private func bind() {
-        guard visible, !showingWhatsNew, !showingJITSettings, !showingSkinSettings, !editingLibrary, !choosingCover, !busy else { return }
+        guard visible, informationPage == nil, !showingWhatsNew, !showingJITSettings, !showingSkinSettings, !editingLibrary, !choosingCover, !busy else { return }
         controller.onCommand = { command in
             let items = filtered
             let keys = orderedPageKeys(items)
