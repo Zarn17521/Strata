@@ -466,17 +466,8 @@ struct StrataSwitchboard: View {
             Button {
                 homeLandscape.toggle()
             } label: {
-                Image(systemName: "iphone")
-                    .rotationEffect(.degrees(homeLandscape ? 90 : 0))
-                    .overlay(alignment: .topTrailing) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .bold))
-                            .padding(2)
-                            .background(background, in: Circle())
-                            .offset(x: 5, y: -3)
-                    }
-                    .font(.system(size: 23, weight: .semibold))
-                    .symbolRenderingMode(.monochrome)
+                ZNLibraryRotateIcon(landscape: homeLandscape)
+                    .frame(width: 32, height: 32)
                     .foregroundStyle(foreground)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -490,8 +481,9 @@ struct StrataSwitchboard: View {
                 controller.stop()
                 NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
             } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 24, weight: .semibold))
+                Image(systemName: "gearshape")
+                    .font(.system(size: 29, weight: .semibold))
+                    .symbolRenderingMode(.monochrome)
                     .foregroundStyle(foreground)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -913,5 +905,49 @@ private struct ZNLinkCap: Shape {
         p.addLine(to: CGPoint(x: 14, y: 69))
         p.closeSubpath()
         return znScaledPath(p, in: rect)
+    }
+}
+
+
+// Monochrome two-arrow phone rotation glyph, matching the header reference.
+// Only the phone rotates to show the current library orientation.
+private struct ZNLibraryRotateIcon: View {
+    let landscape: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            ZStack {
+                Path { p in
+                    // Upper clockwise arrow.
+                    p.move(to: CGPoint(x: 7, y: 7))
+                    p.addQuadCurve(to: CGPoint(x: 28, y: 12), control: CGPoint(x: 21, y: -3))
+                    p.move(to: CGPoint(x: 23, y: 9))
+                    p.addLine(to: CGPoint(x: 28, y: 12))
+                    p.addLine(to: CGPoint(x: 30, y: 6))
+                    // Lower clockwise arrow.
+                    p.move(to: CGPoint(x: 25, y: 25))
+                    p.addQuadCurve(to: CGPoint(x: 4, y: 20), control: CGPoint(x: 11, y: 35))
+                    p.move(to: CGPoint(x: 9, y: 23))
+                    p.addLine(to: CGPoint(x: 4, y: 20))
+                    p.addLine(to: CGPoint(x: 2, y: 26))
+                }
+                .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                .frame(width: 32, height: 32)
+                VStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 2.7)
+                        .strokeBorder(lineWidth: 1.8)
+                        .frame(width: 12, height: 19)
+                        .overlay(alignment: .bottom) {
+                            Capsule().frame(width: 4.5, height: 1.5).padding(.bottom, 3)
+                        }
+                }
+                .rotationEffect(.degrees(landscape ? 90 : 0))
+            }
+            .frame(width: 32, height: 32)
+            .scaleEffect(side / 32)
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .accessibilityHidden(true)
     }
 }
