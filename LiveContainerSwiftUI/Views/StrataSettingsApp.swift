@@ -326,8 +326,9 @@ struct StrataNxPortraitSkinSettings: View {
         availableSkins.first { $0.id == themeID } ?? originalSkins[dark ? 1 : 0]
     }
     private var finishSelection: Binding<String> {
-        Binding(get: { activeTheme.id }, set: { finish in
-            themeID = finish
+        Binding(get: { style }, set: { finish in
+            // Preserve the old default shell before changing the global keys.
+            if themeID.isEmpty { themeID = activeTheme.id }
             style = finish
         })
     }
@@ -394,6 +395,7 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
+                Text("Button Style").font(.subheadline.weight(.semibold))
                 skinChoices([("Pearl Light", "pearl"), ("AMOLED Dark", "amoled")], selection: finishSelection)
                 .accessibilityIdentifier("settings.nxnative.builtinStyle")
 
@@ -418,12 +420,12 @@ struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Built-in Skin")
             } footer: {
-                Text("Choose a picture to apply its theme. Choose Pearl Light or AMOLED Dark to use the original skins. Restart NxNative to apply.")
+                Text("Button Style applies to all built-in skins without changing their artwork. Choose a picture to change the shell independently. Restart NxNative to apply. Full Screen retains native controls.")
             }
         }
         .navigationTitle("NxNative Controller Skins")
         .onAppear {
-            if LCUtils.appGroupUserDefault.string(forKey: "ZNCustomSkinThemeID") == nil {
+            if themeID.isEmpty {
                 themeID = style
             }
         }
@@ -456,11 +458,9 @@ struct StrataNxPortraitSkinSettings: View {
 
     @ViewBuilder
     private func builtInThemeCard(_ theme: StrataNxBuiltInSkin) -> some View {
-        let original = originalSkins.contains { $0.id == theme.id }
-        let cardDark = original ? theme.id == "amoled" : dark
+        let cardDark = dark
         let selected = activeTheme.id == theme.id
         Button {
-            if original { style = theme.id }
             themeID = theme.id
             enabled = true
         } label: {

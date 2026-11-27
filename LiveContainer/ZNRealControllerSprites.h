@@ -50,7 +50,7 @@
     [self.znSprites removeAllObjects];
     self.znSpriteBounds=self.bounds;
     BOOL wide=StrataNxIsWideSkin(self);
-    BOOL dark=ZNUsesAMOLEDButtons(self.themeIdentifier,self.darkTheme);
+    BOOL dark=self.buttonDark;
     CGSize ref=land?CGSizeMake(1792,1008):CGSizeMake(923,2000);
     ZNVisitControllerKeys(land,!dark||StrataNxIsPreparedPhoto(image),^(NSString *key, CGPoint centre, CGSize px, NSInteger role, NSString *label){
         [self znSpriteForKey:key centre:centre pixels:px art:StrataNxControlFrame(self.bounds,image,wide,centre.x) reference:ref kind:role label:label dark:dark];

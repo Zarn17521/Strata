@@ -1013,10 +1013,10 @@ static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
         default: return CGPointMake(NAN,NAN);
     }
 }
-// Single control style and reference dimensions for preview and live sprites.
-// Only the explicit AMOLED finish keeps its old graphite buttons.
-static BOOL ZNUsesAMOLEDButtons(NSString *identifier, BOOL dark) {
-    return identifier.length ? [identifier isEqualToString:@"amoled"] : dark;
+// Shell identity and global button finish are independent. An empty legacy
+// theme ID uses the previously selected finish as its initial shell.
+static BOOL ZNUsesAMOLEDShell(NSString *identifier, BOOL buttonDark) {
+    return identifier.length ? [identifier isEqualToString:@"amoled"] : buttonDark;
 }
 static void ZNVisitControllerKeys(BOOL land, BOOL pearlSizes, void (^visit)(NSString *,CGPoint,CGSize,NSInteger,NSString *)) {
     const NSInteger roles[]={StrataArtL,StrataArtZL,StrataArtR,StrataArtZR,StrataArtMinus,StrataArtPlus,StrataArtDpad,StrataArtLeftStick,StrataArtRightStick};
@@ -1113,7 +1113,8 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic) CGRect lastArtworkLayoutBounds;
 @property(nonatomic) BOOL fullScreenMode;
 - (UIImage *)artworkForPortrait:(BOOL)portrait;
-@property(nonatomic) BOOL darkTheme;
+@property(nonatomic) BOOL darkTheme; // shell only
+@property(nonatomic) BOOL buttonDark; // shared global controller finish
 @property(nonatomic, copy) NSString *sharedGroup;
 @property(nonatomic, copy) NSArray<NSDictionary *> *customSkinItems;
 @property(nonatomic, copy) NSArray<UIImage *> *customSkinImages;
@@ -1328,12 +1329,14 @@ static NSData *ZNControllerClickData(BOOL release) {
     self.customSkinItems = @[];
     self.customSkinImages = @[];
     if (!self.sharedGroup.length) return;
-    NSURL *container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:self.sharedGroup];
-    if (!container) return;
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:self.sharedGroup];
+    self.buttonDark = [[defaults stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
     self.themeIdentifier = [defaults stringForKey:@"ZNCustomSkinThemeID"];
     self.customThemeTint = StrataNxCustomThemeColor(self.themeIdentifier);
+    self.darkTheme = ZNUsesAMOLEDShell(self.themeIdentifier,self.buttonDark);
     if (self.fullScreenMode) { [self setDarkTheme:self.darkTheme]; return; }
+    NSURL *container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:self.sharedGroup];
+    if (!container) return;
     NSData *data = [defaults dataForKey:@"ZNCustomSkinMainLayersV1"];
     NSArray *items = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     if (![items isKindOfClass:NSArray.class]) return;
@@ -1923,12 +1926,13 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     UIImage *cached = [previewCache objectForKey:key];
     if (cached) return cached;
 
-    BOOL buttonDark=ZNUsesAMOLEDButtons(identifier,dark);
-    // Keep the original AMOLED portrait preview. Other previews use the
-    // same button-free plate and Pearl sprite painter as live gameplay.
-    BOOL overlayKeys=!portrait||!buttonDark;
-    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO, !overlayKeys)
-        ?: StrataNxBuiltinArtwork(portrait,buttonDark,!overlayKeys);
+    BOOL buttonDark=dark;
+    BOOL shellDark=ZNUsesAMOLEDShell(identifier,buttonDark);
+    // Every preview uses a blank shell and the same global button painter
+    // as gameplay; no baked Pearl/AMOLED keys can bleed through.
+    BOOL overlayKeys=YES;
+    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO, NO)
+        ?: StrataNxBuiltinArtwork(portrait,shellDark,NO);
     if (!source) return nil;
     CGSize size = !portrait ? CGSizeMake(852,393) : (wide ? CGSizeMake(393,852) : source.size);
     // Keep Settings snapshots at one-third resolution: the real native
@@ -1943,7 +1947,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         [[UIGraphicsImageRenderer alloc] initWithSize:previewSize format:format];
     UIImage *result = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *r) {
         CGRect art = CGRectMake(0,0,size.width,size.height);
-        [StrataNxBuiltShell(dark) setFill];
+        [StrataNxBuiltShell(shellDark) setFill];
         UIRectFill(art);
         CGContextRef ctx=UIGraphicsGetCurrentContext();
         if (!ctx) return;
@@ -1951,15 +1955,15 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         CGContextScaleCTM(ctx,previewSize.width/size.width,
                           previewSize.height/size.height);
         if (!portrait) {
-            if (wide) StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
-            else ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            if (wide) StrataNxDrawWideArtwork(source,art,shellDark,StrataNxCustomThemeColor(identifier));
+            else ZNDrawLandscapeReferenceArtwork(source,art,shellDark,StrataNxCustomThemeColor(identifier));
             ZNPaintPerformanceBlackBar(art,source,wide);
             if (overlayKeys) ZNDrawControllerPreview(art,source,wide,buttonDark);
             CGContextRestoreGState(ctx);
             return;
         }
         if (wide) {
-            StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            StrataNxDrawWideArtwork(source,art,shellDark,StrataNxCustomThemeColor(identifier));
             [UIColor.blackColor setFill];
             UIRectFill(StrataNxDisplayRect(art,source,YES));
             if (overlayKeys) ZNDrawControllerPreview(art,source,YES,buttonDark);
@@ -1977,10 +1981,10 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         [source drawInRect:art];
         // Prepared photos already contain the final individual controls.
         if (!StrataNxIsBuiltinImage(source) && !StrataNxIsPreparedPhoto(source))
-            StrataNxDrawRearrangedArtwork(source,art,!portrait,dark);
+            StrataNxDrawRearrangedArtwork(source,art,!portrait,shellDark);
         CGRect aperture = StrataNxArtworkAperture(art, source);
         if (!StrataNxIsThemeImage(source))
-            StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
+            StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),shellDark);
         StrataNxDrawZNBrand(art,portrait);
         ZNPaintPerformanceBlackBar(art,source,wide);
         if (overlayKeys) ZNDrawControllerPreview(art,source,wide,buttonDark);
@@ -2049,7 +2053,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         CGPoint center=CGPointMake(footer.origin.x+footer.size.width*gear.x,footer.origin.y+footer.size.height*gear.y);
         CGFloat radius=MAX(20,MIN(footer.size.width*(portrait?.055:.032),footer.size.height*(portrait?.035:.052)));
         CGRect circle=CGRectMake(center.x-radius*.75,center.y-radius*.75,radius*1.5,radius*1.5);
-        [[UIColor colorWithWhite:ZNUsesAMOLEDButtons(self.themeIdentifier,self.darkTheme)?.12:.92 alpha:1] setFill];
+        [[UIColor colorWithWhite:self.buttonDark?.12:.92 alpha:1] setFill];
         [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
         UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
         [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
@@ -2357,7 +2361,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
         feedback.mappedPad = pad;
         feedback.sharedGroup = group;
         [feedback znLoadFeedback];
-        feedback.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
+        feedback.buttonDark = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
         [feedback loadCustomSkinLayers];
         [feedback setDarkTheme:feedback.darkTheme];
         feedback.layer.zPosition = pad.layer.zPosition + 1; // feedback over native controls; no input interception
@@ -2375,7 +2379,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     skin.mappedPad = pad;
     skin.sharedGroup = group;
     [skin znLoadFeedback];
-    skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
+    skin.buttonDark = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
     [skin loadCustomSkinLayers];
     [skin setDarkTheme:skin.darkTheme];
     // The same immutable preset drives drawing, hit testing and press layers.
@@ -2404,7 +2408,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     [skin znLayoutSprites];
     [skin setNeedsDisplay];
     NSLog(@"[Strata][NxSkin] built-in %@ %@ loaded=%@; other orientation loaded on demand",
-          skin.darkTheme ? @"AMOLED Dark" : @"Pearl Light",
+          skin.buttonDark ? @"AMOLED Dark" : @"Pearl Light",
           portrait ? @"portrait" : @"landscape",hasArtwork ? @"YES" : @"NO");
 }
 
