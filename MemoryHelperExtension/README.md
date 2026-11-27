@@ -1,9 +1,0 @@
-# ZN Experimental Memory Helper
-
-This ExtensionKit target requires iOS 26 or later. The host app defines the `ZNMemoryHelper` extension point and Xcode generates its `.appext` registration metadata. The host and helper targets enable `EX_ENABLE_EXTENSION_POINT_GENERATION` so the host definition and the extension binding are included in their built bundles. The helper is embedded under `LiveContainer.app/Extensions` and its ExtensionKit binding metadata is generated from `@AppExtensionPoint.Bind`; the source plist intentionally does not claim the unrelated `com.apple.appintents-extension` point.
-
-The opt-in diagnostic requests one fixed 128 MiB shared-memory region, verifies the helper PID and a shared-memory marker, then unmaps the host view and requests release. Invalidated XPC sessions also cause the helper allocation to be released. The test checks process headroom and thermal state before allocation and stops below 768 MiB of reported process headroom.
-
-MeloCafe uses an empty helper entitlements plist. ZN follows that setup because this helper communicates through XPC and does not access shared app-group files. SideStore may replace bundle identifiers to match provisioning profiles. Apple’s `AppExtensionPoint.Identifier(host:name:)` takes a compile-time `StaticString`, so a post-install bundle-ID rewrite cannot be resolved dynamically by the helper. The lab report records the installed host ID and the helper’s compiled host ID and surfaces a clear mismatch if they differ. For discovery to work, the final signed host identifier must remain the identifier used when compiling the helper binding.
-
-The shared region is diagnostic only. Existing NxNative executables have no integration with this allocator and cannot use the region without changes to their own memory management. This helper does not change iOS memory limits. SideStore signing and on-device extension discovery still require device-side validation.

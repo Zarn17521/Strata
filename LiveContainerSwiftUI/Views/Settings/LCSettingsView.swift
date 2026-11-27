@@ -209,7 +209,6 @@ struct LCSettingsView: View {
                 Section {
                     NavigationLink("Automatic refresh") { StrataAutoRefreshSettings() }
                     NavigationLink("Memory and signing permissions") { StrataMemorySettings() }
-                    NavigationLink("RAM Donor Test") { StrataRAMDonorView() }
                 }
                 Section {
                     Picker(selection: $selected32BitEmulator) {
