@@ -360,7 +360,6 @@ struct LiveBoardConsoleScreen: View {
                             if !(app.appInfo is StrataPhoneAppInfo) {
                             Button("Launch with JIT", systemImage: "bolt.fill") { navigation.selectedIndex = index; activate(app, forceJIT: true) }
                             if let launchMultitask { Button("Multitask", systemImage: "rectangle.on.rectangle") { Task { await launchMultitask(app) } } }
-                            if let launchWithMetalHUD { Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") { Task { await launchWithMetalHUD(app) } } }
                             }
                             Button(app.strataSwitcherPinned ? "Unpin from app switcher" : "Pin to app switcher", systemImage: "pin") { app.strataSwitcherPinned.toggle() }
                             StrataArrangeMenus(app: app, visible: visibleApps, all: apps, categories: library.categories, current: library.assignments[liveBoardAppKey(app)]) { value in updateLibrary { $0.assignments[liveBoardAppKey(app)] = value } }

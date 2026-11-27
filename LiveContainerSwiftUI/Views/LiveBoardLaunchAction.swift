@@ -4,7 +4,7 @@ import Foundation
 extension LCAppModel {
     @MainActor
     func launchFromLibrary(multitask: Bool? = nil, reuseExistingWindow: Bool = true, forceJIT: Bool = false, gameMode: Bool = false, metalHUD: Bool = false) async throws {
-        if (gameMode || metalHUD), #available(iOS 16.0, *), let folder = uiSelectedContainer?.folderName, MultitaskManager.isUsing(container: folder) {
+        if gameMode, #available(iOS 16.0, *), let folder = uiSelectedContainer?.folderName, MultitaskManager.isUsing(container: folder) {
             throw "Close this running app from Strata controls, then choose the launch option again."
         }
         if #available(iOS 16.0, *), reuseExistingWindow,
@@ -26,7 +26,7 @@ extension LCAppModel {
             try await signApp(force: true)
         }
         var hud = LCUtils.appGroupUserDefault.dictionary(forKey: "StrataMetalHUDApps") as? [String: Bool] ?? [:]
-        hud[liveBoardAppKey(self)] = metalHUD
+        hud[liveBoardAppKey(self)] = false // Apple Metal HUD temporarily disabled
         LCUtils.appGroupUserDefault.set(hud, forKey: "StrataMetalHUDApps")
         let previousLaunch = appInfo.lastLaunched
         do {

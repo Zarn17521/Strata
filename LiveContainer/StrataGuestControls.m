@@ -2002,6 +2002,7 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
                 if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
                     fps.frame=CGRectMake(CGRectGetMinX(picture)+5,CGRectGetMinY(picture)+5,64,22);
             } @catch (__unused NSException *e) {}
+            ZNLayoutCompactPerformanceHUD(root, feedback, nil, picture);
         }
         return;
     }

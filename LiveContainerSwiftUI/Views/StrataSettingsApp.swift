@@ -567,7 +567,7 @@ struct ZNRealControllerSettings: View {
                 Toggle("Compact Performance HUD", isOn: $compactHUD)
                     .accessibilityIdentifier("settings.nxnative.compactHUD")
             } header: { Text("Performance HUD") } footer: {
-                Text("Show process RAM and the native FPS reading when available, in the lower-left skin bezel. Tap for available memory and thermal state. Classic and Wide only, when there is enough space. Restart NxNative to apply. This is separate from Apple's Metal HUD.")
+                Text("Show process RAM and native FPS in the lower-left bezel. Tight layouts use a gauge icon, or the Settings gear menu when no safe space remains (including Full Screen). Tap for memory headroom and thermal state. Restart NxNative to apply. Apple Metal HUD is temporarily disabled.")
             }
         }.navigationTitle("ZN Real Controller Engine")
     }

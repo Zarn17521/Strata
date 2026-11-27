@@ -374,7 +374,6 @@ struct LiveBoardHomeScreen: View {
         Menu("Launch options", systemImage: "play.circle") {
         if let launchInGameMode { Button("Request Game Mode", systemImage: "gamecontroller.fill") { launchInGameMode(app) }.disabled(app.appInfo is BuiltInSideStoreAppInfo || app.appInfo is StrataPhoneAppInfo) }
         if let launchMultitask { Button("Multitask", systemImage: "rectangle.on.rectangle") { launchMultitask(app) }.disabled(app.appInfo is BuiltInSideStoreAppInfo || app.appInfo is StrataPhoneAppInfo) }
-        if let launchWithMetalHUD { Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") { launchWithMetalHUD(app) }.disabled(app.appInfo is BuiltInSideStoreAppInfo || app.appInfo is StrataPhoneAppInfo) }
         if let launchWithJIT { Button("Launch with JIT", systemImage: "bolt.fill") { launchWithJIT(app) }.disabled(app.appInfo is BuiltInSideStoreAppInfo || app.appInfo is StrataPhoneAppInfo) }
         }
         }

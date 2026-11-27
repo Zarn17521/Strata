@@ -405,11 +405,6 @@ struct StrataSwitchboard: View {
                             perform { prepareForLaunch(app, using: launchInGameModeWithJIT) }
                         }
                     }
-                    if let launchWithMetalHUD {
-                        Button("Launch with Metal HUD", systemImage: "gauge.with.dots.needle.67percent") {
-                            perform { prepareForLaunch(app, using: launchWithMetalHUD) }
-                        }
-                    }
                 }
                 Button("App settings", systemImage: "gearshape") { perform { controller.stop(); manage(app) } }
                 Button("Choose cover artwork", systemImage: "photo") {
@@ -624,7 +619,7 @@ struct StrataSwitchboard: View {
         case .multitask: if let launchMultitask { prepareForLaunch(app, using: launchMultitask) }
         case .gameMode: if let launchInGameMode { prepareForLaunch(app, using: launchInGameMode) }
         case .gameModeJIT: if let launchInGameModeWithJIT { prepareForLaunch(app, using: launchInGameModeWithJIT) }
-        case .metalHUD: if let launchWithMetalHUD { prepareForLaunch(app, using: launchWithMetalHUD) }
+        case .metalHUD: prepareForLaunch(app, using: launch) // Legacy profile fallback
         }
     }
     private func cancelPendingLaunch() {

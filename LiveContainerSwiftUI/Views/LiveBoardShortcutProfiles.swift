@@ -2,6 +2,7 @@ import SwiftUI
 
 enum LiveBoardShortcutAction: String, Codable, CaseIterable, Identifiable {
     case normal, jit, gameMode, gameModeJIT, metalHUD, multitask
+    static var selectableActions: [Self] { allCases.filter { $0 != .metalHUD } }
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -40,7 +41,14 @@ enum LiveBoardShortcutProfiles {
               let result = try? JSONDecoder().decode([String: [LiveBoardShortcutProfile]].self, from: data) else { return [:] }
         return result
     }
-    static func profiles(for app: LCAppModel) -> [LiveBoardShortcutProfile] { all()[liveBoardAppKey(app)] ?? [] }
+    static func profiles(for app: LCAppModel) -> [LiveBoardShortcutProfile] {
+        // Keep old Codable values readable without launching Apple HUD.
+        (all()[liveBoardAppKey(app)] ?? []).map { profile in
+            var copy = profile
+            if copy.action == .metalHUD { copy.action = .normal }
+            return copy
+        }
+    }
     static func defaultID(for app: LCAppModel) -> String? { (defaults.dictionary(forKey: defaultsKey) as? [String: String])?[liveBoardAppKey(app)] }
     static func defaultProfile(for app: LCAppModel) -> LiveBoardShortcutProfile? {
         let profiles = profiles(for: app)
@@ -95,7 +103,7 @@ struct LiveBoardShortcutProfilesSheet: View {
                                     TextField("Profile name", text: profileNameBinding(index))
                                         .font(.headline).onSubmit { persist() }
                                     Picker("Launch action", selection: profileActionBinding(index)) {
-                                        ForEach(LiveBoardShortcutAction.allCases) { Text($0.title).tag($0) }
+                                        ForEach(LiveBoardShortcutAction.selectableActions) { Text($0.title).tag($0) }
                                     }.labelsHidden()
                                 }
                                 Spacer()
@@ -115,7 +123,7 @@ struct LiveBoardShortcutProfilesSheet: View {
                 }
                 Section("Create profile") {
                     TextField("Profile name", text: $name).textInputAutocapitalization(.words)
-                    Picker("Launch action", selection: $action) { ForEach(LiveBoardShortcutAction.allCases) { Text($0.title).tag($0) } }
+                    Picker("Launch action", selection: $action) { ForEach(LiveBoardShortcutAction.selectableActions) { Text($0.title).tag($0) } }
                     Button("Add Profile") {
                         let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(48))
                         guard !clean.isEmpty, !profiles.contains(where: { $0.name.localizedCaseInsensitiveCompare(clean) == .orderedSame }) else { return }

@@ -374,10 +374,11 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     
     NSString *hudKey = [NSString stringWithFormat:@"%@:%@", isSharedBundle ? @"shared" : @"local", selectedApp ?: @"builtin:sidestore"];
     NSMutableDictionary *hudRequests = [[lcSharedDefaults dictionaryForKey:@"StrataMetalHUDApps"] mutableCopy] ?: [NSMutableDictionary new];
-    BOOL strataMetalHUD = [hudRequests[hudKey] boolValue];
+    // Beta 1.0.0 temporarily disables Apple Metal HUD; keep the request path reversible.
+    const BOOL strataMetalHUD = NO;
     [hudRequests removeObjectForKey:hudKey];
     [lcSharedDefaults setObject:hudRequests forKey:@"StrataMetalHUDApps"];
-    if (strataMetalHUD) setenv("MTL_HUD_ENABLED", "1", 1);
+    setenv("MTL_HUD_ENABLED", strataMetalHUD ? "1" : "0", 1);
 
     if([guestAppInfo[@"doUseLCBundleId"] boolValue] ) {
         NSMutableDictionary* infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:[NSString stringWithFormat:@"%@/Info.plist", bundlePath]];
@@ -703,9 +704,9 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     
     // Fix dynamic properties of some apps
     [NSUserDefaults performSelector:@selector(initialize)];
-    if (strataMetalHUD) {
+    {
         NSMutableDictionary *hudArguments = [[NSUserDefaults.standardUserDefaults volatileDomainForName:NSArgumentDomain] mutableCopy] ?: [NSMutableDictionary new];
-        hudArguments[@"MetalForceHudEnabled"] = @YES;
+        hudArguments[@"MetalForceHudEnabled"] = @(strataMetalHUD);
         [NSUserDefaults.standardUserDefaults setVolatileDomain:hudArguments forName:NSArgumentDomain];
     }
 
