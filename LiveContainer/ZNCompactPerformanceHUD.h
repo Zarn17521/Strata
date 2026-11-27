@@ -1,5 +1,6 @@
 // Included by StrataGuestControls.m after the skin/menu geometry helpers.
-// A separate UIKit view; no Metal interception, frame capture or render timer.
+// A separate UIKit view using an optional presented-frame observer.
+#include "ZNPresentedFrameMeter.h"
 @interface ZNCompactHUDButton : UIButton
 @property(nonatomic, weak) UIViewController *gameRoot;
 @property(nonatomic, weak) UILabel *nativeFPS;
@@ -9,6 +10,11 @@
 @property(nonatomic) BOOL reducedWidth;
 @property(nonatomic) BOOL gaugeOnly;
 @property(nonatomic) BOOL hasNativeFPS;
+@property(nonatomic, weak) CAMetalLayer *measuredLayer;
+@property(nonatomic, strong) ZNPresentedFrameMeter *frameMeter;
+@property(nonatomic, strong) NSNumber *measuredFPS;
+@property(nonatomic) BOOL standalone;
+- (void)znStopMeasuring;
 @property(nonatomic, strong) NSNumber *savedNativeFPSAlpha;
 - (void)znSample;
 - (void)znRestoreNativeFPS;
@@ -17,6 +23,27 @@
 @end
 
 @implementation ZNCompactHUDButton
+- (void)znStopMeasuring {
+    [self.frameMeter stop];
+    CAMetalLayer *layer=self.measuredLayer;
+    if (layer && objc_getAssociatedObject(layer,&ZNMetalFrameMeterKey)==self.frameMeter)
+        objc_setAssociatedObject(layer,&ZNMetalFrameMeterKey,nil,OBJC_ASSOCIATION_RETAIN);
+    self.measuredLayer=nil; self.frameMeter=nil; self.measuredFPS=nil;
+}
+- (void)znMeasure {
+    CAMetalLayer *layer=ZNMetalSurfaceForRoot(self.gameRoot);
+    if (layer!=self.measuredLayer || (layer && !self.frameMeter)) {
+        [self znStopMeasuring];
+        if (layer) {
+            ZNInstallPresentedFrameObserver();
+            self.measuredLayer=layer; self.frameMeter=[ZNPresentedFrameMeter new];
+            objc_setAssociatedObject(layer,&ZNMetalFrameMeterKey,self.frameMeter,OBJC_ASSOCIATION_RETAIN);
+        }
+    }
+    NSNumber *value=[self.frameMeter sample];
+    if (value) self.measuredFPS=value;
+    else self.measuredFPS=nil;
+}
 // Do not set hidden or disable the native counter: NxNative may use that
 // state to decide whether to update its FPS reading. Only hide its visuals
 // while a valid reading is actually shown by the inline ZN HUD.
@@ -44,18 +71,19 @@
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     [self.sampleTimer invalidate]; self.sampleTimer=nil;
-    if (!self.window) { [self znRestoreNativeFPS]; return; }
+    if (!self.window) { [self znRestoreNativeFPS]; [self znStopMeasuring]; return; }
     __weak ZNCompactHUDButton *weakSelf=self;
     NSTimer *timer=[NSTimer timerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
         ZNCompactHUDButton *button=weakSelf;
         if (!button) { [t invalidate]; return; }
         if (!button.hidden && button.window && UIApplication.sharedApplication.applicationState==UIApplicationStateActive) [button znSample];
+        else { [button znStopMeasuring]; [button znRestoreNativeFPS]; }
     }];
     self.sampleTimer=timer;
     [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
     [self znSample];
 }
-- (void)dealloc { [_sampleTimer invalidate]; if (_savedNativeFPSAlpha) _nativeFPS.alpha=_savedNativeFPSAlpha.doubleValue; }
+- (void)dealloc { [_sampleTimer invalidate]; [_frameMeter stop]; if (_savedNativeFPSAlpha) _nativeFPS.alpha=_savedNativeFPSAlpha.doubleValue; }
 - (void)znSample {
     task_vm_info_data_t vm={0};
     mach_msg_type_number_t count=TASK_VM_INFO_COUNT;
@@ -77,6 +105,12 @@
             self.hasNativeFPS=YES;
         }
     }
+    if (self.window) [self znMeasure];
+    NSString *source=self.hasNativeFPS?@"Native counter":@"Unavailable";
+    if (self.measuredFPS) {
+        fps=[NSString stringWithFormat:@"%.0f",self.measuredFPS.doubleValue];
+        source=@"Metal presented frames";
+    }
     NSString *thermal=@"Unknown";
     switch (NSProcessInfo.processInfo.thermalState) {
         case NSProcessInfoThermalStateNominal: thermal=@"Nominal"; break;
@@ -85,7 +119,7 @@
         case NSProcessInfoThermalStateCritical: thermal=@"Critical"; break;
         default: break;
     }
-    self.detailText=[NSString stringWithFormat:@"Game FPS: %@\nProcess RAM: %@\nAvailable process memory: %@\nThermal state: %@\n\nFPS requires the native FPS counter. Memory is the current process footprint and headroom, not total device free RAM.",fps,ram,available,thermal];
+    self.detailText=[NSString stringWithFormat:@"FPS: %@\nFPS source: %@\nProcess RAM: %@\nAvailable process memory: %@\nThermal state: %@\n\nMetal FPS counts presented frames, not necessarily internal emulation frames. Unsupported surfaces show —. Memory is process allocation headroom, not total device free RAM.",fps,source,ram,available,thermal];
     NSString *availableCompact=[NSString stringWithFormat:@"%.2f GiB",headroom/1073741824.0];
     self.compactText=[NSString stringWithFormat:@"%@ FPS · %@ Avail",fps,availableCompact];
     NSString *label=self.gaugeOnly?nil:self.compactText;
@@ -140,6 +174,7 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
     NSUserDefaults *prefs=[[NSUserDefaults alloc] initWithSuiteName:skin.sharedGroup];
     BOOL enabled=[prefs objectForKey:@"ZNCompactPerformanceHUD"]?[prefs boolForKey:@"ZNCompactPerformanceHUD"]:YES;
     if (!enabled || CGRectIsEmpty(picture)) { ZNSetHUDMenuFallback(skin,nil,NO); [hud removeFromSuperview]; return; }
+    [[host viewWithTag:877147] removeFromSuperview];
     if (!hud) {
         hud=[ZNCompactHUDButton buttonWithType:UIButtonTypeCustom];
         hud.tag=tag; hud.gameRoot=root;
@@ -159,9 +194,15 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
         id native=[root valueForKey:@"fps"];
         [hud znBindNativeFPS:[native isKindOfClass:UILabel.class]?native:nil];
     } @catch (__unused NSException *e) { [hud znBindNativeFPS:nil]; }
-    // Full Screen has native controls with unknown safe areas; use its real gear menu.
+    // Full screen keeps a small live readout inside the upper safe corner.
     if (!image || skin.fullScreenMode) {
-        [hud removeFromSuperview]; ZNSetHUDMenuFallback(skin,hud,YES); return;
+        CGRect safe=UIEdgeInsetsInsetRect(host.bounds,host.safeAreaInsets);
+        hud.gaugeOnly=NO;
+        hud.frame=CGRectMake(CGRectGetMinX(safe)+5,CGRectGetMinY(safe)+5,MIN(155,safe.size.width-10),22);
+        [hud setImage:nil forState:UIControlStateNormal];
+        [hud setTitle:hud.compactText ?: @"— FPS · — Avail" forState:UIControlStateNormal];
+        if (!hud.superview) [host addSubview:hud];
+        ZNSetHUDMenuFallback(skin,hud,YES); [hud znSyncNativeFPSVisibility]; return;
     }
     BOOL land=host.bounds.size.width>host.bounds.size.height;
     CGRect footer=StrataNxControlFrame(skin.bounds,image,StrataNxIsWideSkin(skin),.5);
@@ -213,7 +254,12 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
             if (ZNHUDFrameFits(trial,safe,picture,skin,gearFrame)) {candidate=trial;fits=YES;break;}
         }
     }
-    if (!fits) { [hud removeFromSuperview]; ZNSetHUDMenuFallback(skin,hud,YES); return; }
+    if (gauge || !fits) {
+        // If the shell has no room for text, use a small safe-corner readout
+        // rather than replacing FPS with an icon that shows no live numbers.
+        candidate=CGRectMake(CGRectGetMinX(safe)+3,CGRectGetMinY(safe)+3,MIN(155,safe.size.width-6),22);
+        gauge=NO; inBar=NO;
+    }
     ZNSetHUDMenuFallback(skin,nil,NO);
     hud.gaugeOnly=gauge;
     hud.backgroundColor=inBar?UIColor.clearColor:[UIColor colorWithWhite:.055 alpha:.92];
@@ -225,4 +271,37 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
     hud.frame=candidate;
     if (!hud.superview) [host addSubview:hud];
     [hud znSyncNativeFPSVisibility];
+}
+
+// Non-NxNative Metal guests (and NxNative with skins disabled) share the same
+// meter. No universal guess for OpenGL/software-rendered emulators.
+static void ZNInstallStandaloneHUD(UIWindow *window, NSString *group) {
+    UIViewController *root=window.rootViewController;
+    if (!root.isViewLoaded || window.hidden) return;
+    UIView *host=root.view;
+    NSUserDefaults *prefs=[[NSUserDefaults alloc] initWithSuiteName:group];
+    BOOL enabled=[prefs objectForKey:@"ZNCompactPerformanceHUD"]?[prefs boolForKey:@"ZNCompactPerformanceHUD"]:YES;
+    ZNCompactHUDButton *hud=(ZNCompactHUDButton *)[host viewWithTag:877147];
+    if (!enabled) { [hud removeFromSuperview]; return; }
+    BOOL nx=[NSUserDefaults.lcGuestAppId.lowercaseString hasPrefix:@"org.nxnative"];
+    if (nx && StrataNxSkinIsEnabled(group)) { [hud removeFromSuperview]; return; }
+    if (hud || CGRectIsEmpty(host.bounds)) return;
+    hud=[ZNCompactHUDButton buttonWithType:UIButtonTypeCustom];
+    hud.tag=877147; hud.gameRoot=root; hud.standalone=YES;
+    hud.backgroundColor=[UIColor colorWithWhite:0 alpha:.8]; hud.layer.cornerRadius=5;
+    hud.layer.zPosition=10000;
+    hud.titleLabel.font=[UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightSemibold];
+    hud.titleLabel.adjustsFontSizeToFitWidth=YES; hud.titleLabel.minimumScaleFactor=.7;
+    [hud setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [hud setTitle:@"— FPS · — Avail" forState:UIControlStateNormal];
+    hud.accessibilityLabel=@"ZN HUD";
+    [hud addTarget:hud action:@selector(znShowDetails) forControlEvents:UIControlEventTouchUpInside];
+    hud.translatesAutoresizingMaskIntoConstraints=NO;
+    [host addSubview:hud];
+    [NSLayoutConstraint activateConstraints:@[
+        [hud.leadingAnchor constraintEqualToAnchor:host.safeAreaLayoutGuide.leadingAnchor constant:5],
+        [hud.topAnchor constraintEqualToAnchor:host.safeAreaLayoutGuide.topAnchor constant:5],
+        [hud.widthAnchor constraintEqualToConstant:155],
+        [hud.heightAnchor constraintEqualToConstant:23]
+    ]];
 }

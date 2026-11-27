@@ -567,7 +567,7 @@ struct ZNRealControllerSettings: View {
                 Toggle("Compact Performance HUD", isOn: $compactHUD)
                     .accessibilityIdentifier("settings.nxnative.compactHUD")
             } header: { Text("Performance HUD") } footer: {
-                Text("Show native FPS and available process RAM in the unused black band below the game when space permits. Otherwise use the lower-left bezel, a gauge icon, or the Settings gear menu (including Full Screen). Tap for process RAM usage and thermal state. Restart NxNative to apply. Apple Metal HUD is temporarily disabled.")
+                Text("Show Metal presented FPS and available process RAM, independently of the game's FPS toggle. Uses the black strip on supported skins or a safe-corner overlay. Native FPS is a fallback when available; unsupported renderers show —. Tap for source, RAM usage and thermal state. Restart the game to apply. Apple Metal HUD remains disabled.")
             }
         }.navigationTitle("ZN Real Controller Engine")
     }

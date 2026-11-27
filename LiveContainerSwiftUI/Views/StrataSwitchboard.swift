@@ -46,6 +46,7 @@ struct StrataSwitchboard: View {
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
     @AppStorage("ZNLibraryHomeLandscape", store: LCUtils.appGroupUserDefault) private var homeLandscape = false
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
+    @AppStorage("ZNCompactPerformanceHUD", store: LCUtils.appGroupUserDefault) private var compactHUD = true
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
     private var buttonSurface: Color { darkMode ? Color(white: 0.13) : Color(white: 0.92) }
@@ -590,8 +591,22 @@ struct StrataSwitchboard: View {
                 }
             }
 
+            shortcutCell(compactHUD ? "ZN HUD ON" : "ZN HUD OFF") {
+                Button { compactHUD.toggle() } label: {
+                    Image(systemName: "gauge")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(compactHUD ? foreground : foreground.opacity(0.4))
+                        .frame(width: 50, height: 50)
+                        .background(Circle().fill(buttonSurface))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("ZN HUD")
+                .accessibilityValue(compactHUD ? "On" : "Off")
+                .accessibilityHint("Applies on the next game launch.")
+                .accessibilityIdentifier("switchboard.toggle.znHUD")
+            }
         }
-        // ONE continuous outline around both gameplay shortcut columns.
+        // ONE continuous outline around all three gameplay shortcut columns.
         // The stroke and captions share the dark/light foreground.
         .padding(.horizontal, 8)
         .padding(.vertical, 10)

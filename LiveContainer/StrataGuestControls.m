@@ -2434,10 +2434,13 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
     if (!window || [self.installedWindows containsObject:window]) return;
     StrataApplyNxGameOrientation(window, self.group);
     StrataInstallNxSkin(window, self.group);
+    if (!self.hostMode && ![window isKindOfClass:StrataControlsWindow.class])
+        ZNInstallStandaloneHUD(window,self.group);
     // The guest's Metal view can be created after the window becomes visible.
     // One-off retries are bounded; no periodic cleanup or render-thread hooks.
     __weak UIWindow *weakWindow = window;
     NSString *group = [self.group copy];
+    BOOL guestHUD=!self.hostMode && ![window isKindOfClass:StrataControlsWindow.class];
     for (NSNumber *delay in @[@1, @4, @12]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
@@ -2445,6 +2448,7 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
             if (liveWindow) {
                 StrataApplyNxGameOrientation(liveWindow, group);
                 StrataInstallNxSkin(liveWindow, group);
+                if (guestHUD) ZNInstallStandaloneHUD(liveWindow,group);
             }
         });
     }
