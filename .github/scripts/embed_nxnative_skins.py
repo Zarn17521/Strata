@@ -33,8 +33,9 @@ parts = [
     "// Generated at build time. Do not commit this file.\n",
     "#pragma once\n",
     "#define STRATA_NX_PREPARED_PHOTOS 1\n",
+    "#define STRATA_NX_BLANK_PHOTOS 1\n",
 ]
-for key, filename in inputs.items():
+for key, filename in list(inputs.items()) + [(k+'Blank',v+' (button-free)') for k,v in inputs.items()]:
     binary = prepared[key]
     encoded = base64.b64encode(binary).decode("ascii")
     parts.append(f"static const char StrataSkin_{key}[] =\n")
@@ -48,6 +49,13 @@ parts.extend([
     "    const char *data = dark\n",
     "        ? (portrait ? StrataSkin_amoledPortrait : StrataSkin_amoledLandscape)\n",
     "        : (portrait ? StrataSkin_pearlPortrait : StrataSkin_pearlLandscape);\n",
+    "    return [[NSData alloc] initWithBase64EncodedString:\n",
+    "        [NSString stringWithUTF8String:data] options:0];\n",
+    "}\n",
+    "static NSData *StrataNxPackedBlankPhotoData(BOOL portrait, BOOL dark) {\n",
+    "    const char *data = dark\n",
+    "        ? (portrait ? StrataSkin_amoledPortraitBlank : StrataSkin_amoledLandscapeBlank)\n",
+    "        : (portrait ? StrataSkin_pearlPortraitBlank : StrataSkin_pearlLandscapeBlank);\n",
     "    return [[NSData alloc] initWithBase64EncodedString:\n",
     "        [NSString stringWithUTF8String:data] options:0];\n",
     "}\n",

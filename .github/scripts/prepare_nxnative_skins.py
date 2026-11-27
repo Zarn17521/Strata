@@ -92,6 +92,29 @@ def amoled_from_pearl(source, portrait):
     value=value*(1-white)+245*white
     return np.clip(np.stack([value*1.08,value*1.035,value],axis=-1),0,255).astype(np.uint8)
 
+def button_free_photo(image, portrait):
+    cfg=LAYOUT[portrait]; w,h=cfg['size']
+    mask=np.zeros((h,w),np.uint8)
+    def pt(p): return (round(p[0]*w),round(p[1]*h))
+    def circle(p,r): cv2.circle(mask,pt(p),r,255,-1)
+    def pill(p,rx,ry):
+        x,y=pt(p); dx=max(0,rx-ry)
+        cv2.rectangle(mask,(x-dx,y-ry),(x+dx,y+ry),255,-1)
+        cv2.circle(mask,(x-dx,y),ry,255,-1)
+        cv2.circle(mask,(x+dx,y),ry,255,-1)
+    for p in cfg['final']:
+        circle(p,round(cfg['radius']*cfg['face_scale'])+5)
+    for p in (cfg['left'],cfg['newlook']):
+        circle(p,cfg['stick_radius']+6)
+    for p in cfg['shoulders']:
+        pill(p,82 if portrait else 49,42 if portrait else 25)
+    x,y=pt(cfg['dpad']); r=188 if portrait else 107; a=63 if portrait else 39
+    cv2.rectangle(mask,(x-a,y-r),(x+a,y+r),255,-1)
+    cv2.rectangle(mask,(x-r,y-a),(x+r,y+a),255,-1)
+    for i,p in enumerate(cfg['bottom']):
+        circle(p,(65 if portrait else (48 if i==1 else 41)))
+    return cv2.inpaint(image,mask,5,cv2.INPAINT_TELEA)
+
 def final_assets(assets):
     output={}
     for portrait,suffix,ext in [(True,'Portrait','.png'),(False,'Landscape','.jpg')]:
@@ -107,4 +130,8 @@ def final_assets(assets):
             ok,data=cv2.imencode(ext,image,options)
             if not ok: raise ValueError('Could not encode '+theme+suffix)
             output[theme+suffix]=data.tobytes()
+            blank=button_free_photo(image,portrait)
+            ok,data=cv2.imencode(ext,blank,options)
+            if not ok: raise ValueError('Could not encode blank '+theme+suffix)
+            output[theme+suffix+'Blank']=data.tobytes()
     return output

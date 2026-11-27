@@ -547,7 +547,7 @@ struct ZNRealControllerSettings: View {
                 HStack { Text("Haptic Intensity"); Spacer(); Text("\(Int(intensity * 100))%").monospacedDigit() }
                 Slider(value: $intensity, in: 0...1).disabled(!haptic)
             } header: { Text("Touch feedback") } footer: {
-                Text("Native game input is sent first. Turn off the game's own haptics if you notice duplicate feedback.")
+                Text("Classic and Wide use independent moving buttons and analog caps. Full Screen keeps native controls with press feedback. Native input is sent first. Turn off the game's own haptics if you notice duplicate feedback.")
             }
             Section {
                 Toggle("Mechanical Sound", isOn: $sound)
@@ -560,7 +560,7 @@ struct ZNRealControllerSettings: View {
             Section {
                 Toggle("Bluetooth Auto-Hide", isOn: $autoHide)
             } header: { Text("Physical controller") } footer: {
-                Text("Enabled by default. When a supported physical gamepad connects, Classic and Wide use a simplified button-free shell with the Settings gear; Full Screen hides the native touch controls. Touch controls return after the last controller disconnects. Relaunch NxNative to apply changed settings.")
+                Text("Enabled by default. When a supported physical gamepad connects, Classic and Wide hide the independent buttons while preserving the selected shell and Settings gear; Full Screen hides the native touch controls. Touch controls return after the last controller disconnects. Relaunch NxNative to apply changed settings.")
             }
         }.navigationTitle("ZN Real Controller Engine")
     }

@@ -151,7 +151,7 @@ static void StrataNxBuiltScreen(CGRect hole, BOOL dark) {
     [[UIColor colorWithWhite:dark?0.62:0.93 alpha:0.70] setStroke];[edge stroke];
 }
 
-static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, CGFloat scale) {
+static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, CGFloat scale, BOOL controls) {
     CGSize size = portrait ? CGSizeMake(923,2000) : CGSizeMake(1792,1008);
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
     format.opaque=YES;
@@ -167,6 +167,7 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, C
             CGRect game = portrait ? CGRectMake(37,138,847,661) : CGRectMake(463,169,863,574);
             StrataNxBuiltScreen(game,dark);
         }
+        if (controls) {
         // Shoulder pairs remain LEFT L/ZL and RIGHT R/ZR in both modes.
         NSArray<NSString *> *labels=@[@"L",@"ZL",@"R",@"ZR"];
         CGFloat lx[4],sy,shoulderW,shoulderH;
@@ -216,6 +217,7 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, C
                         CGSizeMake(portrait?57:45,portrait?53:45),@"+",dark,YES);
         StrataNxBuiltKey(CGPointMake(size.width*0.4999,gearY),
                         CGSizeMake(portrait?67:48,portrait?67:48),@"⚙",dark,YES);
+        }
         // Small perforations echo a physical handheld, away from hot zones.
         [[UIColor colorWithWhite:dark?0.36:0.57 alpha:0.65] setFill];
         for (int i=0;i<7;i++) {
@@ -231,7 +233,7 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, C
     return result;
 }
 
-static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark) {
+static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark, BOOL controls) {
     static NSCache<NSString *,UIImage *> *cache;
     static dispatch_once_t once;
     dispatch_once(&once,^{
@@ -239,22 +241,25 @@ static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark) {
         cache.countLimit=1;
         cache.totalCostLimit=9*1024*1024;
     });
-    NSString *key=[NSString stringWithFormat:@"%@-%@",
-        portrait?@"portrait":@"landscape",dark?@"amoled":@"pearl"];
+    NSString *key=[NSString stringWithFormat:@"%@-%@-%d",
+        portrait?@"portrait":@"landscape",dark?@"amoled":@"pearl",controls];
     UIImage *image=[cache objectForKey:key];
     if (!image) {
         // Prefer the exact submitted photo skin, not the out-of-date vector
         // recreation. Photos are deliberately NOT tagged as builtin-vector:
         // the existing crop/swap path then exchanges Look and ABXY and
         // corrects the R/ZR glyphs at precisely the same touch coordinates.
-        NSData *photo=StrataNxPackedPhotoData(portrait,dark);
+        NSData *photo=controls ? StrataNxPackedPhotoData(portrait,dark) : nil;
+#if defined(STRATA_NX_BLANK_PHOTOS)
+        if (!controls) photo=StrataNxPackedBlankPhotoData(portrait,dark);
+#endif
         if (photo.length) image=[UIImage imageWithData:photo];
 #if defined(STRATA_NX_PREPARED_PHOTOS)
         // Preserve photo-specific frame/clip behavior, but never swap controls again.
         if (image) objc_setAssociatedObject(image,&StrataNxPreparedPhotoKey,
                                              @YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 #endif
-        if (!image) image=StrataNxBuildArtwork(portrait,dark,nil,1);
+        if (!image) image=StrataNxBuildArtwork(portrait,dark,nil,1,controls);
         if (image) [cache setObject:image forKey:key
                  cost:(NSUInteger)(image.size.width*image.size.height*4)];
     }

@@ -829,7 +829,7 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
 @implementation StrataNxThemeBundleToken
 @end
 
-static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory) {
+static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory, BOOL controls) {
     if ([identifier isEqualToString:@"switch-neon"]) {
         CGSize size = portrait ? CGSizeMake(923,2000) : CGSizeMake(1792,1008);
         UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
@@ -849,7 +849,7 @@ static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BO
                                  [UIColor colorWithRed:.82 green:.10 blue:.13 alpha:1]);
             StrataNxBuiltScreen(portrait ? CGRectMake(37,138,847,661) : CGRectMake(463,169,863,574), YES);
         }];
-        UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, format.scale);
+        UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, format.scale, controls);
         if (image) objc_setAssociatedObject(image,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return image;
     }
@@ -883,7 +883,7 @@ static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BO
         // UIImage's logical size stays the same for geometry even when its bitmap
         // is downsampled. Draw the real keys over both representations.
         CGFloat scale = thumbnail ? 0.32 : (lowMemory ? 0.75 : 1.0);
-        UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, scale);
+        UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, scale, controls);
         if (image) objc_setAssociatedObject(image, &StrataNxThemeImageKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return image;
     }
@@ -972,6 +972,16 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic, weak) UIView *mappedPad;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
 @property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, CALayer *> *znSprites;
+@property(nonatomic, strong) NSMutableDictionary<NSValue *, NSString *> *znTouchSprites;
+@property(nonatomic) CGRect znSpriteBounds;
+@property(nonatomic, weak) UIControl *znGearControl;
+@property(nonatomic) BOOL znGearPressed;
+@property(nonatomic) CFTimeInterval znLastGearDown;
+- (void)znLayoutSprites;
+- (void)znBindGear:(UIControl *)gear;
+- (void)znResetSprites;
+- (void)znTrackSpriteTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending pad:(UIView *)pad;
 @property(nonatomic) BOOL znAnimate;
 @property(nonatomic) BOOL znHaptic;
 @property(nonatomic) BOOL znSound;
@@ -1072,6 +1082,8 @@ static NSData *ZNControllerClickData(BOOL release) {
         } @catch (__unused NSException *e) {}
     }
     if (!changed) return;
+    [self znResetSprites];
+    for (NSString *key in self.znSprites) self.znSprites[key].hidden=connected && ![key isEqualToString:@"gear"];
     if (connected) {
         // Clear in-flight press highlights; do not reset the guest's physical HID.
         [CATransaction begin];
@@ -1107,6 +1119,8 @@ static NSData *ZNControllerClickData(BOOL release) {
         self.contentMode = UIViewContentModeRedraw;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.tag = StrataNxSkinViewTag;
+        self.znSprites=[NSMutableDictionary new];
+        self.znTouchSprites=[NSMutableDictionary new];
         self.pressLayers=[NSMutableDictionary new];
         self.sparePressLayers=[NSMutableArray arrayWithCapacity:10];
         // Pool GPU-composited pearl/champagne texture layers BEFORE gameplay.
@@ -1220,8 +1234,8 @@ static NSData *ZNControllerClickData(BOOL release) {
     self.activeArtworkPortrait = portrait;
     NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:self.sharedGroup];
     BOOL lowMemory = [prefs boolForKey:@"ZNBetaLowMemory"];
-    self.activeArtwork = StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO, lowMemory)
-        ?: StrataNxBuiltinArtwork(portrait,self.darkTheme);
+    self.activeArtwork = StrataNxLoadThemeArtwork(self.themeIdentifier, portrait, NO, lowMemory, NO)
+        ?: StrataNxBuiltinArtwork(portrait,self.darkTheme,NO);
     return self.activeArtwork;
 }
 - (UIImage *)portraitArtwork { return [self artworkForPortrait:YES]; }
@@ -1237,7 +1251,9 @@ static NSData *ZNControllerClickData(BOOL release) {
         [self artworkForPortrait:self.bounds.size.height > self.bounds.size.width];
         [self setNeedsDisplay];
     }
+    [self znLayoutSprites];
 }
+#include "ZNRealControllerSprites.h"
 - (NSInteger)nativeRoleForPoint:(CGPoint)point pad:(UIView *)pad {
     if (!pad || CGRectIsEmpty(pad.bounds)) return StrataArtNoMapping;
     CGFloat rx = MAX(22, pad.bounds.size.width * 0.065);
@@ -1305,6 +1321,10 @@ static NSData *ZNControllerClickData(BOOL release) {
     UIView *pad=self.mappedPad;
     if (!pad||!self.superview||touches.count==0) return;
     if (self.znControlsHidden && !ending) return;
+    if (!self.fullScreenMode && self.znSprites.count) {
+        [self znTrackSpriteTouches:touches ending:ending pad:pad];
+        return;
+    }
     BOOL land=self.bounds.size.width>self.bounds.size.height;
     UIImage *image=self.fullScreenMode ? nil : (land?self.landscapeArtwork:self.portraitArtwork);
     if (!self.fullScreenMode && !image) return;
@@ -1675,8 +1695,8 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     UIImage *cached = [previewCache objectForKey:key];
     if (cached) return cached;
 
-    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO)
-        ?: StrataNxBuiltinArtwork(portrait,dark);
+    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO, YES)
+        ?: StrataNxBuiltinArtwork(portrait,dark,YES);
     if (!source) return nil;
     CGSize size = wide ? (portrait ? CGSizeMake(393,852) : CGSizeMake(852,393)) : source.size;
     // Keep Settings snapshots at one-third resolution: the real native
@@ -1767,7 +1787,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
 
     // A physical pad may hide the baked controls without changing the game aperture.
     // Keep the real NxNative menu's transparent hit target and draw its gear in the same footer.
-    if (artwork && self.znControlsHidden) {
+    if (artwork && self.znControlsHidden && self.znSprites.count==0) {
         UIColor *base = [self.themeIdentifier isEqualToString:@"switch-neon"] ? [UIColor colorWithWhite:.055 alpha:1] : StrataNxArtworkBacking(artwork,self.darkTheme,self.customThemeTint);
         [base setFill]; UIRectFill(bounds);
         if ([self.themeIdentifier isEqualToString:@"switch-neon"]) {
@@ -1919,6 +1939,7 @@ static void StrataNxUpdateGameMenuButton(UIView *pad) {
     if (!image) {
         artMenu.hidden = YES;
         nativeMenu.userInteractionEnabled = YES;
+        [(StrataNxSkinView *)skin znBindGear:nativeMenu];
         return;
     }
     if (!artMenu) {
@@ -1937,6 +1958,7 @@ static void StrataNxUpdateGameMenuButton(UIView *pad) {
         [pad addSubview:artMenu];
     }
     artMenu.menu = nativeMenu.menu;
+    [(StrataNxSkinView *)skin znBindGear:artMenu];
     artMenu.hidden = NO;
     nativeMenu.userInteractionEnabled = NO;
     CGRect r = StrataNxArtworkFrameInPad(pad,image);
@@ -1958,6 +1980,12 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
         UIView *game=StrataNxChildOfClass(host,@"DmGameView");
         UIView *pad=StrataNxChildOfClass(host,@"DmGamepad");
         if (!game || !pad || game.superview!=host) return;
+        StrataNxSkinView *feedback=(StrataNxSkinView *)[host viewWithTag:StrataNxSkinViewTag];
+        if ([feedback isKindOfClass:StrataNxSkinView.class]) for (UIView *child in pad.subviews) {
+            if ([child isKindOfClass:UIControl.class] && [NSStringFromClass(child.class) isEqualToString:@"DmMenuButton"]) {
+                [feedback znBindGear:(UIControl *)child]; break;
+            }
+        }
         CGRect picture=StrataNxFullGameRect(host.bounds);
         if (!CGRectIsNull(picture) && !CGRectIsEmpty(picture)) {
             game.clipsToBounds=YES;
@@ -2012,6 +2040,7 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     // Native CALayer visuals are hidden, not the UIKit gamepad hit targets.
     StrataNxKeepNativeInputButHideDrawing(pad);
     StrataNxUpdateGameMenuButton(pad);
+    [skin znLayoutSprites];
     @try {
         UILabel *fps = [root valueForKey:@"fps"];
         if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
@@ -2109,6 +2138,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
             NSLog(@"[Strata][NxSkin] DmRootVC not found; leaving native picture size unchanged");
         }
     }
+    [skin znLayoutSprites];
     [skin setNeedsDisplay];
     NSLog(@"[Strata][NxSkin] built-in %@ %@ loaded=%@; other orientation loaded on demand",
           skin.darkTheme ? @"AMOLED Dark" : @"Pearl Light",
