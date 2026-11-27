@@ -57,6 +57,7 @@ struct StrataSettingsApp: View {
             Entry(id: "portraitskin", title: "NxNative Controller Skins", symbol: "photo.on.rectangle", tint: .gray, section: "Interface", keywords: "portrait landscape pearl light amoled dark black graphite glass built-in nxnative controller skin") { AnyView(StrataNxPortraitSkinSettings()) },
             Entry(id: "recentgames", title: "Recently Played", symbol: "clock.arrow.circlepath", tint: .orange, section: "Interface", keywords: "recent played history last launched clear") { AnyView(LiveBoardRecentGamesSettings()) },
             Entry(id: "sounds", title: "Navigation Sounds", symbol: "speaker.wave.2.fill", tint: .pink, section: "Interface", keywords: "classic soft arcade selection confirm back preview sound effects") { AnyView(StrataNavigationSoundSettings()) },
+            Entry(id: "realcontroller", title: "ZN Real Controller Engine", symbol: "gamecontroller.fill", tint: .blue, section: "Interface", keywords: "controller haptic mechanical click animation bluetooth touch neon") { AnyView(ZNRealControllerSettings()) },
             Entry(id: "controllermapping", title: "Controller Mapping", symbol: "gamecontroller", tint: .cyan, section: "Interface", keywords: "bluetooth controller profile custom map buttons swap a b x y gamepad library navigation") { AnyView(LiveBoardControllerMappingSettings()) },
             Entry(id: "steamgriddb", title: "SteamGridDB", symbol: "square.stack.3d.up", tint: .indigo, section: "Interface", keywords: "artwork covers backgrounds api key automatic search steam grid") { AnyView(StrataSteamGridDBKeySettings()) },
             Entry(id: "iphone", title: "iPhone Apps", symbol: "iphone", tint: .blue, section: "Apps", keywords: "iphone native ios apps shortcut url add") { AnyView(StrataPhoneAppsView()) },
@@ -154,6 +155,7 @@ struct StrataSettingsApp: View {
         Section {
             link("sounds")
             link("controllermapping")
+            link("realcontroller")
             link("steamgriddb")
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
@@ -515,5 +517,42 @@ private struct StrataNxBuiltInSkinPreview: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(theme.title), \(landscape ? "Landscape" : "Portrait") controller skin preview")
+    }
+}
+
+
+// Guest settings are read once when the NxNative skin is installed.
+struct ZNRealControllerSettings: View {
+    @AppStorage("ZNRealAnimate", store: LCUtils.appGroupUserDefault) private var animate = true
+    @AppStorage("ZNRealHaptic", store: LCUtils.appGroupUserDefault) private var haptic = false
+    @AppStorage("ZNRealSound", store: LCUtils.appGroupUserDefault) private var sound = false
+    @AppStorage("ZNRealReleaseSound", store: LCUtils.appGroupUserDefault) private var releaseSound = false
+    @AppStorage("ZNRealAutoHide", store: LCUtils.appGroupUserDefault) private var autoHide = false
+    @AppStorage("ZNRealIntensity", store: LCUtils.appGroupUserDefault) private var intensity = 0.65
+    @AppStorage("ZNRealVolume", store: LCUtils.appGroupUserDefault) private var volume = 0.25
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Realistic press animation", isOn: $animate)
+                Toggle("Taptic feedback", isOn: $haptic)
+                HStack { Text("Haptic intensity"); Spacer(); Text("\(Int(intensity * 100))%").monospacedDigit() }
+                Slider(value: $intensity, in: 0...1).disabled(!haptic)
+            } header: { Text("Touch feedback") } footer: {
+                Text("Native game input is sent first. Turn off the game's own haptics if you notice duplicate feedback.")
+            }
+            Section {
+                Toggle("Mechanical click sound", isOn: $sound)
+                Toggle("Release click", isOn: $releaseSound).disabled(!sound)
+                HStack { Text("Click volume"); Spacer(); Text("\(Int(volume * 100))%").monospacedDigit() }
+                Slider(value: $volume, in: 0...1).disabled(!sound)
+            } header: { Text("Sound") } footer: {
+                Text("Original short synthesized clicks; the game audio session is not explicitly reconfigured.")
+            }
+            Section {
+                Toggle("Hide touch buttons with controller", isOn: $autoHide)
+            } header: { Text("Physical controller") } footer: {
+                Text("Classic and Wide skins only. When an extended gamepad is connected, show a simplified shell and keep the Settings gear. Touch controls return on disconnect. Relaunch NxNative to apply changed settings.")
+            }
+        }.navigationTitle("ZN Real Controller Engine")
     }
 }

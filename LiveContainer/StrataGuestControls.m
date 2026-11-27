@@ -6,6 +6,8 @@
 #import <ImageIO/ImageIO.h>
 #import <unistd.h>
 #import <math.h>
+@import GameController;
+@import AVFoundation;
 #import "StrataNxBuiltinSkin.h"
 
 // Optional NxNative appearance-only bezel. This is a transparent touch-through
@@ -144,6 +146,7 @@ static void StrataNxDrawPortraitHandheld(CGRect bounds, CGRect game) {
 // responsible for the actual input; no game binary or C input hooks required.
 static char StrataNxPadArtTouchEnabledKey;
 static char StrataNxTouchArtRoleKey;
+static char ZNRealControllerHiddenKey;
 static CGPoint (*StrataOriginalLocationInView)(id, SEL, UIView *) = NULL;
 
 enum {
@@ -589,6 +592,7 @@ static UIView *StrataNxPadHitTest(id pad, SEL selector, CGPoint point, UIEvent *
     UIView *view = (UIView *)pad;
     if (hit != view || !objc_getAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey))
         return hit; // preserve the real artwork menu button and non-skin games
+    if ([objc_getAssociatedObject(pad, &ZNRealControllerHiddenKey) boolValue]) return nil;
     BOOL landscape = view.bounds.size.width > view.bounds.size.height;
     UIView *skin = [view.superview viewWithTag:877144];
     UIImage *image = [skin valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
@@ -795,6 +799,7 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         palette = @{
+            @"switch-neon": @[@0.08,@0.48,@0.62],
             @"zelda": @[@0.20,@0.53,@0.29], @"mario": @[@0.88,@0.16,@0.14],
             @"kirby": @[@0.95,@0.42,@0.67], @"luigi": @[@0.18,@0.55,@0.29],
             @"peach": @[@0.96,@0.57,@0.70], @"bowser": @[@0.82,@0.25,@0.12],
@@ -824,6 +829,29 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
 @end
 
 static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory) {
+    if ([identifier isEqualToString:@"switch-neon"]) {
+        CGSize size = portrait ? CGSizeMake(923,2000) : CGSizeMake(1792,1008);
+        UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+        format.scale = thumbnail ? .32 : (lowMemory ? .75 : 1);
+        format.opaque = YES;
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
+        UIImage *plate = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+            [[UIColor colorWithWhite:.055 alpha:1] setFill];
+            UIRectFill((CGRect){CGPointZero,size});
+            CGRect left = portrait ? CGRectMake(0,size.height*.435,size.width*.49,size.height*.565) : CGRectMake(0,0,size.width*.255,size.height);
+            CGRect right = portrait ? CGRectMake(size.width*.51,size.height*.435,size.width*.49,size.height*.565) : CGRectMake(size.width*.745,0,size.width*.255,size.height);
+            StrataNxBuiltGradient([UIBezierPath bezierPathWithRoundedRect:left cornerRadius:44],
+                                 [UIColor colorWithRed:0 green:.83 blue:.96 alpha:1],
+                                 [UIColor colorWithRed:0 green:.56 blue:.70 alpha:1]);
+            StrataNxBuiltGradient([UIBezierPath bezierPathWithRoundedRect:right cornerRadius:44],
+                                 [UIColor colorWithRed:1 green:.36 blue:.32 alpha:1],
+                                 [UIColor colorWithRed:.82 green:.10 blue:.13 alpha:1]);
+            StrataNxBuiltScreen(portrait ? CGRectMake(37,138,847,661) : CGRectMake(463,169,863,574), YES);
+        }];
+        UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, format.scale);
+        if (image) objc_setAssociatedObject(image,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return image;
+    }
     if (!StrataNxCustomThemeColor(identifier)) return nil;
     @autoreleasepool {
         NSBundle *bundle = [NSBundle bundleForClass:StrataNxThemeBundleToken.class];
@@ -943,13 +971,103 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 @property(nonatomic, weak) UIView *mappedPad;
 @property(nonatomic, strong) NSMutableDictionary<NSValue *, CAGradientLayer *> *pressLayers;
 @property(nonatomic, strong) NSMutableArray<CAGradientLayer *> *sparePressLayers;
+@property(nonatomic) BOOL znAnimate;
+@property(nonatomic) BOOL znHaptic;
+@property(nonatomic) BOOL znSound;
+@property(nonatomic) BOOL znReleaseSound;
+@property(nonatomic) BOOL znAutoHide;
+@property(nonatomic) BOOL znControlsHidden;
+@property(nonatomic) CGFloat znIntensity;
+@property(nonatomic, strong) UIImpactFeedbackGenerator *znLight;
+@property(nonatomic, strong) UIImpactFeedbackGenerator *znMedium;
+@property(nonatomic, strong) AVAudioPlayer *znDownPlayer;
+@property(nonatomic, strong) AVAudioPlayer *znUpPlayer;
+- (void)znRefreshControllerVisibility;
+- (void)znLoadFeedback;
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending;
 - (void)loadCustomSkinLayers;
 - (void)drawCustomSkinLayersPortrait:(BOOL)portrait artworkFrame:(CGRect)artworkFrame;
 - (NSInteger)nativeRoleForPoint:(CGPoint)point pad:(UIView *)pad;
 - (CGRect)nativeFeedbackFrameForRole:(NSInteger)role point:(CGPoint)point pad:(UIView *)pad;
 @end
+// Tiny original synthesized mechanical tick. No copyrighted samples or audio-session reconfiguration.
+static NSData *ZNControllerClickData(BOOL release) {
+    const uint32_t rate = 22050, count = 441, bytes = count * 2;
+    NSMutableData *data = [NSMutableData dataWithCapacity:44+bytes];
+    [data appendBytes:"RIFF" length:4];
+    uint32_t riff = 36+bytes, fmt = 16, byteRate = rate*2;
+    uint16_t pcm = 1, channels = 1, align = 2, bits = 16;
+    [data appendBytes:&riff length:4]; [data appendBytes:"WAVEfmt " length:8];
+    [data appendBytes:&fmt length:4]; [data appendBytes:&pcm length:2];
+    [data appendBytes:&channels length:2]; [data appendBytes:&rate length:4];
+    [data appendBytes:&byteRate length:4]; [data appendBytes:&align length:2];
+    [data appendBytes:&bits length:2]; [data appendBytes:"data" length:4];
+    [data appendBytes:&bytes length:4];
+    uint32_t seed = 31;
+    for (uint32_t i=0;i<count;i++) {
+        double t=(double)i/rate;
+        seed=1664525u*seed+1013904223u;
+        double noise=((double)((seed>>16)&65535)/32768.0)-1.0;
+        double envelope=exp(-t*(release?320:245))*MIN(1.0,(double)i/4.0);
+        int16_t sample=(int16_t)((noise*.55+sin(t*(release?1100:720)*2*M_PI)*.45)*envelope*11000);
+        [data appendBytes:&sample length:2];
+    }
+    return data;
+}
 @implementation StrataNxSkinView
+- (void)znLoadFeedback {
+    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:self.sharedGroup];
+    self.znAnimate = [prefs objectForKey:@"ZNRealAnimate"] ? [prefs boolForKey:@"ZNRealAnimate"] : YES;
+    self.znHaptic = [prefs boolForKey:@"ZNRealHaptic"];
+    self.znSound = [prefs boolForKey:@"ZNRealSound"];
+    self.znReleaseSound = [prefs boolForKey:@"ZNRealReleaseSound"];
+    self.znAutoHide = [prefs boolForKey:@"ZNRealAutoHide"];
+    self.znIntensity = [prefs objectForKey:@"ZNRealIntensity"] ? MAX(0,MIN(1,[prefs doubleForKey:@"ZNRealIntensity"])) : .65;
+    CGFloat volume = [prefs objectForKey:@"ZNRealVolume"] ? MAX(0,MIN(1,[prefs doubleForKey:@"ZNRealVolume"])) : .25;
+    if (self.znHaptic) {
+        self.znLight = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        self.znMedium = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+        [self.znLight prepare]; [self.znMedium prepare];
+    }
+    if (self.znSound) {
+        self.znDownPlayer = [[AVAudioPlayer alloc] initWithData:ZNControllerClickData(NO) error:nil];
+        self.znDownPlayer.volume=volume; [self.znDownPlayer prepareToPlay];
+        if (self.znReleaseSound) {
+            self.znUpPlayer = [[AVAudioPlayer alloc] initWithData:ZNControllerClickData(YES) error:nil];
+            self.znUpPlayer.volume=volume; [self.znUpPlayer prepareToPlay];
+        }
+    }
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(znControllerChanged:) name:GCControllerDidConnectNotification object:nil];
+    [center addObserver:self selector:@selector(znControllerChanged:) name:GCControllerDidDisconnectNotification object:nil];
+    [self znRefreshControllerVisibility];
+}
+- (void)znControllerChanged:(NSNotification *)note {
+    (void)note;
+    dispatch_async(dispatch_get_main_queue(), ^{ [self znRefreshControllerVisibility]; });
+}
+- (void)znRefreshControllerVisibility {
+    BOOL connected = NO;
+    if (self.znAutoHide && !self.fullScreenMode) {
+        for (GCController *controller in GCController.controllers) {
+            if (controller.extendedGamepad) { connected=YES; break; }
+        }
+    }
+    if (self.znControlsHidden == connected) return;
+    self.znControlsHidden=connected;
+    objc_setAssociatedObject(self.mappedPad,&ZNRealControllerHiddenKey,@(connected),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [self setNeedsDisplay];
+}
+- (void)znClick:(BOOL)release role:(NSInteger)role {
+    if (!release && self.znHaptic && self.znIntensity>0) {
+        BOOL firm = role==StrataArtL||role==StrataArtR||role==StrataArtZL||role==StrataArtZR;
+        UIImpactFeedbackGenerator *generator = firm ? self.znMedium : self.znLight;
+        [generator impactOccurredWithIntensity:self.znIntensity];
+        [generator prepare];
+    }
+    AVAudioPlayer *player=release?self.znUpPlayer:self.znDownPlayer;
+    if (player) { player.currentTime=0; [player play]; }
+}
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
         self.userInteractionEnabled = NO;
@@ -1155,6 +1273,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
 - (void)strataTrackTouches:(NSSet<UITouch *> *)touches ending:(BOOL)ending {
     UIView *pad=self.mappedPad;
     if (!pad||!self.superview||touches.count==0) return;
+    if (self.znControlsHidden && !ending) return;
     BOOL land=self.bounds.size.width>self.bounds.size.height;
     UIImage *image=self.fullScreenMode ? nil : (land?self.landscapeArtwork:self.portraitArtwork);
     if (!self.fullScreenMode && !image) return;
@@ -1166,21 +1285,24 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         CAGradientLayer *shine=self.pressLayers[key];
         if (ending) {
             if (!shine) continue;
+            if (touch.phase==UITouchPhaseEnded) [self znClick:YES role:StrataArtNoMapping];
             // Native touch-up already completed; visual spring never delays HID.
             [shine removeAllAnimations];
             CABasicAnimation *fade=[CABasicAnimation animationWithKeyPath:@"opacity"];
             fade.fromValue=@(shine.opacity);fade.toValue=@0;
-            fade.duration=0.075;
+            fade.duration=self.znAnimate ? 0.075 : 0;
             fade.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
             CABasicAnimation *lift=[CABasicAnimation animationWithKeyPath:@"transform"];
             lift.fromValue=[NSValue valueWithCATransform3D:shine.transform];
             lift.toValue=[NSValue valueWithCATransform3D:CATransform3DIdentity];
-            lift.duration=0.075;
+            lift.duration=self.znAnimate ? 0.075 : 0;
             lift.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
             shine.opacity=0;
             shine.transform=CATransform3DIdentity;
-            [shine addAnimation:fade forKey:@"zn.press.release"];
-            [shine addAnimation:lift forKey:@"zn.press.lift"];
+            if (self.znAnimate) {
+                [shine addAnimation:fade forKey:@"zn.press.release"];
+                [shine addAnimation:lift forKey:@"zn.press.lift"];
+            }
             [self.pressLayers removeObjectForKey:key];
             [self.sparePressLayers addObject:shine];
             continue;
@@ -1212,6 +1334,7 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         }
         if (CGRectIsNull(frame)||CGRectIsEmpty(frame)) continue;
         BOOL newPress = shine == nil;
+        if (newPress && touch.phase==UITouchPhaseBegan) [self znClick:NO role:role];
         if (!shine) {
             shine=self.sparePressLayers.lastObject;
             if (!shine) continue; // gameplay still accepts every extra touch
@@ -1223,13 +1346,13 @@ static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL lan
         shine.cornerRadius=MIN(frame.size.width,frame.size.height)*
                            ((role==StrataArtL||role==StrataArtZL||
                              role==StrataArtR||role==StrataArtZR)?0.42:0.50);
-        CATransform3D pressed=CATransform3DConcat(CATransform3DMakeScale(0.91,0.91,1),
+        CATransform3D pressed=CATransform3DConcat(CATransform3DMakeScale(0.94,0.94,1),
                                                    CATransform3DMakeTranslation(0,1.4,0));
         shine.transform=pressed;
-        shine.opacity=0.92;
-        if (newPress) {
+        shine.opacity=self.znAnimate ? 0.74 : 0;
+        if (newPress && self.znAnimate) {
             CABasicAnimation *glow=[CABasicAnimation animationWithKeyPath:@"opacity"];
-            glow.fromValue=@0;glow.toValue=@0.92;glow.duration=0.055;
+            glow.fromValue=@0;glow.toValue=@0.74;glow.duration=0.055;
             glow.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
             CABasicAnimation *press=[CABasicAnimation animationWithKeyPath:@"transform"];
             press.fromValue=[NSValue valueWithCATransform3D:CATransform3DIdentity];
@@ -1611,6 +1734,29 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         CGContextFillRect(ctx, bounds);
     }
 
+    // A physical pad may hide the baked controls without changing the game aperture.
+    // Keep the real NxNative menu's transparent hit target and draw its gear in the same footer.
+    if (artwork && self.znControlsHidden) {
+        UIColor *base = [self.themeIdentifier isEqualToString:@"switch-neon"] ? [UIColor colorWithWhite:.055 alpha:1] : StrataNxArtworkBacking(artwork,self.darkTheme,self.customThemeTint);
+        [base setFill]; UIRectFill(bounds);
+        if ([self.themeIdentifier isEqualToString:@"switch-neon"]) {
+            CGRect left=CGRectMake(0,portrait?CGRectGetMaxY(opening):0,portrait?bounds.size.width*.49:MAX(0,CGRectGetMinX(opening)),portrait?MAX(0,bounds.size.height-CGRectGetMaxY(opening)):bounds.size.height);
+            CGRect right=CGRectMake(portrait?bounds.size.width*.51:CGRectGetMaxX(opening),portrait?CGRectGetMaxY(opening):0,portrait?bounds.size.width*.49:MAX(0,bounds.size.width-CGRectGetMaxX(opening)),portrait?MAX(0,bounds.size.height-CGRectGetMaxY(opening)):bounds.size.height);
+            [[UIColor colorWithRed:0 green:.72 blue:.85 alpha:1] setFill]; UIRectFill(left);
+            [[UIColor colorWithRed:.95 green:.25 blue:.23 alpha:1] setFill]; UIRectFill(right);
+        }
+        CGRect footer=StrataNxControlFrame(bounds,artwork,wide,.5);
+        CGPoint gear=StrataArtGearCentre(!portrait);
+        CGPoint center=CGPointMake(footer.origin.x+footer.size.width*gear.x,footer.origin.y+footer.size.height*gear.y);
+        CGFloat radius=MAX(20,MIN(footer.size.width*(portrait?.055:.032),footer.size.height*(portrait?.035:.052)));
+        CGRect circle=CGRectMake(center.x-radius*.75,center.y-radius*.75,radius*1.5,radius*1.5);
+        [[UIColor colorWithWhite:self.darkTheme?.12:.92 alpha:1] setFill];
+        [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
+        UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
+        CGContextRestoreGState(ctx);
+        return;
+    }
     if (artwork && wide) {
         StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         CGRect artFrame = StrataNxArtworkFrame(bounds,artwork);
@@ -1886,6 +2032,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
         feedback.fullScreenMode = YES;
         feedback.mappedPad = pad;
         feedback.sharedGroup = group;
+        [feedback znLoadFeedback];
         feedback.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
         [feedback loadCustomSkinLayers];
         [feedback setDarkTheme:feedback.darkTheme];
@@ -1903,6 +2050,7 @@ static void StrataInstallNxSkin(UIWindow *window, NSString *group) {
     StrataNxSkinView *skin = [[StrataNxSkinView alloc] initWithFrame:host.bounds];
     skin.mappedPad = pad;
     skin.sharedGroup = group;
+    [skin znLoadFeedback];
     skin.darkTheme = [[prefs stringForKey:StrataNxSkinStyleKey] isEqualToString:@"amoled"];
     [skin loadCustomSkinLayers];
     [skin setDarkTheme:skin.darkTheme];

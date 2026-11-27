@@ -4,6 +4,7 @@ struct StrataNxBuiltInSkin: Identifiable {
     let id: String
     let title: String
     static let all: [StrataNxBuiltInSkin] = [
+        .init(id: "switch-neon", title: "Switch Neon Blue / Red"),
         .init(id: "zelda", title: "Zelda"),
         .init(id: "mario", title: "Mario"),
         .init(id: "kirby", title: "Kirby"),
