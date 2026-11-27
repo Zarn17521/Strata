@@ -95,7 +95,9 @@ struct StrataSwitchboard: View {
                     Spacer(minLength: 4)
                     Divider().overlay(foreground.opacity(0.15))
                     HStack {
-                        Image(systemName: "gamecontroller.fill").foregroundStyle(foreground)
+                        Image(systemName: "gamecontroller.fill")
+                            .foregroundStyle(controller.connected ? Color.green : Color.gray)
+                            .accessibilityLabel(controller.connected ? "Controller connected" : "Controller disconnected")
                         Spacer()
                         Menu {
                             ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
