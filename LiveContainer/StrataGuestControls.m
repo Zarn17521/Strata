@@ -835,6 +835,9 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
 @implementation StrataNxThemeBundleToken
 @end
 
+#include "ZNThemeSignatures.h"
+#include "ZNGameWorldArtwork.h"
+
 static char ZNSwitchPearlPhotoKey;
 static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory, BOOL controls) {
     BOOL neon=[identifier isEqualToString:@"switch-neon"];
@@ -876,6 +879,18 @@ static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BO
         UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, format.scale, controls);
         if (image) objc_setAssociatedObject(image,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return image;
+    }
+    NSArray<NSString *> *world=identifier.length?ZNGameWorldProfiles()[identifier]:nil;
+    if (world.count==8) {
+        CGFloat scale=thumbnail?.32:(lowMemory?.75:1.0);
+        UIImage *image=StrataNxBuildArtworkWithDrawing(portrait,YES,nil,scale,controls,^(CGRect all){
+            ZNDrawGameWorldPlate(world,portrait,all);
+        });
+        if(image){
+            objc_setAssociatedObject(image,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(image,&ZNGameWorldArtworkKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            return image;
+        }
     }
     if (!StrataNxCustomThemeColor(identifier)) return nil;
     @autoreleasepool {
@@ -1682,6 +1697,8 @@ static void ZNDrawLandscapeReferenceArtwork(UIImage *image, CGRect bounds, BOOL 
     CGRect art=ZNLandscapeReferenceFrame(bounds);
     [image drawInRect:art];
     CGFloat w=bounds.size.width,h=bounds.size.height,x=bounds.origin.x,y=bounds.origin.y;
+    // Full-bleed worlds are already rectangular and need no photo corner patches.
+    if (![objc_getAssociatedObject(image,&ZNGameWorldArtworkKey) boolValue]) {
     // Sample unobstructed strips between the shoulder and stick rows.
     CGRect left=CGRectMake(.099,.477,.021,.024), right=CGRectMake(.891,.477,.021,.024);
     ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y,w*.025,h));
@@ -1690,6 +1707,7 @@ static void ZNDrawLandscapeReferenceArtwork(UIImage *image, CGRect bounds, BOOL 
     ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.931,y,w*.069,h*.185));
     ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y+h*.815,w*.105,h*.185));
     ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.895,y+h*.815,w*.105,h*.185));
+    }
     // Paint a rectangular black bezel behind the live 16:9 game. The outer
     // view is already clipped around the live game by its caller.
     CGRect game=ZNLandscapeReferenceDisplay(bounds);
@@ -1698,7 +1716,6 @@ static void ZNDrawLandscapeReferenceArtwork(UIImage *image, CGRect bounds, BOOL 
     StrataNxDrawZNBrand(art,NO);
     CGContextRestoreGState(ctx);
 }
-#include "ZNThemeSignatures.h"
 
 static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark, UIColor *tint) {
     [StrataNxArtworkBacking(image,dark,tint) setFill];
@@ -1787,7 +1804,6 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
                           previewSize.height/size.height);
         if (!portrait) {
             ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
-            ZNDrawThemeSignatures(identifier,art,source,NO,wide);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1795,7 +1811,6 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
             StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             [UIColor.blackColor setFill];
             UIRectFill(StrataNxDisplayRect(art,source,YES));
-            ZNDrawThemeSignatures(identifier,art,source,YES,YES);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1815,7 +1830,6 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         if (!StrataNxIsThemeImage(source))
             StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
         StrataNxDrawZNBrand(art,portrait);
-        ZNDrawThemeSignatures(identifier,art,source,portrait,wide);
         CGContextRestoreGState(ctx);
     }];
     if (result) [previewCache setObject:result forKey:key
@@ -1880,13 +1894,11 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
         UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
         [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
-        ZNDrawThemeSignatures(self.themeIdentifier,bounds,artwork,portrait,wide);
         CGContextRestoreGState(ctx);
         return;
     }
     if (artwork && !portrait) {
         ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
-        ZNDrawThemeSignatures(self.themeIdentifier,bounds,artwork,NO,wide);
         [self drawCustomSkinLayersPortrait:NO artworkFrame:ZNLandscapeReferenceFrame(bounds)];
         CGContextRestoreGState(ctx);
         return;
@@ -1894,7 +1906,6 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     if (artwork && wide) {
         StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         CGRect artFrame = StrataNxArtworkFrame(bounds,artwork);
-        ZNDrawThemeSignatures(self.themeIdentifier,bounds,artwork,portrait,wide);
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:artFrame];
         CGContextRestoreGState(ctx);
         return;
@@ -1948,7 +1959,6 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         // Built-ins are already laid out with Look above ABXY. Do not
         // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
-        ZNDrawThemeSignatures(self.themeIdentifier,bounds,image,portrait,wide);
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:art];
         CGContextRestoreGState(ctx);
     } else {

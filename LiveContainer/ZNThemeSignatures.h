@@ -86,11 +86,6 @@ static void ZNDrawThemeSignatureGlyph(NSString *name, CGRect frame) {
     CGContextSaveGState(ctx);
     CGContextTranslateCTM(ctx,frame.origin.x,frame.origin.y);
     CGContextScaleCTM(ctx,frame.size.width/100.0,frame.size.height/100.0);
-    // Contrasting medallion keeps fine artwork legible on every theme color.
-    UIBezierPath *rim=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(1,1,98,98)];
-    [[UIColor colorWithWhite:.07 alpha:.78] setFill]; [rim fill];
-    [[UIColor colorWithWhite:.88 alpha:.32] setStroke]; rim.lineWidth=2.1; [rim stroke];
-    CGContextTranslateCTM(ctx,10,10); CGContextScaleCTM(ctx,.8,.8);
     for (NSArray<NSString *> *shape in shapes) {
         NSString *kind=shape[0]; UIColor *color=ZNThemeSignatureColor(shape[1]);
         NSArray<NSString *> *tokens=[shape[2] componentsSeparatedByString:@" "];
@@ -108,22 +103,4 @@ static void ZNDrawThemeSignatureGlyph(NSString *name, CGRect frame) {
         } else { [color setFill]; [p fill]; }
     }
     CGContextRestoreGState(ctx);
-}
-static void ZNDrawThemeSignatures(NSString *identifier, CGRect bounds, UIImage *artwork, BOOL portrait, BOOL wide) {
-    NSArray<NSString *> *pair=identifier.length?ZNThemeSignaturePairs()[identifier]:nil;
-    if (pair.count!=2 || !artwork || CGRectIsEmpty(bounds)) return;
-    CGRect game=StrataNxDisplayRect(bounds,artwork,wide);
-    CGRect art=StrataNxArtworkFrame(bounds,artwork);
-    // Portrait: the central band between display and shoulder row.
-    // Landscape: the right-hand footer, outside the plus and ABXY targets.
-    CGFloat side=portrait?MIN(art.size.width*.072,art.size.height*.029):MIN(bounds.size.width*.039,bounds.size.height*.078);
-    if (side<9) return;
-    CGFloat y=portrait?art.origin.y+art.size.height*.460:bounds.origin.y+bounds.size.height*.912;
-    CGFloat xs[2]={portrait?art.origin.x+art.size.width*.425:bounds.origin.x+bounds.size.width*.676,
-                   portrait?art.origin.x+art.size.width*.575:bounds.origin.x+bounds.size.width*.730};
-    for (NSUInteger i=0;i<2;i++) {
-        CGRect frame=CGRectMake(xs[i]-side*.5,y-side*.5,side,side);
-        if (!CGRectContainsRect(bounds,frame)||CGRectIntersectsRect(CGRectInset(game,-2,-2),frame)) continue;
-        ZNDrawThemeSignatureGlyph(pair[i],frame);
-    }
 }

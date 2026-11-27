@@ -151,7 +151,7 @@ static void StrataNxBuiltScreen(CGRect hole, BOOL dark) {
     [[UIColor colorWithWhite:dark?0.62:0.93 alpha:0.70] setStroke];[edge stroke];
 }
 
-static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, CGFloat scale, BOOL controls) {
+static UIImage *StrataNxBuildArtworkWithDrawing(BOOL portrait, BOOL dark, UIImage *plate, CGFloat scale, BOOL controls, void (^drawPlate)(CGRect)) {
     CGSize size = portrait ? CGSizeMake(923,2000) : CGSizeMake(1792,1008);
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
     format.opaque=YES;
@@ -159,7 +159,9 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, C
     UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
     UIImage *result=[renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull render) {
         CGRect all=CGRectMake(0,0,size.width,size.height);
-        if (plate) {
+        if (drawPlate) {
+            drawPlate(all);
+        } else if (plate) {
             [plate drawInRect:all];
         } else {
             [StrataNxBuiltShell(dark) setFill];
@@ -231,6 +233,10 @@ static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, C
     if (result) objc_setAssociatedObject(result,&StrataNxBuiltinImageKey,
                                          @YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return result;
+}
+
+static UIImage *StrataNxBuildArtwork(BOOL portrait, BOOL dark, UIImage *plate, CGFloat scale, BOOL controls) {
+    return StrataNxBuildArtworkWithDrawing(portrait,dark,plate,scale,controls,nil);
 }
 
 static UIImage *StrataNxBuiltinArtwork(BOOL portrait, BOOL dark, BOOL controls) {
