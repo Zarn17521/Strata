@@ -6,6 +6,9 @@ brew install ldid
 # move lc to working folder
 mv "$archive_path.xcarchive/Products/Applications" Payload
 
+# Install and validate loose primary PNGs before either IPA is packaged.
+python3 .github/scripts/prepare_zn_icon.py --package Payload/LiveContainer.app || exit 1
+
 # temporarily move sidestore support framrwork to tmp before zip
 mkdir tmp
 mv Payload/LiveContainer.app/Frameworks/SideStoreSupport.framework ./tmp

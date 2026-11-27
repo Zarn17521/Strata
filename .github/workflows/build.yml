@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - beta/v0.1.1
+      - beta/v1.0.0
 
 jobs:
   build:
     name: Build using xcodebuild command
-    if: github.ref == 'refs/heads/beta/v0.1.1'
+    if: github.ref == 'refs/heads/beta/v1.0.0'
     runs-on: xcode-27
     env:
       scheme: LiveContainer
@@ -130,12 +130,12 @@ jobs:
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ZN-Library-v0.1.1-Beta.ipa
+          name: ZN-Library-v1.0.0-Beta.ipa
           path: ${{ env.scheme }}.ipa
       
       - name: Upload LiveContainer+SideStore
         uses: actions/upload-artifact@v7
         with:
-          name: ZN-Library-v0.1.1-Beta+SideStore.ipa
+          name: ZN-Library-v1.0.0-Beta+SideStore.ipa
           path: ${{ env.scheme }}+SideStore.ipa
 
