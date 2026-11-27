@@ -166,7 +166,9 @@
     [self znGearUp:sender];
 }
 - (void)znBindGear:(UIControl *)gear {
-    if (!gear || self.znGearControl==gear) return;
+    if (!gear) return;
+    ZNBindReturnHomeGesture(gear);
+    if (self.znGearControl==gear) return;
     UIControl *old=self.znGearControl;
     [old removeTarget:self action:@selector(znGearDown:) forControlEvents:UIControlEventTouchDown];
     [old removeTarget:self action:@selector(znGearUp:) forControlEvents:UIControlEventTouchUpInside];

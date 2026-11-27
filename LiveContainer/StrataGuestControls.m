@@ -591,6 +591,40 @@ static CGPoint StrataNxRemappedTouchLocation(id touch, SEL command, UIView *view
     }
 }
 
+// Shared by the original and artwork gear buttons, independent of theme
+// and the Real Controller Engine's animation/haptic/sound preferences.
+static void ZNConfirmReturnHome(UIControl *gear);
+@interface ZNGearHomeGesture : UILongPressGestureRecognizer <UIGestureRecognizerDelegate>
+- (void)held:(UILongPressGestureRecognizer *)gesture;
+@end
+@implementation ZNGearHomeGesture
+- (void)held:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state==UIGestureRecognizerStateBegan && [self.view isKindOfClass:UIControl.class])
+        ZNConfirmReturnHome((UIControl *)self.view);
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
+    // The native UIButton's context-menu long press must yield to this hold.
+    // Ordinary short taps remain owned by the existing UIMenu.
+    return other!=gesture && other.view==gesture.view;
+}
+@end
+static char ZNGearHomeGestureKey;
+static void ZNBindReturnHomeGesture(UIControl *gear) {
+    if (!gear || objc_getAssociatedObject(gear,&ZNGearHomeGestureKey)) return;
+    ZNGearHomeGesture *hold=[[ZNGearHomeGesture alloc] initWithTarget:nil action:NULL];
+    [hold addTarget:hold action:@selector(held:)];
+    hold.delegate=hold;
+    hold.minimumPressDuration=.6;
+    hold.allowableMovement=12;
+    hold.numberOfTouchesRequired=1;
+    hold.cancelsTouchesInView=YES;
+    for (UIGestureRecognizer *existing in gear.gestureRecognizers)
+        [existing requireGestureRecognizerToFail:hold];
+    [gear addGestureRecognizer:hold];
+    objc_setAssociatedObject(gear,&ZNGearHomeGestureKey,hold,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    gear.accessibilityHint=@"Tap for game settings. Touch and hold to return to Zn’s Library.";
+}
+
 @interface StrataNxArtMenuBridge : NSObject <UIGestureRecognizerDelegate>
 @property(nonatomic, weak) UIView *pad;
 @end
@@ -2527,7 +2561,39 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
 @property(nonatomic) NSInteger deckLiftIndex;
 @property(nonatomic) CGFloat deckLiftOffset;
 @property(nonatomic, weak) UIView *deckRoot;
+- (void)request:(NSString *)action;
 @end
+static __weak StrataGuestControls *ZNReturnHomeControls;
+static __weak UIAlertController *ZNReturnHomeAlert;
+static void ZNConfirmReturnHome(UIControl *gear) {
+    StrataGuestControls *controls=ZNReturnHomeControls;
+    UIWindow *window=gear.window;
+    if (!controls || controls.hostMode || !window || window.hidden || ZNReturnHomeAlert) return;
+    UIViewController *presenter=window.rootViewController;
+    while (presenter.presentedViewController && !presenter.presentedViewController.isBeingDismissed)
+        presenter=presenter.presentedViewController;
+    if (!presenter || !presenter.viewIfLoaded.window || [presenter isKindOfClass:UIAlertController.class]) return;
+    // Match the native gear menu behavior: release virtual input before
+    // presenting modal UI so a held game key cannot get stuck.
+    UIView *pad=gear.superview;
+    if ([NSStringFromClass(pad.class) isEqualToString:@"DmGamepad"] && [pad respondsToSelector:@selector(reset)])
+        ((void (*)(id,SEL))[pad methodForSelector:@selector(reset)])(pad,@selector(reset));
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Do you want to return to the Home Screen?"
+        message:@"Unsaved game progress may be lost."
+        preferredStyle:UIAlertControllerStyleAlert];
+    ZNReturnHomeAlert=alert;
+    __weak StrataGuestControls *weakControls=controls;
+    UIAlertAction *no=[UIAlertAction actionWithTitle:@"No" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *action){
+        ZNReturnHomeAlert=nil;
+    }];
+    [alert addAction:no];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Yes" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action){
+        ZNReturnHomeAlert=nil;
+        [weakControls request:@"returnHome"];
+    }]];
+    alert.preferredAction=no;
+    [presenter presentViewController:alert animated:YES completion:nil];
+}
 #include "ZNBootIntro.h"
 
 @implementation StrataGuestControls
@@ -2594,16 +2660,24 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
         if ([action isEqualToString:@"minimize"]) [NSNotificationCenter.defaultCenter postNotificationName:@"StrataMinimizeAllWindows" object:nil];
         return;
     }
+    BOOL returnHome=[action isEqualToString:@"returnHome"];
     if (!self.separateProcess) {
         [self hide];
-        // A normal guest owns the main process. Use the existing self-relaunch
-        // path to return to the launcher, without requiring a manual force-quit.
+        // Explicit Home uses the bootstrap's deliberate UI route, which
+        // clears auto-resume even if a background notification arrives later.
         [NSUserDefaults.lcUserDefaults removeObjectForKey:@"selected"];
+        if (returnHome) {
+            [NSUserDefaults.lcUserDefaults setObject:@"ui" forKey:@"selected"];
+            [NSUserDefaults.lcUserDefaults removeObjectForKey:@"StrataResumeGuest"];
+        }
         [NSUserDefaults.lcUserDefaults removeObjectForKey:@"selectedContainer"];
         [NSUserDefaults.lcUserDefaults removeObjectForKey:@"launchAppUrlScheme"];
         [LCSharedUtils launchToGuestAppWithClassicMode:0];
         return;
     }
+    // The existing extension request handler closes only the requesting PID.
+    // No switcher, minimize, or close-all operation is requested.
+    if (returnHome) action=@"close";
     NSURL *root = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:self.group];
     if (!root) { [self showError:@"ZN's shared container is unavailable. Reinstall with all extensions kept, then reopen this app from ZN."]; return; }
     NSURL *directory = [root URLByAppendingPathComponent:@"Library/StrataControls"];
@@ -2648,7 +2722,15 @@ static void StrataApplyNxGameOrientation(UIWindow *window, NSString *group) {
 - (void)showError:(NSString *)message {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"App controls unavailable" message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self.panel.rootViewController presentViewController:alert animated:YES completion:nil];
+    UIViewController *presenter=self.panel.rootViewController;
+    if (!presenter) {
+        for (UIWindow *window in self.installedWindows) {
+            if (window.isKeyWindow && !window.hidden) { presenter=window.rootViewController; break; }
+        }
+    }
+    while (presenter.presentedViewController && !presenter.presentedViewController.isBeingDismissed)
+        presenter=presenter.presentedViewController;
+    [presenter presentViewController:alert animated:YES completion:nil];
 }
 - (UIButton *)button:(NSString *)title action:(void (^)(void))action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -3144,6 +3226,7 @@ void StrataStartGuestControlsWithIdentity(NSString *group, NSString *appName, BO
         controls.appName = appName.lastPathComponent ?: @"Strata";
         controls.currentKey = key;
         controls.separateProcess = separateProcess;
+        ZNReturnHomeControls=controls;
         controls.installedWindows = [NSHashTable weakObjectsHashTable];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
             if (controls.panel) return;
