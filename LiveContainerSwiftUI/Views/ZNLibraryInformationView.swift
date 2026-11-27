@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum ZNLibraryInformationPage: String, Identifiable {
     case guide, about
@@ -184,11 +185,27 @@ struct ZNLibraryInformationView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 78, weight: .regular))
-                        .foregroundStyle(foreground)
-                        .padding(.bottom, 4)
-                        .accessibilityHidden(true)
+                    Group {
+                        if let profile = UIImage(named: "AboutMeProfile") {
+                            Image(uiImage: profile)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 136, height: 136)
+                                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                        .strokeBorder(foreground.opacity(0.16), lineWidth: 1)
+                                }
+                                .accessibilityLabel("Developer and daughter")
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 78, weight: .regular))
+                                .foregroundStyle(foreground)
+                                .frame(width: 136, height: 136)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.bottom, 6)
                     Text("Pyae Sone Phyo").font(.title2.bold())
                     Text("Min Pyae Zn").font(.subheadline).foregroundStyle(.secondary)
                     Text("Developer of Zn’s Library").font(.caption).foregroundStyle(.secondary)
