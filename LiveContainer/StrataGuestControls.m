@@ -265,6 +265,18 @@ static CGFloat StrataArtNativeRadius(id pad, int index) {
     return imp(pad, sel, index);
 }
 
+// One reference layout for ALL landscape skins. The reference screenshot
+// is 1803x832: side panels ~21.4% each, game ~54% wide and ~66% high.
+// The affine artwork frame also maps the old normalized native touch targets.
+static CGRect ZNLandscapeReferenceFrame(CGRect bounds) {
+    CGFloat w=bounds.size.width*1.12, h=bounds.size.height*1.365;
+    return CGRectMake(CGRectGetMidX(bounds)-w*.5, CGRectGetMinY(bounds)-bounds.size.height*.183, w,h);
+}
+static CGRect ZNLandscapeReferenceDisplay(CGRect bounds) {
+    CGFloat w=MIN(bounds.size.width*.54,bounds.size.height*.66*16.0/9.0);
+    CGFloat h=w*9.0/16.0;
+    return CGRectMake(CGRectGetMidX(bounds)-w*.5,CGRectGetMinY(bounds)+bounds.size.height*.435-h*.5,w,h);
+}
 static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     if (!image || image.size.width <= 0 || image.size.height <= 0 ||
         bounds.size.width <= 0 || bounds.size.height <= 0) return bounds;
@@ -273,6 +285,8 @@ static CGRect StrataNxArtworkFrame(CGRect bounds, UIImage *image) {
     // and bottom (never stretched). The same frame is used by rendering,
     // the game aperture, input hit-testing and skin touch remapping.
     BOOL landscapeArtwork = image.size.width > image.size.height;
+    if (landscapeArtwork && bounds.size.width>bounds.size.height)
+        return ZNLandscapeReferenceFrame(bounds);
     CGFloat sx = bounds.size.width / image.size.width;
     CGFloat sy = bounds.size.height / image.size.height;
     // Crop only the source image's outer black gutter in landscape. All
@@ -395,8 +409,8 @@ static StrataNxWideGeometry StrataNxWideLayout(CGRect bounds, UIImage *image) {
     return l;
 }
 static CGRect StrataNxDisplayRect(CGRect bounds, UIImage *image, BOOL wide) {
+    if (bounds.size.width>bounds.size.height) return ZNLandscapeReferenceDisplay(bounds);
     if (!wide) return StrataNxFullGameRect(StrataNxArtworkAperture(bounds,image));
-    if (bounds.size.width>bounds.size.height) return StrataNxWideLayout(bounds,image).display;
     // Portrait: maximize horizontal width, preserve 16:9 and keep the
     // existing lower controls untouched. The thick photo bezel is omitted.
     CGFloat w=bounds.size.width;
@@ -411,27 +425,16 @@ static int StrataNxPanelForRole(NSInteger role) {
     }
 }
 static CGRect StrataNxControlFrame(CGRect bounds, UIImage *image, BOOL wide, CGFloat normalizedX) {
-    if (!wide || bounds.size.height>=bounds.size.width) return StrataNxArtworkFrame(bounds,image);
-    StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
-    return normalizedX<.25 ? l.leftFrame : normalizedX>.745 ? l.rightFrame : l.footerFrame;
+    // Classic and Wide share this reference in landscape, including gear/HUD.
+    return StrataNxArtworkFrame(bounds,image);
 }
 static CGPoint StrataNxNormalizeControlPoint(CGRect bounds, UIImage *image, CGPoint point, BOOL wide, NSInteger role) {
     CGRect art=StrataNxArtworkFrame(bounds,image);
-    CGRect region=CGRectNull;
-    if (wide && bounds.size.width>bounds.size.height) {
-        StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
-        int panel=role!=StrataArtNoMapping ? StrataNxPanelForRole(role)
-            : point.x<CGRectGetMinX(l.display) ? -1 : point.x>CGRectGetMaxX(l.display) ? 1 : 0;
-        art=panel<0 ? l.leftFrame : panel>0 ? l.rightFrame : l.footerFrame;
-        region=panel<0 ? l.leftSource : panel>0 ? l.rightSource : l.footerSource;
-    }
-    CGPoint p=CGPointMake((point.x-art.origin.x)/MAX(art.size.width,1),
-                          (point.y-art.origin.y)/MAX(art.size.height,1));
-    // A fresh touch on the enlarged game picture cannot hit an invisible
-    // button. Once claimed, the same panel owns the drag until touch-up.
-    if (role==StrataArtNoMapping && !CGRectIsNull(region) && !CGRectContainsPoint(region,p))
+    if (bounds.size.width>bounds.size.height && role==StrataArtNoMapping &&
+        CGRectContainsPoint(ZNLandscapeReferenceDisplay(bounds),point))
         return CGPointMake(NAN,NAN);
-    return p;
+    return CGPointMake((point.x-art.origin.x)/MAX(art.size.width,1),
+                       (point.y-art.origin.y)/MAX(art.size.height,1));
 }
 static CGPoint StrataNxArtPointInPad(UIView *pad, UIImage *image, CGPoint point, NSInteger role) {
     UIView *skin=[pad.superview viewWithTag:877144];
@@ -1655,6 +1658,46 @@ static UIColor *StrataNxArtworkBacking(UIImage *image, BOOL dark, UIColor *tint)
     return [UIColor colorWithRed:.025 + red*.30 green:.025 + green*.30 blue:.025 + blue*.30 alpha:1];
 }
 
+// Extend the original panel texture into the four rectangular outer corners.
+// Keep the centre of each theme intact; no rounded clipping, no new bitmap
+// allocation or repeated decode. These patches are outside the control centres.
+static void ZNDrawLandscapeTexturePatch(UIImage *image, CGRect source, CGRect dest) {
+    if (!image || CGRectIsEmpty(source) || CGRectIsEmpty(dest)) return;
+    CGContextRef ctx=UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+    CGContextSaveGState(ctx);
+    CGContextClipToRect(ctx,dest);
+    CGRect frame=CGRectMake(dest.origin.x-source.origin.x*dest.size.width/source.size.width,
+                            dest.origin.y-source.origin.y*dest.size.height/source.size.height,
+                            dest.size.width/source.size.width,dest.size.height/source.size.height);
+    [image drawInRect:frame];
+    CGContextRestoreGState(ctx);
+}
+static void ZNDrawLandscapeReferenceArtwork(UIImage *image, CGRect bounds, BOOL dark, UIColor *tint) {
+    CGContextRef ctx=UIGraphicsGetCurrentContext();
+    if (!ctx || !image) return;
+    CGContextSaveGState(ctx);
+    CGContextClipToRect(ctx,bounds);
+    [StrataNxArtworkBacking(image,dark,tint) setFill]; UIRectFill(bounds);
+    CGRect art=ZNLandscapeReferenceFrame(bounds);
+    [image drawInRect:art];
+    CGFloat w=bounds.size.width,h=bounds.size.height,x=bounds.origin.x,y=bounds.origin.y;
+    // Sample unobstructed strips between the shoulder and stick rows.
+    CGRect left=CGRectMake(.099,.477,.021,.024), right=CGRectMake(.891,.477,.021,.024);
+    ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y,w*.025,h));
+    ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.975,y,w*.025,h));
+    ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y,w*.069,h*.185));
+    ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.931,y,w*.069,h*.185));
+    ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y+h*.815,w*.105,h*.185));
+    ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.895,y+h*.815,w*.105,h*.185));
+    // Paint a rectangular black bezel behind the live 16:9 game. The outer
+    // view is already clipped around the live game by its caller.
+    CGRect game=ZNLandscapeReferenceDisplay(bounds);
+    CGRect bezel=CGRectInset(game,-w*.004,-h*.035);
+    [UIColor.blackColor setFill]; UIRectFill(bezel);
+    StrataNxDrawZNBrand(art,NO);
+    CGContextRestoreGState(ctx);
+}
 static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark, UIColor *tint) {
     [StrataNxArtworkBacking(image,dark,tint) setFill];
     UIRectFill(bounds);
@@ -1720,7 +1763,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO, YES)
         ?: StrataNxBuiltinArtwork(portrait,dark,YES);
     if (!source) return nil;
-    CGSize size = wide ? (portrait ? CGSizeMake(393,852) : CGSizeMake(852,393)) : source.size;
+    CGSize size = !portrait ? CGSizeMake(852,393) : (wide ? CGSizeMake(393,852) : source.size);
     // Keep Settings snapshots at one-third resolution: the real native
     // skins still render at full source resolution for gameplay.
     CGFloat previewScale=wide ? .7 : 1.0/3.0;
@@ -1740,6 +1783,11 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         CGContextSaveGState(ctx);
         CGContextScaleCTM(ctx,previewSize.width/size.width,
                           previewSize.height/size.height);
+        if (!portrait) {
+            ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            CGContextRestoreGState(ctx);
+            return;
+        }
         if (wide) {
             StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             [UIColor.blackColor setFill];
@@ -1827,6 +1875,12 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
         UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
         [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
+        CGContextRestoreGState(ctx);
+        return;
+    }
+    if (artwork && !portrait) {
+        ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+        [self drawCustomSkinLayersPortrait:NO artworkFrame:ZNLandscapeReferenceFrame(bounds)];
         CGContextRestoreGState(ctx);
         return;
     }

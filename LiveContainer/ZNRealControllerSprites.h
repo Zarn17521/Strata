@@ -70,10 +70,10 @@
         NSInteger role=roles[i];
         CGPoint centre=role==StrataArtDpad?StrataArtDpadCentre(land):(role==StrataArtLeftStick||role==StrataArtRightStick)?StrataArtStickCentre(land,role==StrataArtRightStick):StrataNxPressCentre(CGPointZero,role,land);
         CGSize px;
-        if (i<4) px=photo?(land?CGSizeMake(88,44):CGSizeMake(150,70)):(land?CGSizeMake(83,41):CGSizeMake(120,39));
-        else if (i<6) px=photo?(land?CGSizeMake(70,70):CGSizeMake(114,114)):(land?CGSizeMake(50,50):CGSizeMake(62,58));
+        if (i<4) px=land?CGSizeMake(88,44):(photo?CGSizeMake(150,70):CGSizeMake(120,39));
+        else if (i<6) px=land?CGSizeMake(70,70):(photo?CGSizeMake(114,114):CGSizeMake(62,58));
         else {
-            CGFloat side=i==6?(photo?(land?204:366):(land?140:194)):(photo?(land?172:260):(land?120:146));
+            CGFloat side=i==6?(land?204:(photo?366:194)):(land?172:(photo?260:146));
             px=CGSizeMake(side,side);
         }
         NSString *key=[NSString stringWithFormat:@"role%ld",(long)role];
@@ -82,11 +82,11 @@
     NSArray *face=@[@"A",@"B",@"X",@"Y"];
     for (int i=0;i<4;i++) {
         CGPoint centre=StrataArtFaceCentre(land,i);
-        CGFloat side=photo?(land?90:128):(land?77:93);
+        CGFloat side=land?90:(photo?128:93);
         [self znSpriteForKey:[NSString stringWithFormat:@"face%d",i] centre:centre pixels:CGSizeMake(side,side) art:StrataNxControlFrame(self.bounds,image,wide,centre.x) reference:ref kind:StrataArtFace label:face[i] dark:dark];
     }
     CGPoint gear=StrataArtGearCentre(land);
-    CGFloat side=photo?(land?84:120):(land?53:72);
+    CGFloat side=land?84:(photo?120:72);
     [self znSpriteForKey:@"gear" centre:gear pixels:CGSizeMake(side,side) art:StrataNxControlFrame(self.bounds,image,wide,gear.x) reference:ref kind:StrataArtNoMapping label:@"⚙︎" dark:dark];
 }
 - (CALayer *)znMovingLayer:(CALayer *)root {

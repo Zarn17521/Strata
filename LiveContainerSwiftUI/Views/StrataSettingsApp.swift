@@ -360,7 +360,7 @@ struct StrataNxPortraitSkinSettings: View {
             } header: {
                 Text("Game Display")
             } footer: {
-                Text("Classic and Wide show the selected controller skin with mapped touch controls. Full Screen keeps the largest uncropped 16:9 game view and native touch mapping; the bezel is hidden, while the selected theme colors the press feedback. Restart NxNative to apply. Render scale is unchanged.")
+                Text("All Landscape themes use the same square-edge reference layout and uncropped 16:9 game view in Classic and Wide. Portrait retains its existing layout choices. Full Screen hides the bezel and keeps native touch mapping. Restart NxNative to apply. Render scale is unchanged.")
             }
 
             Section("Portrait & Landscape") {
