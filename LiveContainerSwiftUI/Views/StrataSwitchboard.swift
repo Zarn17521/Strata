@@ -426,23 +426,18 @@ struct StrataSwitchboard: View {
 
     private var statusBar: some View {
         HStack(spacing: 4) {
-            HStack(alignment: .bottom, spacing: 3) {
-                ZNInitials(darkMode: darkMode)
-                    .frame(width: 74, height: 43)
-                Text("’s")
-                    .font(.system(size: 20, weight: .bold, design: .serif))
-                    .padding(.bottom, 2)
-                Text("LIBRARY")
-                    .font(.system(size: 15, weight: .bold, design: .serif))
-                    .tracking(1.25)
-                    .padding(.leading, 3)
-                    .padding(.bottom, 4)
-            }
-            .lineLimit(1)
-            .minimumScaleFactor(0.65)
-            .foregroundStyle(foreground)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("ZN's Library")
+            // Match the monochrome app branding; the launcher wordmark
+            // scales within its own space, leaving all three shortcuts tappable.
+            Text("Zn’s Library")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .tracking(-0.6)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .foregroundStyle(foreground)
+                .frame(height: 44, alignment: .leading)
+                .layoutPriority(1)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("switchboard.libraryWordmark")
             Spacer(minLength: 0)
             // Header shortcuts keep the dock focused on gameplay controls.
             // Low Memory Mode remains available in Settings > Performance.
