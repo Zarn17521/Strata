@@ -42,6 +42,7 @@ struct StrataSwitchboard: View {
     @AppStorage("LiveBoardConsoleSounds", store: LCUtils.appGroupUserDefault) private var sounds = true
     @AppStorage("ZNBetaLowMemory", store: LCUtils.appGroupUserDefault) private var lowMemory = false
     @AppStorage("StrataSwitchboardAMOLEDDark", store: LCUtils.appGroupUserDefault) private var darkMode = false
+    @AppStorage("ZNLibraryHomeLandscape", store: LCUtils.appGroupUserDefault) private var homeLandscape = false
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
@@ -62,7 +63,8 @@ struct StrataSwitchboard: View {
     var body: some View {
         GeometryReader { geo in
             // One centered square cover per page. Swipe to navigate games.
-            let margin = max(28, geo.safeAreaInsets.leading + 20)
+            let landscape = geo.size.width > geo.size.height
+            let margin = landscape ? CGFloat(16) : max(16, geo.safeAreaInsets.leading + 12)
             let tile = max(96, min(geo.size.height * 0.46, geo.size.width - margin * 2 - 10))
             let items = filtered
             ZStack {
@@ -73,14 +75,23 @@ struct StrataSwitchboard: View {
                     // All / Games / Tools and AMOLED moon share one row.
                     categoryStrip.padding(.horizontal, margin).padding(.top, 4)
                     Spacer(minLength: 4)
-                    libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
-                        .frame(height: tile + 70)
-                        .onChange(of: selectedKey) { _ in
-                            if sounds && phase == .active && visible && !busy { audio.play() }
+                    if landscape {
+                        let railWidth = min(CGFloat(214), geo.size.width * 0.32)
+                        let contentWidth = max(96, geo.size.width - margin * 2 - railWidth - 12)
+                        HStack(spacing: 12) {
+                            libraryContent(items: items, tile: max(64, min(tile, geo.size.height - 190)), width: contentWidth)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            shortcutButtons.frame(width: railWidth)
                         }
-                    if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
-                    Spacer(minLength: 4)
-                    shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
+                        .padding(.horizontal, margin)
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
+                            .frame(height: tile + 70)
+                        if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
+                        Spacer(minLength: 4)
+                        shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
+                    }
                     Spacer(minLength: 4)
                     Divider().overlay(foreground.opacity(0.15))
                     HStack {
@@ -105,7 +116,10 @@ struct StrataSwitchboard: View {
             }
         }.foregroundStyle(foreground)
         .preferredColorScheme(darkMode ? .dark : .light)
-        .background(LiveBoardOrientationLock(mask: .portrait))
+        .background(LiveBoardOrientationLock(mask: homeLandscape ? .landscape : .portrait))
+        .onChange(of: selectedKey) { _ in
+            if sounds && phase == .active && visible && !busy { audio.play() }
+        }
         .onAppear {
             if !["Switchboard", "Cinematic", "Shelf"].contains(presentation) { presentation = "Switchboard" }
             visible = true
@@ -414,7 +428,7 @@ struct StrataSwitchboard: View {
     }
 
     private var statusBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             HStack(alignment: .bottom, spacing: 3) {
                 ZNInitials(darkMode: darkMode)
                     .frame(width: 74, height: 43)
@@ -427,6 +441,8 @@ struct StrataSwitchboard: View {
                     .padding(.leading, 3)
                     .padding(.bottom, 4)
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.65)
             .foregroundStyle(foreground)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("ZN's Library")
@@ -447,6 +463,29 @@ struct StrataSwitchboard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Manage apps")
             .accessibilityIdentifier("switchboard.manageApps")
+            Button {
+                homeLandscape.toggle()
+            } label: {
+                Image(systemName: "iphone")
+                    .rotationEffect(.degrees(homeLandscape ? 90 : 0))
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(2)
+                            .background(background, in: Circle())
+                            .offset(x: 5, y: -3)
+                    }
+                    .font(.system(size: 23, weight: .semibold))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(foreground)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Library screen rotation")
+            .accessibilityValue(homeLandscape ? "Landscape" : "Portrait")
+            .accessibilityHint("Changes library orientation only, not game orientation.")
+            .accessibilityIdentifier("switchboard.toggle.homeOrientation")
             Button {
                 controller.stop()
                 NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
