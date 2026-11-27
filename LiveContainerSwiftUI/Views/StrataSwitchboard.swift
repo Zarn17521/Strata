@@ -67,10 +67,19 @@ struct StrataSwitchboard: View {
         if selectedKey == addGameKey { return nil }
         return filtered.first { liveBoardAppKey($0) == selectedKey } ?? filtered.first
     }
+    private func orderedPageKeys(_ items: [LCAppModel]) -> [String] {
+        let games = items.map(liveBoardAppKey)
+        guard canAddGame else { return games }
+        return presentation == "Switchboard" ? [addGameKey] + games : games + [addGameKey]
+    }
     private func reconcileSelection(_ keys: [String], preferNewGame: Bool = false) {
         if selectedKey == addGameKey && canAddGame && !preferNewGame { return }
         if !keys.contains(selectedKey) {
-            selectedKey = keys.first ?? (canAddGame ? addGameKey : "")
+            if presentation == "Switchboard" && canAddGame && !preferNewGame {
+                selectedKey = addGameKey
+            } else {
+                selectedKey = keys.first ?? (canAddGame ? addGameKey : "")
+            }
         }
     }
     private func addGame() {
@@ -337,15 +346,15 @@ struct StrataSwitchboard: View {
         default:
             VStack(spacing: 4) {
                 TabView(selection: $selectedKey) {
-                    ForEach(items, id: \.self) { app in
-                        gameTile(app, size: tile)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .tag(liveBoardAppKey(app))
-                    }
                     if canAddGame {
                         addGameTile(size: tile)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .tag(addGameKey)
+                    }
+                    ForEach(items, id: \.self) { app in
+                        gameTile(app, size: tile)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .tag(liveBoardAppKey(app))
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -357,20 +366,38 @@ struct StrataSwitchboard: View {
         }
     }
 
-    // A compact, centered glass capsule directly below the cover carousel.
-    // Its page order matches both TabView and Bluetooth controller navigation,
-    // including the final Add Game card. Bound the visible dots for large libraries.
+    // The permanent first page is Home (Add Game). Keep its house visible
+    // even when a large library needs a sliding window of ordinary game dots.
     @ViewBuilder private func pageIndicator(items: [LCAppModel]) -> some View {
-        let keys = items.map(liveBoardAppKey) + (canAddGame ? [addGameKey] : [])
+        let keys = orderedPageKeys(items)
+        let games = items.map(liveBoardAppKey)
         if !keys.isEmpty {
             let current = keys.firstIndex(of: selectedKey) ?? 0
-            let count = min(7, keys.count)
-            let start = max(0, min(current - count / 2, keys.count - count))
+            let selectedGame = games.firstIndex(of: selectedKey) ?? 0
+            let count = min(canAddGame ? 6 : 7, games.count)
+            let start = max(0, min(selectedGame - count / 2, games.count - count))
             HStack(spacing: 8) {
+                if canAddGame {
+                    Button {
+                        selectedKey = addGameKey
+                    } label: {
+                        Image(systemName: "house.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(foreground.opacity(selectedKey == addGameKey ? 1 : 0.32))
+                            .frame(width: 22, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                    .accessibilityLabel("Home, Add Game")
+                    .accessibilityAddTraits(selectedKey == addGameKey ? .isSelected : [])
+                    .accessibilityIdentifier("switchboard.homePage")
+                }
                 ForEach(start..<(start + count), id: \.self) { index in
                     Circle()
-                        .fill(foreground.opacity(index == current ? 1 : 0.32))
+                        .fill(foreground.opacity(selectedKey == games[index] ? 1 : 0.32))
                         .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 14)
@@ -382,11 +409,10 @@ struct StrataSwitchboard: View {
             }
             .overlay { Capsule().strokeBorder(foreground.opacity(0.22), lineWidth: 0.75) }
             .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("Library page")
             .accessibilityValue("\(current + 1) of \(keys.count)")
             .accessibilityIdentifier("switchboard.pageIndicator")
-            .allowsHitTesting(false)
         }
     }
 
@@ -856,7 +882,7 @@ struct StrataSwitchboard: View {
         guard visible, !showingWhatsNew, !showingJITSettings, !showingSkinSettings, !editingLibrary, !choosingCover, !busy else { return }
         controller.onCommand = { command in
             let items = filtered
-            let keys = items.map(liveBoardAppKey) + (canAddGame ? [addGameKey] : [])
+            let keys = orderedPageKeys(items)
             let index = keys.firstIndex(of: selectedKey) ?? 0
             switch command {
             case .left: if index > 0 { selectedKey = keys[index - 1] }
