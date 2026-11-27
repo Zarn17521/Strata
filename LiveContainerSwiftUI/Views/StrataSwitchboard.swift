@@ -431,24 +431,21 @@ struct StrataSwitchboard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("ZN's Library")
             Spacer(minLength: 0)
+            // Settings now occupies the former Optimize shortcut.
+            // Low Memory Mode remains available in Settings > Performance.
             Button {
-                lowMemory.toggle()
+                controller.stop()
+                NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
             } label: {
-                VStack(spacing: 3) {
-                    Image(systemName: "memorychip")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(lowMemory ? "Optimize ON" : "Optimize OFF")
-                        .font(.system(size: 9, weight: .semibold))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(lowMemory ? Color.green : foreground.opacity(0.65))
-                .frame(width: 72, height: 44)
-                .contentShape(Rectangle())
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color.purple)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Optimize memory")
-            .accessibilityValue(lowMemory ? "On" : "Off")
-            .accessibilityIdentifier("switchboard.toggle.lowMemoryMode")
+            .accessibilityLabel("Open ZN Settings")
+            .accessibilityIdentifier("switchboard.open.settings")
         }
     }
     private var categoryStrip: some View {
@@ -495,14 +492,6 @@ struct StrataSwitchboard: View {
                 }
             }
 
-            shortcutCell("Settings") {
-                roundButton("gearshape.fill", label: "Open ZN Settings", tint: .purple) {
-                    controller.stop()
-                    NotificationCenter.default.post(name: .strataOpenSettings, object: nil)
-                }
-                .accessibilityIdentifier("switchboard.open.settings")
-            }
-
             shortcutCell("Dark") {
                 roundButton(darkMode ? "moon.fill" : "moon",
                             label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
@@ -512,7 +501,7 @@ struct StrataSwitchboard: View {
                 .accessibilityIdentifier("switchboard.toggle.darkMode")
             }
         }
-        // ONE continuous outline around all five icon+label columns.
+        // ONE continuous outline around all four icon+label columns.
         // The stroke and captions share the dark/light foreground.
         .padding(.horizontal, 8)
         .padding(.vertical, 10)
