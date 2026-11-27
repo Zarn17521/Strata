@@ -539,6 +539,7 @@ struct ZNRealControllerSettings: View {
     @AppStorage("ZNRealAutoHide", store: LCUtils.appGroupUserDefault) private var autoHide = true
     @AppStorage("ZNRealIntensity", store: LCUtils.appGroupUserDefault) private var intensity = 0.65
     @AppStorage("ZNRealVolume", store: LCUtils.appGroupUserDefault) private var volume = 0.25
+    @AppStorage("ZNCompactPerformanceHUD", store: LCUtils.appGroupUserDefault) private var compactHUD = true
     var body: some View {
         Form {
             Section {
@@ -561,6 +562,12 @@ struct ZNRealControllerSettings: View {
                 Toggle("Bluetooth Auto-Hide", isOn: $autoHide)
             } header: { Text("Physical controller") } footer: {
                 Text("Enabled by default. When a supported physical gamepad connects, Classic and Wide hide the independent buttons while preserving the selected shell and Settings gear; Full Screen hides the native touch controls. Touch controls return after the last controller disconnects. Relaunch NxNative to apply changed settings.")
+            }
+            Section {
+                Toggle("Compact Performance HUD", isOn: $compactHUD)
+                    .accessibilityIdentifier("settings.nxnative.compactHUD")
+            } header: { Text("Performance HUD") } footer: {
+                Text("Show process RAM and the native FPS reading when available, in the lower-left skin bezel. Tap for available memory and thermal state. Classic and Wide only, when there is enough space. Restart NxNative to apply. This is separate from Apple's Metal HUD.")
             }
         }.navigationTitle("ZN Real Controller Engine")
     }

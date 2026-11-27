@@ -6,6 +6,8 @@
 #import <ImageIO/ImageIO.h>
 #import <unistd.h>
 #import <math.h>
+#import <mach/mach.h>
+#import <os/proc.h>
 @import GameController;
 @import AVFoundation;
 #import "StrataNxBuiltinSkin.h"
@@ -1970,6 +1972,8 @@ static void StrataNxUpdateGameMenuButton(UIView *pad) {
     artMenu.frame = CGRectMake(centre.x-radius,centre.y-radius,radius*2,radius*2);
 }
 
+#include "ZNCompactPerformanceHUD.h"
+
 static void StrataNxFitGameToImportedArt(UIViewController *root) {
     NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
     if (!StrataNxSkinIsEnabled(group)) return;
@@ -2041,6 +2045,7 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
     StrataNxKeepNativeInputButHideDrawing(pad);
     StrataNxUpdateGameMenuButton(pad);
     [skin znLayoutSprites];
+    ZNLayoutCompactPerformanceHUD(root, skin, img, hole);
     @try {
         UILabel *fps = [root valueForKey:@"fps"];
         if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
