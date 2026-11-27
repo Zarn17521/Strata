@@ -155,7 +155,6 @@ struct StrataSettingsApp: View {
         Section {
             link("sounds")
             link("controllermapping")
-            link("realcontroller")
             link("steamgriddb")
             Toggle(isOn: $nxSkinEnabled) { row("NxNative Controller Skin", symbol: "gamecontroller.fill", tint: .cyan) }
                 .accessibilityIdentifier("settings.nxnative.skin")
@@ -346,6 +345,16 @@ struct StrataNxPortraitSkinSettings: View {
             }
 
             Section {
+                NavigationLink(destination: ZNRealControllerSettings()) {
+                    Label("ZN Real Controller Engine", systemImage: "gamecontroller.fill")
+                        .foregroundStyle(.primary)
+                }
+                .accessibilityIdentifier("settings.nxnative.realControllerEngine")
+            } footer: {
+                Text("Customize button animation, haptic feedback, mechanical click sounds and physical controller auto-hide.")
+            }
+
+            Section {
                 skinChoices([("Classic", "classic"), ("Wide", "wide"), ("Full Screen", "full")], selection: $displayLayout)
                 .accessibilityIdentifier("settings.nxnative.displayLayout")
             } header: {
@@ -533,23 +542,23 @@ struct ZNRealControllerSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Realistic press animation", isOn: $animate)
-                Toggle("Taptic feedback", isOn: $haptic)
-                HStack { Text("Haptic intensity"); Spacer(); Text("\(Int(intensity * 100))%").monospacedDigit() }
+                Toggle("Button Animation", isOn: $animate)
+                Toggle("Haptic Feedback", isOn: $haptic)
+                HStack { Text("Haptic Intensity"); Spacer(); Text("\(Int(intensity * 100))%").monospacedDigit() }
                 Slider(value: $intensity, in: 0...1).disabled(!haptic)
             } header: { Text("Touch feedback") } footer: {
                 Text("Native game input is sent first. Turn off the game's own haptics if you notice duplicate feedback.")
             }
             Section {
-                Toggle("Mechanical click sound", isOn: $sound)
+                Toggle("Mechanical Sound", isOn: $sound)
                 Toggle("Release click", isOn: $releaseSound).disabled(!sound)
-                HStack { Text("Click volume"); Spacer(); Text("\(Int(volume * 100))%").monospacedDigit() }
+                HStack { Text("Sound Volume"); Spacer(); Text("\(Int(volume * 100))%").monospacedDigit() }
                 Slider(value: $volume, in: 0...1).disabled(!sound)
             } header: { Text("Sound") } footer: {
                 Text("Original short synthesized clicks; the game audio session is not explicitly reconfigured.")
             }
             Section {
-                Toggle("Hide touch buttons with controller", isOn: $autoHide)
+                Toggle("Bluetooth Auto-Hide", isOn: $autoHide)
             } header: { Text("Physical controller") } footer: {
                 Text("Classic and Wide skins only. When an extended gamepad is connected, show a simplified shell and keep the Settings gear. Touch controls return on disconnect. Relaunch NxNative to apply changed settings.")
             }
