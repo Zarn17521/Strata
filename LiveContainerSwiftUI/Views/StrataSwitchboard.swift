@@ -101,7 +101,7 @@ struct StrataSwitchboard: View {
                         let railWidth = min(CGFloat(214), geo.size.width * 0.32)
                         let contentWidth = max(96, geo.size.width - margin * 2 - railWidth - 12)
                         HStack(spacing: 12) {
-                            libraryContent(items: items, tile: max(64, min(tile, geo.size.height - 190)), width: contentWidth)
+                            libraryContent(items: items, tile: max(64, min(tile, geo.size.height - (presentation == "Switchboard" ? 218 : 190))), width: contentWidth)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                             shortcutButtons(landscape: true).frame(width: railWidth)
                         }
@@ -109,7 +109,7 @@ struct StrataSwitchboard: View {
                         .frame(maxHeight: .infinity)
                     } else {
                         libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
-                            .frame(height: tile + 70)
+                            .frame(height: tile + (presentation == "Switchboard" ? 98 : 70))
                         if filtered.isEmpty && !canAddGame { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                         Spacer(minLength: 4)
                         shortcutButtons(landscape: false).frame(maxWidth: .infinity).padding(.top, 12)
@@ -335,20 +335,58 @@ struct StrataSwitchboard: View {
                 .onChange(of: selectedKey) { key in proxy.scrollTo(key, anchor: .center) }
             }
         default:
-            TabView(selection: $selectedKey) {
-                ForEach(items, id: \.self) { app in
-                    gameTile(app, size: tile)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .tag(liveBoardAppKey(app))
+            VStack(spacing: 4) {
+                TabView(selection: $selectedKey) {
+                    ForEach(items, id: \.self) { app in
+                        gameTile(app, size: tile)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .tag(liveBoardAppKey(app))
+                    }
+                    if canAddGame {
+                        addGameTile(size: tile)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .tag(addGameKey)
+                    }
                 }
-                if canAddGame {
-                    addGameTile(size: tile)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .tag(addGameKey)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .accessibilityIdentifier("switchboard.pages")
+                if presentation == "Switchboard" {
+                    pageIndicator(items: items)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .accessibilityIdentifier("switchboard.pages")
+        }
+    }
+
+    // A compact, centered glass capsule directly below the cover carousel.
+    // Its page order matches both TabView and Bluetooth controller navigation,
+    // including the final Add Game card. Bound the visible dots for large libraries.
+    @ViewBuilder private func pageIndicator(items: [LCAppModel]) -> some View {
+        let keys = items.map(liveBoardAppKey) + (canAddGame ? [addGameKey] : [])
+        if !keys.isEmpty {
+            let current = keys.firstIndex(of: selectedKey) ?? 0
+            let count = min(7, keys.count)
+            let start = max(0, min(current - count / 2, keys.count - count))
+            HStack(spacing: 8) {
+                ForEach(start..<(start + count), id: \.self) { index in
+                    Circle()
+                        .fill(foreground.opacity(index == current ? 1 : 0.32))
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 24)
+            .background {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay { Capsule().fill(foreground.opacity(darkMode ? 0.075 : 0.035)) }
+            }
+            .overlay { Capsule().strokeBorder(foreground.opacity(0.22), lineWidth: 0.75) }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Library page")
+            .accessibilityValue("\(current + 1) of \(keys.count)")
+            .accessibilityIdentifier("switchboard.pageIndicator")
+            .allowsHitTesting(false)
         }
     }
 
