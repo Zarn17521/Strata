@@ -1698,6 +1698,8 @@ static void ZNDrawLandscapeReferenceArtwork(UIImage *image, CGRect bounds, BOOL 
     StrataNxDrawZNBrand(art,NO);
     CGContextRestoreGState(ctx);
 }
+#include "ZNThemeSignatures.h"
+
 static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark, UIColor *tint) {
     [StrataNxArtworkBacking(image,dark,tint) setFill];
     UIRectFill(bounds);
@@ -1785,6 +1787,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
                           previewSize.height/size.height);
         if (!portrait) {
             ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            ZNDrawThemeSignatures(identifier,art,source,NO,wide);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1792,6 +1795,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
             StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             [UIColor.blackColor setFill];
             UIRectFill(StrataNxDisplayRect(art,source,YES));
+            ZNDrawThemeSignatures(identifier,art,source,YES,YES);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1811,6 +1815,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         if (!StrataNxIsThemeImage(source))
             StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
         StrataNxDrawZNBrand(art,portrait);
+        ZNDrawThemeSignatures(identifier,art,source,portrait,wide);
         CGContextRestoreGState(ctx);
     }];
     if (result) [previewCache setObject:result forKey:key
@@ -1875,11 +1880,13 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
         UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
         [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
+        ZNDrawThemeSignatures(self.themeIdentifier,bounds,artwork,portrait,wide);
         CGContextRestoreGState(ctx);
         return;
     }
     if (artwork && !portrait) {
         ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+        ZNDrawThemeSignatures(self.themeIdentifier,bounds,artwork,NO,wide);
         [self drawCustomSkinLayersPortrait:NO artworkFrame:ZNLandscapeReferenceFrame(bounds)];
         CGContextRestoreGState(ctx);
         return;
@@ -1887,6 +1894,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     if (artwork && wide) {
         StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         CGRect artFrame = StrataNxArtworkFrame(bounds,artwork);
+        ZNDrawThemeSignatures(self.themeIdentifier,bounds,artwork,portrait,wide);
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:artFrame];
         CGContextRestoreGState(ctx);
         return;
@@ -1940,6 +1948,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         // Built-ins are already laid out with Look above ABXY. Do not
         // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
+        ZNDrawThemeSignatures(self.themeIdentifier,bounds,image,portrait,wide);
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:art];
         CGContextRestoreGState(ctx);
     } else {
