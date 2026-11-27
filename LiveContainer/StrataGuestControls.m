@@ -2069,7 +2069,7 @@ static void StrataNxUpdateGameMenuButton(UIView *pad) {
 
 static void StrataNxFitGameToImportedArt(UIViewController *root) {
     NSString *group = objc_getAssociatedObject(root, &StrataNxSkinRootGroupKey);
-    if (!StrataNxSkinIsEnabled(group)) return;
+    if (!StrataNxSkinIsEnabled(group)) { [[root.view viewWithTag:877146] removeFromSuperview]; return; }
     UIView *host = root.view;
     if ([objc_getAssociatedObject(root,&StrataNxFullScreenRootKey) boolValue]) {
         // Full Screen uses the entire available 16:9 viewport, with the
@@ -2100,11 +2100,12 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
         return;
     }
     UIView *skinView = [host viewWithTag:StrataNxSkinViewTag];
-    if (![skinView isKindOfClass:StrataNxSkinView.class]) return;
+    if (![skinView isKindOfClass:StrataNxSkinView.class]) { [[host viewWithTag:877146] removeFromSuperview]; return; }
     StrataNxSkinView *skin = (StrataNxSkinView *)skinView;
     BOOL portrait = host.bounds.size.height > host.bounds.size.width;
     UIImage *img = portrait ? skin.portraitArtwork : skin.landscapeArtwork;
     if (!img) {
+        [[host viewWithTag:877146] removeFromSuperview];
         // The opposite orientation may have artwork while this one does not.
         // Restore the standard controls and menu; preserve the default picture.
         UIView *pad = StrataNxChildOfClass(host, @"DmGamepad");

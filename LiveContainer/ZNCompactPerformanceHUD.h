@@ -8,14 +8,43 @@
 @property(nonatomic, copy) NSString *compactText;
 @property(nonatomic) BOOL reducedWidth;
 @property(nonatomic) BOOL gaugeOnly;
+@property(nonatomic) BOOL hasNativeFPS;
+@property(nonatomic, strong) NSNumber *savedNativeFPSAlpha;
 - (void)znSample;
+- (void)znRestoreNativeFPS;
+- (void)znSyncNativeFPSVisibility;
+- (void)znBindNativeFPS:(UILabel *)label;
 @end
 
 @implementation ZNCompactHUDButton
+// Do not set hidden or disable the native counter: NxNative may use that
+// state to decide whether to update its FPS reading. Only hide its visuals
+// while a valid reading is actually shown by the inline ZN HUD.
+- (void)znRestoreNativeFPS {
+    if (self.savedNativeFPSAlpha) {
+        self.nativeFPS.alpha=self.savedNativeFPSAlpha.doubleValue;
+        self.savedNativeFPSAlpha=nil;
+    }
+}
+- (void)znSyncNativeFPSVisibility {
+    UILabel *label=self.nativeFPS;
+    if (!label || !self.window || self.hidden || self.gaugeOnly || !self.hasNativeFPS || label.hidden) {
+        [self znRestoreNativeFPS];
+        return;
+    }
+    if (!self.savedNativeFPSAlpha) self.savedNativeFPSAlpha=@(label.alpha);
+    if (label.alpha!=0) label.alpha=0;
+}
+- (void)znBindNativeFPS:(UILabel *)label {
+    if (self.nativeFPS==label) return;
+    [self znRestoreNativeFPS];
+    self.nativeFPS=label;
+    self.hasNativeFPS=NO;
+}
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     [self.sampleTimer invalidate]; self.sampleTimer=nil;
-    if (!self.window) return;
+    if (!self.window) { [self znRestoreNativeFPS]; return; }
     __weak ZNCompactHUDButton *weakSelf=self;
     NSTimer *timer=[NSTimer timerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
         ZNCompactHUDButton *button=weakSelf;
@@ -26,7 +55,7 @@
     [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
     [self znSample];
 }
-- (void)dealloc { [_sampleTimer invalidate]; }
+- (void)dealloc { [_sampleTimer invalidate]; if (_savedNativeFPSAlpha) _nativeFPS.alpha=_savedNativeFPSAlpha.doubleValue; }
 - (void)znSample {
     task_vm_info_data_t vm={0};
     mach_msg_type_number_t count=TASK_VM_INFO_COUNT;
@@ -37,13 +66,16 @@
     NSString *fps=@"—";
     UILabel *native=self.nativeFPS;
     NSString *raw=native.hidden?nil:native.text;
+    self.hasNativeFPS=NO;
     if (raw.length) {
         // Reuse only the game's actual reading; never infer FPS from refresh rate.
         NSScanner *scanner=[NSScanner scannerWithString:raw];
         [scanner scanUpToCharactersFromSet:NSCharacterSet.decimalDigitCharacterSet intoString:NULL];
         double number=0;
-        if ([scanner scanDouble:&number] && isfinite(number) && number>=0 && number<=1000)
+        if ([scanner scanDouble:&number] && isfinite(number) && number>=0 && number<=1000) {
             fps=[NSString stringWithFormat:@"%.0f",number];
+            self.hasNativeFPS=YES;
+        }
     }
     NSString *thermal=@"Unknown";
     switch (NSProcessInfo.processInfo.thermalState) {
@@ -58,6 +90,7 @@
     NSString *label=self.gaugeOnly?nil:self.compactText;
     if (!self.gaugeOnly && ![self.currentTitle isEqualToString:label]) [self setTitle:label forState:UIControlStateNormal];
     self.accessibilityValue=self.compactText;
+    [self znSyncNativeFPSVisibility];
 }
 - (void)znShowDetails {
     UIViewController *root=self.gameRoot;
@@ -99,8 +132,8 @@ static BOOL ZNHUDFrameFits(CGRect candidate, CGRect safe, CGRect picture, Strata
     return YES;
 }
 static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinView *skin, UIImage *image, CGRect picture) {
-    if (!skin || ![skin isKindOfClass:StrataNxSkinView.class]) return;
     UIView *host=root.view;
+    if (!skin || ![skin isKindOfClass:StrataNxSkinView.class]) { [[host viewWithTag:877146] removeFromSuperview]; return; }
     const NSInteger tag=877146;
     ZNCompactHUDButton *hud=(ZNCompactHUDButton *)[host viewWithTag:tag];
     NSUserDefaults *prefs=[[NSUserDefaults alloc] initWithSuiteName:skin.sharedGroup];
@@ -123,8 +156,8 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
     }
     @try {
         id native=[root valueForKey:@"fps"];
-        hud.nativeFPS=[native isKindOfClass:UILabel.class]?native:nil;
-    } @catch (__unused NSException *e) { hud.nativeFPS=nil; }
+        [hud znBindNativeFPS:[native isKindOfClass:UILabel.class]?native:nil];
+    } @catch (__unused NSException *e) { [hud znBindNativeFPS:nil]; }
     // Full Screen has native controls with unknown safe areas; use its real gear menu.
     if (!image || skin.fullScreenMode) {
         [hud removeFromSuperview]; ZNSetHUDMenuFallback(skin,hud,YES); return;
@@ -167,4 +200,5 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
     [hud setTitle:gauge?nil:(hud.compactText ?: @"— FPS · —") forState:UIControlStateNormal];
     hud.frame=candidate;
     if (!hud.superview) [host addSubview:hud];
+    [hud znSyncNativeFPSVisibility];
 }
