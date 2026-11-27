@@ -84,7 +84,7 @@ struct StrataSwitchboard: View {
                     Spacer(minLength: 4)
                     Divider().overlay(foreground.opacity(0.15))
                     HStack {
-                        Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
+                        Image(systemName: "gamecontroller.fill").foregroundStyle(foreground)
                         Spacer()
                         Menu {
                             ForEach(["Switchboard", "Cinematic", "Shelf"], id: \.self) { name in
@@ -439,7 +439,7 @@ struct StrataSwitchboard: View {
             } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(foreground)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -469,7 +469,7 @@ struct StrataSwitchboard: View {
         // their existing icon controls.
         HStack(spacing: 6) {
             shortcutCell("Apps") {
-                roundButton("plus", label: "Manage apps", tint: .red) {
+                roundButton("plus", label: "Manage apps") {
                     controller.stop(); openManagement()
                 }
                 .accessibilityIdentifier("switchboard.manageApps")
@@ -484,18 +484,17 @@ struct StrataSwitchboard: View {
                 if let selected {
                     // The exact same per-app LCOrientationLock property used
                     // by App Settings > Orientation. No second global toggle.
-                    StrataAppRotationShortcut(app: selected, surface: buttonSurface)
+                    StrataAppRotationShortcut(app: selected, surface: buttonSurface, foreground: foreground)
                         .accessibilityIdentifier("switchboard.toggle.gameOrientation")
                 } else {
-                    roundButton("iphone.gen3", label: "Select an app to set its orientation", tint: .gray) {}
+                    roundButton("iphone.gen3", label: "Select an app to set its orientation") {}
                         .disabled(true)
                 }
             }
 
             shortcutCell("Dark") {
                 roundButton(darkMode ? "moon.fill" : "moon",
-                            label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode",
-                            tint: .cyan) {
+                            label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode") {
                     darkMode.toggle()
                 }
                 .accessibilityIdentifier("switchboard.toggle.darkMode")
@@ -531,9 +530,9 @@ struct StrataSwitchboard: View {
     // NxNative guest skin setting; holding never accidentally toggles it.
     // Use the same preference as Settings > NxNative Controller Skins.
     private var skinShortcut: some View {
-        Image(systemName: "tshirt.fill")
+        Image(systemName: nxSkinEnabled ? "tshirt.fill" : "tshirt")
             .font(.system(size: 21, weight: .semibold))
-            .foregroundStyle(nxSkinEnabled ? Color.purple : Color.gray)
+            .foregroundStyle(foreground)
             .frame(width: 50, height: 50)
             .background(Circle().fill(buttonSurface))
             .contentShape(Circle())
@@ -563,9 +562,9 @@ struct StrataSwitchboard: View {
         showingSkinSettings = true
     }
 
-    private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func roundButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 21, weight: .semibold)).foregroundStyle(tint)
+            Image(systemName: symbol).font(.system(size: 21, weight: .semibold)).foregroundStyle(foreground)
                 .frame(width: 50, height: 50)
                 .background(Circle().fill(buttonSurface))
         }.accessibilityLabel(label)
@@ -704,6 +703,7 @@ private struct LiveBoardCoverImage: View {
 private struct StrataAppRotationShortcut: View {
     @ObservedObject var app: LCAppModel
     let surface: Color
+    let foreground: Color
 
     private var mode: LCOrientationLock { app.uiOrientationLock }
 
@@ -733,7 +733,7 @@ private struct StrataAppRotationShortcut: View {
             Image(systemName: symbol)
                 .font(.system(size: 21, weight: .semibold))
                 .rotationEffect(.degrees(mode == .Landscape ? 90 : 0))
-                .foregroundStyle(.orange)
+                .foregroundStyle(foreground)
                 .frame(width: 50, height: 50)
                 .background(Circle().fill(surface))
         }
