@@ -6,7 +6,6 @@ struct StrataSwitchboard: View {
     let manage: (LCAppModel) -> Void
     let openInterface: () -> Void
     let openManagement: () -> Void
-    let openAddGame: () -> Void
     var canAddGame: Bool = true
     private let addGameKey = "__zn_library_add_game__"
     var launchWithJIT: ((LCAppModel) -> Void)? = nil
@@ -71,7 +70,7 @@ struct StrataSwitchboard: View {
     private func addGame() {
         guard canAddGame, !busy else { return }
         controller.stop()
-        openAddGame()
+        openManagement()
     }
     private func update(_ change: (inout LiveBoardModeLibrary) -> Void) {
         var all = libraries; var state = library; change(&state); LiveBoardSharedCategories.store(state, mode: "switchboard", into: &all)
@@ -380,7 +379,7 @@ struct StrataSwitchboard: View {
                 VStack(spacing: max(6, tile * 0.04)) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: tile * 0.23, weight: .semibold))
-                    Text("Import IPA")
+                    Text("Manage Apps")
                         .font(.system(size: max(10, tile * 0.045), weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -396,7 +395,7 @@ struct StrataSwitchboard: View {
             .buttonStyle(.plain)
             .disabled(busy)
             .accessibilityLabel("Add Game")
-            .accessibilityHint("Choose an IPA or TIPA from Files.")
+            .accessibilityHint("Opens Manage Apps to import or manage games.")
             .accessibilityIdentifier("switchboard.addGame")
         }.frame(width: tile + 10)
     }
@@ -511,19 +510,19 @@ struct StrataSwitchboard: View {
             // Header shortcuts keep the dock focused on gameplay controls.
             // Low Memory Mode remains available in Settings > Performance.
             Button {
-                controller.stop()
-                openManagement()
+                darkMode.toggle()
             } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 30, weight: .bold))
+                Image(systemName: darkMode ? "moon.fill" : "moon")
+                    .font(.system(size: 29, weight: .semibold))
                     .symbolRenderingMode(.monochrome)
                     .foregroundStyle(foreground)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Manage apps")
-            .accessibilityIdentifier("switchboard.manageApps")
+            .accessibilityLabel(darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode")
+            .accessibilityValue(darkMode ? "On" : "Off")
+            .accessibilityIdentifier("switchboard.toggle.darkMode")
             Button {
                 homeLandscape.toggle()
             } label: {
@@ -556,8 +555,7 @@ struct StrataSwitchboard: View {
         }
     }
     private var categoryStrip: some View {
-        // Categories have the whole top row; AMOLED controls live on the
-        // shortcut rail at the far right, not beside All / Games / Tools.
+        // Categories retain their own row; AMOLED controls live in the header.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 18) {
                 Button("All") { category = nil; recentOnly = false }.opacity(category == nil && !recentOnly ? 1 : 0.55)
@@ -592,15 +590,8 @@ struct StrataSwitchboard: View {
                 }
             }
 
-            shortcutCell("Dark") {
-                roundButton(darkMode ? "moon.fill" : "moon",
-                            label: darkMode ? "Disable AMOLED dark mode" : "Enable AMOLED dark mode") {
-                    darkMode.toggle()
-                }
-                .accessibilityIdentifier("switchboard.toggle.darkMode")
-            }
         }
-        // ONE continuous outline around all three icon+label columns.
+        // ONE continuous outline around both gameplay shortcut columns.
         // The stroke and captions share the dark/light foreground.
         .padding(.horizontal, 8)
         .padding(.vertical, 10)
