@@ -378,9 +378,15 @@ static CGRect StrataNxMapNormalizedRect(CGRect art, CGRect n) {
                       art.origin.y+n.origin.y*art.size.height,
                       n.size.width*art.size.width,n.size.height*art.size.height);
 }
+// Wide retains its larger 16:9 picture. The panel source is mapped to
+// the entire side column, with the same affine transform for sprites/hits.
+static CGRect ZNWideMapSourceToRect(CGRect source, CGRect dest) {
+    CGFloat sx=dest.size.width/MAX(source.size.width,.001);
+    CGFloat sy=dest.size.height/MAX(source.size.height,.001);
+    return CGRectMake(dest.origin.x-source.origin.x*sx,dest.origin.y-source.origin.y*sy,sx,sy);
+}
 static StrataNxWideGeometry StrataNxWideLayout(CGRect bounds, UIImage *image) {
     StrataNxWideGeometry l={0};
-    CGSize size=image.size;
     CGFloat w=bounds.size.width,h=bounds.size.height;
     l.leftSource=CGRectMake(.068,.135,.179,.620);
     l.rightSource=CGRectMake(.748,.135,.194,.620);
@@ -389,27 +395,20 @@ static StrataNxWideGeometry StrataNxWideLayout(CGRect bounds, UIImage *image) {
     l.display=CGRectMake(CGRectGetMidX(bounds)-gw*.5,
                          CGRectGetMinY(bounds)+h*.035,gw,gh);
     CGFloat side=(w-gw)*.5;
-    CGFloat margin=MIN(7.0,side*.05);
-    CGFloat panelScale=MAX(.01,MIN((side-2*margin)/(size.width*.194),
-                                  h*.73/(size.height*.620)));
-    CGFloat cy=CGRectGetMinY(bounds)+h*.435;
-    l.leftFrame=StrataNxImageFrameAt(size,panelScale,
-        CGPointMake(CGRectGetMidX(l.leftSource),CGRectGetMidY(l.leftSource)),
-        CGPointMake(CGRectGetMinX(bounds)+side*.5,cy));
-    l.rightFrame=StrataNxImageFrameAt(size,panelScale,
-        CGPointMake(CGRectGetMidX(l.rightSource),CGRectGetMidY(l.rightSource)),
-        CGPointMake(CGRectGetMaxX(bounds)-side*.5,cy));
-    CGFloat footerTop=CGRectGetMaxY(l.display)+2;
+    l.leftFrame=ZNWideMapSourceToRect(l.leftSource,CGRectMake(bounds.origin.x,bounds.origin.y,side,h));
+    l.rightFrame=ZNWideMapSourceToRect(l.rightSource,CGRectMake(CGRectGetMaxX(l.display),bounds.origin.y,side,h));
+    // Reserve a narrow black HUD strip above the footer, leaving gear and
+    // plus/minus in the remaining height. The live image is never resized.
+    CGFloat footerTop=CGRectGetMaxY(l.display)+h*.035+2;
     CGFloat footerH=MAX(1,CGRectGetMaxY(bounds)-footerTop-3);
-    CGFloat footerScale=MAX(.01,MIN(panelScale,MIN(w*.40/(size.width*.240),
-                                                   footerH/(size.height*.112))));
-    l.footerFrame=StrataNxImageFrameAt(size,footerScale,
+    CGFloat footerScale=MAX(.01,MIN(w*.40/(image.size.width*.240),footerH/(image.size.height*.112)));
+    l.footerFrame=StrataNxImageFrameAt(image.size,footerScale,
         CGPointMake(CGRectGetMidX(l.footerSource),CGRectGetMidY(l.footerSource)),
         CGPointMake(CGRectGetMidX(bounds),footerTop+footerH*.5));
     return l;
 }
 static CGRect StrataNxDisplayRect(CGRect bounds, UIImage *image, BOOL wide) {
-    if (bounds.size.width>bounds.size.height) return ZNLandscapeReferenceDisplay(bounds);
+    if (bounds.size.width>bounds.size.height) return wide ? StrataNxWideLayout(bounds,image).display : ZNLandscapeReferenceDisplay(bounds);
     if (!wide) return StrataNxFullGameRect(StrataNxArtworkAperture(bounds,image));
     // Portrait: maximize horizontal width, preserve 16:9 and keep the
     // existing lower controls untouched. The thick photo bezel is omitted.
@@ -428,7 +427,9 @@ static CGRect ZNPerformanceBlackBar(CGRect bounds, UIImage *image, BOOL wide) {
     if (CGRectIsNull(game)||CGRectIsEmpty(game)) return CGRectNull;
     CGFloat top=CGRectGetMaxY(game);
     CGFloat bottom=CGRectIsNull(aperture)?top:CGRectGetMaxY(aperture);
-    if (land) {
+    if (land && wide) {
+        bottom=MIN(CGRectGetMaxY(bounds),top+bounds.size.height*.035);
+    } else if (land) {
         bottom=MAX(bottom,top+bounds.size.height*.035);
         bottom=MIN(bottom,MIN(top+bounds.size.height*.075,CGRectGetMinY(bounds)+bounds.size.height*.84));
     }
@@ -447,16 +448,31 @@ static int StrataNxPanelForRole(NSInteger role) {
     }
 }
 static CGRect StrataNxControlFrame(CGRect bounds, UIImage *image, BOOL wide, CGFloat normalizedX) {
-    // Classic and Wide share this reference in landscape, including gear/HUD.
+    if (wide && bounds.size.width>bounds.size.height) {
+        StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
+        return normalizedX<.25?l.leftFrame:normalizedX>.745?l.rightFrame:l.footerFrame;
+    }
     return StrataNxArtworkFrame(bounds,image);
 }
 static CGPoint StrataNxNormalizeControlPoint(CGRect bounds, UIImage *image, CGPoint point, BOOL wide, NSInteger role) {
     CGRect art=StrataNxArtworkFrame(bounds,image);
-    if (bounds.size.width>bounds.size.height && role==StrataArtNoMapping &&
-        CGRectContainsPoint(ZNLandscapeReferenceDisplay(bounds),point))
+    CGRect region=CGRectNull;
+    if (bounds.size.width>bounds.size.height) {
+        if (role==StrataArtNoMapping && CGRectContainsPoint(StrataNxDisplayRect(bounds,image,wide),point))
+            return CGPointMake(NAN,NAN);
+        if (wide) {
+            StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
+            int panel=role!=StrataArtNoMapping?StrataNxPanelForRole(role):
+                point.x<CGRectGetMinX(l.display)?-1:point.x>=CGRectGetMaxX(l.display)?1:0;
+            art=panel<0?l.leftFrame:panel>0?l.rightFrame:l.footerFrame;
+            region=panel<0?l.leftSource:panel>0?l.rightSource:l.footerSource;
+        }
+    }
+    CGPoint p=CGPointMake((point.x-art.origin.x)/MAX(art.size.width,1),
+                          (point.y-art.origin.y)/MAX(art.size.height,1));
+    if (role==StrataArtNoMapping && !CGRectIsNull(region) && !CGRectContainsPoint(region,p))
         return CGPointMake(NAN,NAN);
-    return CGPointMake((point.x-art.origin.x)/MAX(art.size.width,1),
-                       (point.y-art.origin.y)/MAX(art.size.height,1));
+    return p;
 }
 static CGPoint StrataNxArtPointInPad(UIView *pad, UIImage *image, CGPoint point, NSInteger role) {
     UIView *skin=[pad.superview viewWithTag:877144];
@@ -1761,10 +1777,29 @@ static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark, UI
         StrataNxDrawZNBrand(art,YES);
     } else {
         StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
+        // Fill all center gutters and the entire footer using the selected
+        // skin's unobstructed bezel texture, not a generic backing color.
+        CGRect center=CGRectMake(CGRectGetMinX(l.display),bounds.origin.y,l.display.size.width,bounds.size.height);
+        ZNDrawLandscapeTexturePatch(image,CGRectMake(.30,.785,.055,.035),center);
         StrataNxDrawWidePanel(image,l.leftFrame,l.leftSource);
         StrataNxDrawWidePanel(image,l.rightFrame,l.rightSource);
+        // Photo source corners can include black outside the shell. Replace
+        // only the extreme edge using nearby button-free panel material.
+        if (![objc_getAssociatedObject(image,&ZNGameWorldArtworkKey) boolValue]) {
+            CGFloat side=CGRectGetMinX(l.display)-bounds.origin.x,h=bounds.size.height;
+            CGRect left=CGRectMake(.099,.477,.021,.024),right=CGRectMake(.891,.477,.021,.024);
+            ZNDrawLandscapeTexturePatch(image,left,CGRectMake(bounds.origin.x,bounds.origin.y,side*.12,h*.13));
+            ZNDrawLandscapeTexturePatch(image,right,CGRectMake(CGRectGetMaxX(bounds)-side*.12,bounds.origin.y,side*.12,h*.13));
+        }
+        // The same footer transform controls the preview keys and live input.
         StrataNxDrawWidePanel(image,l.footerFrame,l.footerSource);
-        StrataNxDrawZNBrand(l.leftFrame,NO);
+        [UIColor.blackColor setFill]; UIRectFill(l.display);
+        ZNPaintPerformanceBlackBar(bounds,image,YES);
+        // Keep the brand in the lower-left corner, outside the stick target.
+        CGRect brandArt=CGRectMake(bounds.origin.x+bounds.size.width*.025-bounds.size.width*.82*.09,
+                                   bounds.origin.y+bounds.size.height*.90-bounds.size.height*.8*.758,
+                                   bounds.size.width*.82,bounds.size.height*.8);
+        StrataNxDrawZNBrand(brandArt,NO);
     }
 }
 
@@ -1825,7 +1860,8 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         CGContextScaleCTM(ctx,previewSize.width/size.width,
                           previewSize.height/size.height);
         if (!portrait) {
-            ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            if (wide) StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            else ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             ZNPaintPerformanceBlackBar(art,source,wide);
             CGContextRestoreGState(ctx);
             return;
@@ -1901,6 +1937,9 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     // A physical pad may hide the baked controls without changing the game aperture.
     // Keep the real NxNative menu's transparent hit target and draw its gear in the same footer.
     if (artwork && self.znControlsHidden && self.znSprites.count==0) {
+        if (!portrait && wide) {
+            StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+        } else {
         UIColor *base = [self.themeIdentifier isEqualToString:@"switch-neon"] ? [UIColor colorWithWhite:.055 alpha:1] : StrataNxArtworkBacking(artwork,self.darkTheme,self.customThemeTint);
         [base setFill]; UIRectFill(bounds);
         if ([self.themeIdentifier isEqualToString:@"switch-neon"]) {
@@ -1908,6 +1947,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
             CGRect right=CGRectMake(portrait?bounds.size.width*.51:CGRectGetMaxX(opening),portrait?CGRectGetMaxY(opening):0,portrait?bounds.size.width*.49:MAX(0,bounds.size.width-CGRectGetMaxX(opening)),portrait?MAX(0,bounds.size.height-CGRectGetMaxY(opening)):bounds.size.height);
             [[UIColor colorWithRed:0 green:.72 blue:.85 alpha:1] setFill]; UIRectFill(left);
             [[UIColor colorWithRed:.95 green:.25 blue:.23 alpha:1] setFill]; UIRectFill(right);
+        }
         }
         CGRect footer=StrataNxControlFrame(bounds,artwork,wide,.5);
         CGPoint gear=StrataArtGearCentre(!portrait);
@@ -1923,7 +1963,8 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         return;
     }
     if (artwork && !portrait) {
-        ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+        if (wide) StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+        else ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         [self drawCustomSkinLayersPortrait:NO artworkFrame:ZNLandscapeReferenceFrame(bounds)];
         ZNPaintPerformanceBlackBar(bounds,artwork,wide);
         CGContextRestoreGState(ctx);
