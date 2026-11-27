@@ -164,7 +164,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                 // are retired from the active route. Keep the standard
                 // management flow for installing and configuring apps.
                 if !manageLibrary {
-                    StrataSwitchboard(apps: launcherApps, launch: { app in Task { await launchFromLiveBoard(app) } }, manage: manageLauncherApp, openInterface: openInterface, openManagement: { manageLibrary = true }, launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true) } }, launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true) } }, launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true) } }, launchInGameModeWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true, gameMode: true) } }, launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true) } })
+                    StrataSwitchboard(apps: launcherApps, launch: { app in Task { await launchFromLiveBoard(app) } }, manage: manageLauncherApp, openInterface: openInterface, openManagement: { manageLibrary = true }, openAddGame: { choosingIPA = true }, canAddGame: sharedModel.multiLCStatus != 2 && !installprogressVisible, launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true) } }, launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true) } }, launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true) } }, launchInGameModeWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true, gameMode: true) } }, launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true) } })
                 } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -349,9 +349,11 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             Text(errorInfo)
         }
         .betterFileImporter(isPresented: $choosingIPA, types: [.ipa, .tipa], multiple: false, callback: { fileUrls in
-            Task { await startInstallApp(fileUrls[0]) }
+            guard let url = fileUrls.first else { return }
+            Task { await startInstallApp(url) }
         }, onDismiss: {
             choosingIPA = false
+            NotificationCenter.default.post(name: LiveBoardControllerInput.resumeNotification, object: nil)
         })
         .alert("lc.appList.installation".loc, isPresented: $installReplaceAlert.show) {
             ForEach(installOptions, id: \.self) { installOption in

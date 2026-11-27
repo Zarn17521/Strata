@@ -6,6 +6,9 @@ struct StrataSwitchboard: View {
     let manage: (LCAppModel) -> Void
     let openInterface: () -> Void
     let openManagement: () -> Void
+    let openAddGame: () -> Void
+    var canAddGame: Bool = true
+    private let addGameKey = "__zn_library_add_game__"
     var launchWithJIT: ((LCAppModel) -> Void)? = nil
     var launchMultitask: ((LCAppModel) -> Void)? = nil
     var launchInGameMode: ((LCAppModel) -> Void)? = nil
@@ -55,7 +58,21 @@ struct StrataSwitchboard: View {
         let visible = apps.filter { !state.hidden.contains(liveBoardAppKey($0)) && (category == nil || state.assignments[liveBoardAppKey($0)] == category) }
         return recentOnly ? LiveBoardRecentGames.sorted(visible) : visible
     }
-    private var selected: LCAppModel? { filtered.first { liveBoardAppKey($0) == selectedKey } ?? filtered.first }
+    private var selected: LCAppModel? {
+        if selectedKey == addGameKey { return nil }
+        return filtered.first { liveBoardAppKey($0) == selectedKey } ?? filtered.first
+    }
+    private func reconcileSelection(_ keys: [String], preferNewGame: Bool = false) {
+        if selectedKey == addGameKey && canAddGame && !preferNewGame { return }
+        if !keys.contains(selectedKey) {
+            selectedKey = keys.first ?? (canAddGame ? addGameKey : "")
+        }
+    }
+    private func addGame() {
+        guard canAddGame, !busy else { return }
+        controller.stop()
+        openAddGame()
+    }
     private func update(_ change: (inout LiveBoardModeLibrary) -> Void) {
         var all = libraries; var state = library; change(&state); LiveBoardSharedCategories.store(state, mode: "switchboard", into: &all)
         if let data = try? JSONEncoder().encode(all), let value = String(data: data, encoding: .utf8) { savedLibrary = value }
@@ -88,7 +105,7 @@ struct StrataSwitchboard: View {
                     } else {
                         libraryContent(items: items, tile: tile, width: geo.size.width - margin * 2)
                             .frame(height: tile + 70)
-                        if filtered.isEmpty { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
+                        if filtered.isEmpty && !canAddGame { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                         Spacer(minLength: 4)
                         shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
                     }
@@ -127,7 +144,7 @@ struct StrataSwitchboard: View {
             if !["Switchboard", "Cinematic", "Shelf"].contains(presentation) { presentation = "Switchboard" }
             visible = true
             if !busy && phase == .active { artwork.resumeDecoding() }
-            if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" }
+            reconcileSelection(filtered.map(liveBoardAppKey))
             if lastSeenWhatsNew != ZNWhatsNewView.releaseID { showingWhatsNew = true } else { bind() }
         }
         .onDisappear {
@@ -148,7 +165,7 @@ struct StrataSwitchboard: View {
         }
         .onChange(of: lowMemory) { _ in trimPresentationCaches(pause: busy || !visible || phase != .active) }
         .onChange(of: filtered.map(liveBoardAppKey)) { keys in
-            if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" }
+            reconcileSelection(keys)
         }
         .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
             thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
@@ -240,8 +257,8 @@ struct StrataSwitchboard: View {
             }
         }
         .alert("Artwork", isPresented: Binding(get: { artworkError != nil }, set: { if !$0 { artworkError = nil } })) { Button("OK") { artworkError = nil } } message: { Text(artworkError ?? "") }
-        .onChange(of: filtered.map(liveBoardAppKey)) { keys in if !keys.contains(selectedKey) { selectedKey = keys.first ?? "" } }
-        .onReceive(NotificationCenter.default.publisher(for: LiveBoardRecentGames.changed)) { _ in if !filtered.contains(where: { liveBoardAppKey($0) == selectedKey }) { selectedKey = filtered.first.map(liveBoardAppKey) ?? "" } }
+        .onChange(of: canAddGame) { _ in reconcileSelection(filtered.map(liveBoardAppKey)) }
+        .onReceive(NotificationCenter.default.publisher(for: LiveBoardRecentGames.changed)) { _ in reconcileSelection(filtered.map(liveBoardAppKey)) }
         .sheet(isPresented: $editingLibrary, onDismiss: bind) {
             NavigationView {
                 Form {
@@ -267,12 +284,25 @@ struct StrataSwitchboard: View {
                 if let selected {
                     gameTile(selected, size: max(72, tile * 0.68))
                         .id(liveBoardAppKey(selected))
+                } else if canAddGame {
+                    addGameTile(size: max(72, tile * 0.68))
                 }
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 8) {
                             ForEach(items, id: \.self) { app in
                                 compactTile(app, size: 48).id(liveBoardAppKey(app))
+                            }
+                            if canAddGame {
+                                Button { selectedKey = addGameKey } label: {
+                                    VStack(spacing: 2) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 25, weight: .semibold))
+                                            .frame(width: 48, height: 48)
+                                            .background(RoundedRectangle(cornerRadius: 6).fill(buttonSurface))
+                                        Text("Add Game").font(.caption2).lineLimit(1)
+                                    }
+                                }.buttonStyle(.plain).id(addGameKey)
                             }
                         }.padding(.horizontal, 12)
                     }
@@ -289,6 +319,7 @@ struct StrataSwitchboard: View {
                         ForEach(items, id: \.self) { app in
                             gameTile(app, size: size, shelf: true).id(liveBoardAppKey(app))
                         }
+                        if canAddGame { addGameTile(size: size).id(addGameKey) }
                     }.padding(12)
                 }
                 .onAppear { if !selectedKey.isEmpty { proxy.scrollTo(selectedKey, anchor: .center) } }
@@ -300,6 +331,11 @@ struct StrataSwitchboard: View {
                     gameTile(app, size: tile)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .tag(liveBoardAppKey(app))
+                }
+                if canAddGame {
+                    addGameTile(size: tile)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .tag(addGameKey)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -333,9 +369,41 @@ struct StrataSwitchboard: View {
         }.buttonStyle(.plain)
     }
 
+    private func addGameTile(size tile: CGFloat) -> some View {
+        let radius = tile * 0.035
+        return VStack(spacing: 8) {
+            Text("Add Game")
+                .font(.system(size: max(15, tile * 0.075), weight: .bold))
+                .foregroundStyle(foreground)
+                .frame(width: tile + 10)
+            Button(action: addGame) {
+                VStack(spacing: max(6, tile * 0.04)) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: tile * 0.23, weight: .semibold))
+                    Text("Import IPA")
+                        .font(.system(size: max(10, tile * 0.045), weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(foreground)
+                .frame(width: tile, height: tile)
+                .background(tilePlaceholder)
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .padding(5)
+                .overlay(RoundedRectangle(cornerRadius: radius + 5, style: .continuous)
+                    .strokeBorder(foreground.opacity(selectedKey == addGameKey ? 1 : 0.45),
+                                  lineWidth: selectedKey == addGameKey ? 3 : 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
+            .accessibilityLabel("Add Game")
+            .accessibilityHint("Choose an IPA or TIPA from Files.")
+            .accessibilityIdentifier("switchboard.addGame")
+        }.frame(width: tile + 10)
+    }
+
     private func gameTile(_ app: LCAppModel, size tile: CGFloat, shelf: Bool = false) -> some View {
         let key = liveBoardAppKey(app)
-        let isSelected = key == liveBoardAppKey(selected ?? app)
+        let isSelected = selected.map(liveBoardAppKey) == key
         let radius = tile * 0.035
 
         // The title must stay outside the context-menu source view.
@@ -674,11 +742,14 @@ struct StrataSwitchboard: View {
         guard visible, !showingWhatsNew, !editingLibrary, !choosingCover, !busy else { return }
         controller.onCommand = { command in
             let items = filtered
-            let index = items.firstIndex { liveBoardAppKey($0) == selectedKey } ?? 0
+            let keys = items.map(liveBoardAppKey) + (canAddGame ? [addGameKey] : [])
+            let index = keys.firstIndex(of: selectedKey) ?? 0
             switch command {
-            case .left: if index > 0 { selectedKey = liveBoardAppKey(items[index - 1]) }
-            case .right: if index + 1 < items.count { selectedKey = liveBoardAppKey(items[index + 1]) }
-            case .confirm: if let app = selected { activate(app) }
+            case .left: if index > 0 { selectedKey = keys[index - 1] }
+            case .right: if index + 1 < keys.count { selectedKey = keys[index + 1] }
+            case .confirm:
+                if selectedKey == addGameKey { addGame() }
+                else if let app = selected { activate(app) }
             case .details: audio.play(.confirm); if let app = selected { controller.stop(); manage(app) }
             case .previousSection: changeCategory(-1)
             case .nextSection: changeCategory(1)
