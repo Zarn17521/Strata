@@ -601,7 +601,7 @@ struct StrataSwitchboard: View {
                 }
             }
 
-            shortcutCell(compactHUD ? "Zn’s HUD ON" : "Zn’s HUD OFF") {
+            shortcutCell("Zn’s HUD") {
                 Button { compactHUD.toggle() } label: {
                     Image(systemName: "gauge")
                         .font(.system(size: 21, weight: .semibold))
@@ -615,10 +615,10 @@ struct StrataSwitchboard: View {
                 .accessibilityHint("Applies on the next game launch.")
                 .accessibilityIdentifier("switchboard.toggle.znHUD")
             }
-            shortcutCell(builtInJITEnabled ? "Built-in JIT ON" : "Built-in JIT OFF") {
+            shortcutCell("Built-in JIT") {
                 jitShortcut
             }
-            shortcutCell(autoGameMode ? "Game Mode ON" : "Game Mode OFF") {
+            shortcutCell("Game Mode") {
                 Button { autoGameMode.toggle() } label: {
                     Image(systemName: autoGameMode ? "gamecontroller.fill" : "gamecontroller")
                         .font(.system(size: 21, weight: .semibold))
