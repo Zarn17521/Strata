@@ -8,22 +8,10 @@
     UIGraphicsImageRendererFormat *fmt=[UIGraphicsImageRendererFormat preferredFormat];
     fmt.opaque=NO; fmt.scale=MIN(2.0,UIScreen.mainScreen.scale);
     UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
-    BOOL stick=kind==StrataArtLeftStick||kind==StrataArtRightStick;
-    BOOL shoulder=kind==StrataArtL||kind==StrataArtR||kind==StrataArtZL||kind==StrataArtZR;
+    BOOL stick=ZNIsStickSprite(kind);
     UIImage *bitmap=[renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
         CGContextScaleCTM(context.CGContext,size.width/pixels.width,size.height/pixels.height);
-        CGPoint mid=CGPointMake(pixels.width*.5,pixels.height*.5);
-        if (kind==StrataArtDpad) {
-            StrataNxBuiltDPad(mid,MIN(pixels.width,pixels.height)*.46,dark);
-        } else if (stick) {
-            CGRect rim=CGRectInset((CGRect){CGPointZero,pixels},3,3);
-            UIBezierPath *ring=[UIBezierPath bezierPathWithOvalInRect:rim];
-            StrataNxBuiltGradient(ring,[UIColor colorWithWhite:dark?.28:.68 alpha:1],[UIColor colorWithWhite:dark?.06:.38 alpha:1]);
-            UIBezierPath *well=[UIBezierPath bezierPathWithOvalInRect:CGRectInset(rim,pixels.width*.09,pixels.height*.09)];
-            [[UIColor colorWithWhite:dark?.035:.24 alpha:1] setFill]; [well fill];
-        } else {
-            StrataNxBuiltKey(mid,CGSizeMake(pixels.width-5,pixels.height-5),label,dark,!shoulder);
-        }
+        ZNDrawControllerSpriteBody(pixels,kind,label,dark);
     }];
     CALayer *layer=[CALayer layer];
     layer.contents=(__bridge id)bitmap.CGImage; layer.contentsScale=fmt.scale;
@@ -61,33 +49,12 @@
     for (CALayer *layer in self.znSprites.allValues) [layer removeFromSuperlayer];
     [self.znSprites removeAllObjects];
     self.znSpriteBounds=self.bounds;
-    BOOL wide=StrataNxIsWideSkin(self), photo=StrataNxIsPreparedPhoto(image);
-    BOOL dark=![self.themeIdentifier isEqualToString:@"switch-pearl-photo"] && (self.darkTheme || StrataNxIsThemeImage(image));
+    BOOL wide=StrataNxIsWideSkin(self);
+    BOOL dark=ZNUsesAMOLEDButtons(self.themeIdentifier,self.darkTheme);
     CGSize ref=land?CGSizeMake(1792,1008):CGSizeMake(923,2000);
-    const NSInteger roles[]={StrataArtL,StrataArtZL,StrataArtR,StrataArtZR,StrataArtMinus,StrataArtPlus,StrataArtDpad,StrataArtLeftStick,StrataArtRightStick};
-    NSArray *labels=@[@"L",@"ZL",@"R",@"ZR",@"−",@"+",@"",@"",@""];
-    for (NSUInteger i=0;i<9;i++) {
-        NSInteger role=roles[i];
-        CGPoint centre=role==StrataArtDpad?StrataArtDpadCentre(land):(role==StrataArtLeftStick||role==StrataArtRightStick)?StrataArtStickCentre(land,role==StrataArtRightStick):StrataNxPressCentre(CGPointZero,role,land);
-        CGSize px;
-        if (i<4) px=land?CGSizeMake(88,44):(photo?CGSizeMake(150,70):CGSizeMake(120,39));
-        else if (i<6) px=land?CGSizeMake(70,70):(photo?CGSizeMake(114,114):CGSizeMake(62,58));
-        else {
-            CGFloat side=i==6?(land?204:(photo?366:194)):(land?172:(photo?260:146));
-            px=CGSizeMake(side,side);
-        }
-        NSString *key=[NSString stringWithFormat:@"role%ld",(long)role];
-        [self znSpriteForKey:key centre:centre pixels:px art:StrataNxControlFrame(self.bounds,image,wide,centre.x) reference:ref kind:role label:labels[i] dark:dark];
-    }
-    NSArray *face=@[@"A",@"B",@"X",@"Y"];
-    for (int i=0;i<4;i++) {
-        CGPoint centre=StrataArtFaceCentre(land,i);
-        CGFloat side=land?90:(photo?128:93);
-        [self znSpriteForKey:[NSString stringWithFormat:@"face%d",i] centre:centre pixels:CGSizeMake(side,side) art:StrataNxControlFrame(self.bounds,image,wide,centre.x) reference:ref kind:StrataArtFace label:face[i] dark:dark];
-    }
-    CGPoint gear=StrataArtGearCentre(land);
-    CGFloat side=land?84:(photo?120:72);
-    [self znSpriteForKey:@"gear" centre:gear pixels:CGSizeMake(side,side) art:StrataNxControlFrame(self.bounds,image,wide,gear.x) reference:ref kind:StrataArtNoMapping label:@"⚙︎" dark:dark];
+    ZNVisitControllerKeys(land,!dark||StrataNxIsPreparedPhoto(image),^(NSString *key, CGPoint centre, CGSize px, NSInteger role, NSString *label){
+        [self znSpriteForKey:key centre:centre pixels:px art:StrataNxControlFrame(self.bounds,image,wide,centre.x) reference:ref kind:role label:label dark:dark];
+    });
 }
 - (CALayer *)znMovingLayer:(CALayer *)root {
     CALayer *knob=root.sublayers.firstObject;

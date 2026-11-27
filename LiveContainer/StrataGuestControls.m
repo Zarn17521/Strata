@@ -877,6 +877,7 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
 #include "ZNGameWorldArtwork.h"
 
 static char ZNSwitchPearlPhotoKey;
+static char ZNSwitchNeonPhotoKey;
 static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory, BOOL controls) {
     BOOL neon=[identifier isEqualToString:@"switch-neon"];
     BOOL pearl=[identifier isEqualToString:@"switch-pearl-photo"];
@@ -887,6 +888,7 @@ static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BO
             objc_setAssociatedObject(photo,&StrataNxPreparedPhotoKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(photo,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             if (pearl) objc_setAssociatedObject(photo,&ZNSwitchPearlPhotoKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (neon) objc_setAssociatedObject(photo,&ZNSwitchNeonPhotoKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             return photo;
         }
     }
@@ -915,7 +917,10 @@ static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BO
             StrataNxBuiltScreen(portrait ? CGRectMake(37,138,847,661) : CGRectMake(463,169,863,574), YES);
         }];
         UIImage *image = StrataNxBuildArtwork(portrait, YES, plate, format.scale, controls);
-        if (image) objc_setAssociatedObject(image,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (image) {
+            objc_setAssociatedObject(image,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(image,&ZNSwitchNeonPhotoKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         return image;
     }
     NSArray<NSString *> *world=identifier.length?ZNGameWorldProfiles()[identifier]:nil;
@@ -1008,6 +1013,74 @@ static CGPoint StrataNxPressCentre(CGPoint p, NSInteger role, BOOL land) {
         default: return CGPointMake(NAN,NAN);
     }
 }
+// Single control style and reference dimensions for preview and live sprites.
+// Only the explicit AMOLED finish keeps its old graphite buttons.
+static BOOL ZNUsesAMOLEDButtons(NSString *identifier, BOOL dark) {
+    return identifier.length ? [identifier isEqualToString:@"amoled"] : dark;
+}
+static void ZNVisitControllerKeys(BOOL land, BOOL pearlSizes, void (^visit)(NSString *,CGPoint,CGSize,NSInteger,NSString *)) {
+    const NSInteger roles[]={StrataArtL,StrataArtZL,StrataArtR,StrataArtZR,StrataArtMinus,StrataArtPlus,StrataArtDpad,StrataArtLeftStick,StrataArtRightStick};
+    NSArray *labels=@[@"L",@"ZL",@"R",@"ZR",@"−",@"+",@"",@"",@""];
+    for (NSUInteger i=0;i<9;i++) {
+        NSInteger role=roles[i];
+        CGPoint centre=role==StrataArtDpad?StrataArtDpadCentre(land):(role==StrataArtLeftStick||role==StrataArtRightStick)?StrataArtStickCentre(land,role==StrataArtRightStick):StrataNxPressCentre(CGPointZero,role,land);
+        CGSize px;
+        if (i<4) px=land?CGSizeMake(88,44):(pearlSizes?CGSizeMake(150,70):CGSizeMake(120,39));
+        else if (i<6) px=land?CGSizeMake(70,70):(pearlSizes?CGSizeMake(114,114):CGSizeMake(62,58));
+        else {
+            CGFloat side=i==6?(land?204:(pearlSizes?366:194)):(land?172:(pearlSizes?260:146));
+            px=CGSizeMake(side,side);
+        }
+        visit([NSString stringWithFormat:@"role%ld",(long)role],centre,px,role,labels[i]);
+    }
+    NSArray *face=@[@"A",@"B",@"X",@"Y"];
+    for (int i=0;i<4;i++) {
+        CGFloat side=land?90:(pearlSizes?128:93);
+        visit([NSString stringWithFormat:@"face%d",i],StrataArtFaceCentre(land,i),CGSizeMake(side,side),StrataArtFace,face[i]);
+    }
+    CGFloat side=land?84:(pearlSizes?120:72);
+    visit(@"gear",StrataArtGearCentre(land),CGSizeMake(side,side),StrataArtNoMapping,@"⚙︎");
+}
+static BOOL ZNIsStickSprite(NSInteger kind) {
+    return kind==StrataArtLeftStick||kind==StrataArtRightStick;
+}
+static void ZNDrawControllerSpriteBody(CGSize pixels, NSInteger kind, NSString *label, BOOL dark) {
+    CGPoint mid=CGPointMake(pixels.width*.5,pixels.height*.5);
+    BOOL shoulder=kind==StrataArtL||kind==StrataArtR||kind==StrataArtZL||kind==StrataArtZR;
+    if (kind==StrataArtDpad) {
+        StrataNxBuiltDPad(mid,MIN(pixels.width,pixels.height)*.46,dark);
+    } else if (ZNIsStickSprite(kind)) {
+        CGRect rim=CGRectInset((CGRect){CGPointZero,pixels},3,3);
+        UIBezierPath *ring=[UIBezierPath bezierPathWithOvalInRect:rim];
+        StrataNxBuiltGradient(ring,[UIColor colorWithWhite:dark?.28:.68 alpha:1],[UIColor colorWithWhite:dark?.06:.38 alpha:1]);
+        UIBezierPath *well=[UIBezierPath bezierPathWithOvalInRect:CGRectInset(rim,pixels.width*.09,pixels.height*.09)];
+        [[UIColor colorWithWhite:dark?.035:.24 alpha:1] setFill]; [well fill];
+    } else {
+        StrataNxBuiltKey(mid,CGSizeMake(pixels.width-5,pixels.height-5),label,dark,!shoulder);
+    }
+}
+static void ZNDrawControllerPreview(CGRect bounds, UIImage *image, BOOL wide, BOOL dark) {
+    BOOL land=bounds.size.width>bounds.size.height;
+    CGSize ref=land?CGSizeMake(1792,1008):CGSizeMake(923,2000);
+    CGContextRef ctx=UIGraphicsGetCurrentContext(); if (!ctx) return;
+    ZNVisitControllerKeys(land,!dark||StrataNxIsPreparedPhoto(image),^(NSString *key, CGPoint centre, CGSize pixels, NSInteger kind, NSString *label){
+        CGRect art=StrataNxControlFrame(bounds,image,wide,centre.x);
+        CGFloat scale=MIN(art.size.width/ref.width,art.size.height/ref.height);
+        if (!isfinite(scale)||scale<=0) return;
+        CGSize size=CGSizeMake(MAX(8,pixels.width*scale),MAX(8,pixels.height*scale));
+        CGContextSaveGState(ctx);
+        CGContextTranslateCTM(ctx,art.origin.x+centre.x*art.size.width-size.width*.5,
+                                    art.origin.y+centre.y*art.size.height-size.height*.5);
+        CGContextScaleCTM(ctx,size.width/pixels.width,size.height/pixels.height);
+        ZNDrawControllerSpriteBody(pixels,kind,label,dark);
+        if (ZNIsStickSprite(kind)) {
+            CGFloat d=MIN(pixels.width,pixels.height)*.67*.94;
+            StrataNxBuiltKey(CGPointMake(pixels.width*.5,pixels.height*.5),CGSizeMake(d,d),@"",dark,YES);
+        }
+        CGContextRestoreGState(ctx);
+    });
+}
+
 static CGRect StrataNxPressFrame(CGRect art, CGPoint p, NSInteger role, BOOL land) {
     CGPoint centre=StrataNxPressCentre(p,role,land);
     if (!isfinite(centre.x)||!isfinite(centre.y)) return CGRectNull;
@@ -1711,43 +1784,63 @@ static UIColor *StrataNxArtworkBacking(UIImage *image, BOOL dark, UIColor *tint)
     return [UIColor colorWithRed:.025 + red*.30 green:.025 + green*.30 blue:.025 + blue*.30 alpha:1];
 }
 
-// Extend the original panel texture into the four rectangular outer corners.
-// Keep the centre of each theme intact; no rounded clipping, no new bitmap
-// allocation or repeated decode. These patches are outside the control centres.
-static void ZNDrawLandscapeTexturePatch(UIImage *image, CGRect source, CGRect dest) {
-    if (!image || CGRectIsEmpty(source) || CGRectIsEmpty(dest)) return;
-    CGContextRef ctx=UIGraphicsGetCurrentContext();
-    if (!ctx) return;
-    CGContextSaveGState(ctx);
-    CGContextClipToRect(ctx,dest);
-    CGRect frame=CGRectMake(dest.origin.x-source.origin.x*dest.size.width/source.size.width,
-                            dest.origin.y-source.origin.y*dest.size.height/source.size.height,
-                            dest.size.width/source.size.width,dest.size.height/source.size.height);
-    [image drawInRect:frame];
-    CGContextRestoreGState(ctx);
+// A single uninterrupted fill per panel. Photo corner gutters and the
+// hard-edged repair rectangles are intentionally not composited in landscape.
+// Original photographs remain bundled for portrait and reference use.
+static void ZNDrawSquareShellGradient(CGRect rect, UIColor *top, UIColor *bottom) {
+    if (CGRectIsEmpty(rect)) return;
+    StrataNxBuiltGradient([UIBezierPath bezierPathWithRect:rect],top,bottom);
+}
+static BOOL ZNHasWorldShell(UIImage *image) {
+    return [objc_getAssociatedObject(image,&ZNGameWorldArtworkKey) boolValue];
+}
+static void ZNDrawSquareCenter(CGRect rect, UIImage *image, BOOL dark, UIColor *tint) {
+    BOOL neon=[objc_getAssociatedObject(image,&ZNSwitchNeonPhotoKey) boolValue];
+    BOOL world=ZNHasWorldShell(image);
+    UIColor *top,*bottom;
+    if (world) {
+        top=StrataNxArtworkBacking(image,dark,tint);
+        bottom=[top colorWithAlphaComponent:1];
+    } else if (neon || (dark && !tint)) {
+        top=[UIColor colorWithWhite:neon?.18:.12 alpha:1];
+        bottom=[UIColor colorWithWhite:neon?.105:.035 alpha:1];
+    } else {
+        top=[UIColor colorWithWhite:.99 alpha:1];
+        bottom=[UIColor colorWithWhite:.89 alpha:1];
+    }
+    ZNDrawSquareShellGradient(rect,top,bottom);
+}
+static void ZNDrawSquarePlainShell(CGRect bounds, CGRect center, UIImage *image, BOOL dark, UIColor *tint) {
+    BOOL neon=[objc_getAssociatedObject(image,&ZNSwitchNeonPhotoKey) boolValue];
+    BOOL graphite=dark && !tint;
+    UIColor *lt=neon?[UIColor colorWithRed:.05 green:.82 blue:.94 alpha:1]:[UIColor colorWithWhite:graphite?.12:.99 alpha:1];
+    UIColor *lb=neon?[UIColor colorWithRed:0 green:.68 blue:.82 alpha:1]:[UIColor colorWithWhite:graphite?.035:.88 alpha:1];
+    UIColor *rt=neon?[UIColor colorWithRed:1 green:.36 blue:.33 alpha:1]:lt;
+    UIColor *rb=neon?[UIColor colorWithRed:.91 green:.20 blue:.21 alpha:1]:lb;
+    CGRect left=CGRectMake(CGRectGetMinX(bounds),CGRectGetMinY(bounds),CGRectGetMinX(center)-CGRectGetMinX(bounds),bounds.size.height);
+    CGRect right=CGRectMake(CGRectGetMaxX(center),CGRectGetMinY(bounds),CGRectGetMaxX(bounds)-CGRectGetMaxX(center),bounds.size.height);
+    ZNDrawSquareCenter(bounds,image,dark,tint);
+    ZNDrawSquareShellGradient(left,lt,lb);
+    ZNDrawSquareShellGradient(right,rt,rb);
+    // Continuous subtle vertical seams, not overlapping corner patches.
+    [[UIColor colorWithWhite:0 alpha:.24] setFill];
+    UIRectFill(CGRectMake(CGRectGetMinX(center),CGRectGetMinY(bounds),1,bounds.size.height));
+    UIRectFill(CGRectMake(CGRectGetMaxX(center)-1,CGRectGetMinY(bounds),1,bounds.size.height));
 }
 static void ZNDrawLandscapeReferenceArtwork(UIImage *image, CGRect bounds, BOOL dark, UIColor *tint) {
     CGContextRef ctx=UIGraphicsGetCurrentContext();
     if (!ctx || !image) return;
     CGContextSaveGState(ctx);
     CGContextClipToRect(ctx,bounds);
-    [StrataNxArtworkBacking(image,dark,tint) setFill]; UIRectFill(bounds);
     CGRect art=ZNLandscapeReferenceFrame(bounds);
-    [image drawInRect:art];
-    CGFloat w=bounds.size.width,h=bounds.size.height,x=bounds.origin.x,y=bounds.origin.y;
-    // Full-bleed worlds are already rectangular and need no photo corner patches.
-    if (![objc_getAssociatedObject(image,&ZNGameWorldArtworkKey) boolValue]) {
-    // Sample unobstructed strips between the shoulder and stick rows.
-    CGRect left=CGRectMake(.099,.477,.021,.024), right=CGRectMake(.891,.477,.021,.024);
-    ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y,w*.025,h));
-    ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.975,y,w*.025,h));
-    ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y,w*.069,h*.185));
-    ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.931,y,w*.069,h*.185));
-    ZNDrawLandscapeTexturePatch(image,left,CGRectMake(x,y+h*.815,w*.105,h*.185));
-    ZNDrawLandscapeTexturePatch(image,right,CGRectMake(x+w*.895,y+h*.815,w*.105,h*.185));
+    CGFloat w=bounds.size.width,h=bounds.size.height;
+    if (ZNHasWorldShell(image)) {
+        [image drawInRect:art];
+    } else {
+        CGFloat seam=CGRectGetMinX(art)+art.size.width*.255;
+        CGRect center=CGRectMake(seam,bounds.origin.y,CGRectGetMaxX(bounds)-seam-(seam-bounds.origin.x),h);
+        ZNDrawSquarePlainShell(bounds,center,image,dark,tint);
     }
-    // Paint a rectangular black bezel behind the live 16:9 game. The outer
-    // view is already clipped around the live game by its caller.
     CGRect game=ZNLandscapeReferenceDisplay(bounds);
     CGRect bezel=CGRectInset(game,-w*.004,-h*.035);
     [UIColor.blackColor setFill]; UIRectFill(bezel);
@@ -1777,22 +1870,16 @@ static void StrataNxDrawWideArtwork(UIImage *image, CGRect bounds, BOOL dark, UI
         StrataNxDrawZNBrand(art,YES);
     } else {
         StrataNxWideGeometry l=StrataNxWideLayout(bounds,image);
-        // Fill all center gutters and the entire footer using the selected
-        // skin's unobstructed bezel texture, not a generic backing color.
         CGRect center=CGRectMake(CGRectGetMinX(l.display),bounds.origin.y,l.display.size.width,bounds.size.height);
-        ZNDrawLandscapeTexturePatch(image,CGRectMake(.30,.785,.055,.035),center);
-        StrataNxDrawWidePanel(image,l.leftFrame,l.leftSource);
-        StrataNxDrawWidePanel(image,l.rightFrame,l.rightSource);
-        // Photo source corners can include black outside the shell. Replace
-        // only the extreme edge using nearby button-free panel material.
-        if (![objc_getAssociatedObject(image,&ZNGameWorldArtworkKey) boolValue]) {
-            CGFloat side=CGRectGetMinX(l.display)-bounds.origin.x,h=bounds.size.height;
-            CGRect left=CGRectMake(.099,.477,.021,.024),right=CGRectMake(.891,.477,.021,.024);
-            ZNDrawLandscapeTexturePatch(image,left,CGRectMake(bounds.origin.x,bounds.origin.y,side*.12,h*.13));
-            ZNDrawLandscapeTexturePatch(image,right,CGRectMake(CGRectGetMaxX(bounds)-side*.12,bounds.origin.y,side*.12,h*.13));
+        if (ZNHasWorldShell(image)) {
+            // Keep the complete themed side panels; the central footer is
+            // continuous and the animated buttons have their own layers.
+            ZNDrawSquareCenter(center,image,dark,tint);
+            StrataNxDrawWidePanel(image,l.leftFrame,l.leftSource);
+            StrataNxDrawWidePanel(image,l.rightFrame,l.rightSource);
+        } else {
+            ZNDrawSquarePlainShell(bounds,center,image,dark,tint);
         }
-        // The same footer transform controls the preview keys and live input.
-        StrataNxDrawWidePanel(image,l.footerFrame,l.footerSource);
         [UIColor.blackColor setFill]; UIRectFill(l.display);
         ZNPaintPerformanceBlackBar(bounds,image,YES);
         // Keep the brand in the lower-left corner, outside the stick target.
@@ -1836,8 +1923,12 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     UIImage *cached = [previewCache objectForKey:key];
     if (cached) return cached;
 
-    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO, YES)
-        ?: StrataNxBuiltinArtwork(portrait,dark,YES);
+    BOOL buttonDark=ZNUsesAMOLEDButtons(identifier,dark);
+    // Keep the original AMOLED portrait preview. Other previews use the
+    // same button-free plate and Pearl sprite painter as live gameplay.
+    BOOL overlayKeys=!portrait||!buttonDark;
+    UIImage *source = StrataNxLoadThemeArtwork(identifier, portrait, YES, NO, !overlayKeys)
+        ?: StrataNxBuiltinArtwork(portrait,buttonDark,!overlayKeys);
     if (!source) return nil;
     CGSize size = !portrait ? CGSizeMake(852,393) : (wide ? CGSizeMake(393,852) : source.size);
     // Keep Settings snapshots at one-third resolution: the real native
@@ -1863,6 +1954,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
             if (wide) StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             else ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             ZNPaintPerformanceBlackBar(art,source,wide);
+            if (overlayKeys) ZNDrawControllerPreview(art,source,wide,buttonDark);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1870,6 +1962,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
             StrataNxDrawWideArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
             [UIColor.blackColor setFill];
             UIRectFill(StrataNxDisplayRect(art,source,YES));
+            if (overlayKeys) ZNDrawControllerPreview(art,source,YES,buttonDark);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1890,6 +1983,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
             StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
         StrataNxDrawZNBrand(art,portrait);
         ZNPaintPerformanceBlackBar(art,source,wide);
+        if (overlayKeys) ZNDrawControllerPreview(art,source,wide,buttonDark);
         CGContextRestoreGState(ctx);
     }];
     if (result) [previewCache setObject:result forKey:key
@@ -1937,8 +2031,9 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
     // A physical pad may hide the baked controls without changing the game aperture.
     // Keep the real NxNative menu's transparent hit target and draw its gear in the same footer.
     if (artwork && self.znControlsHidden && self.znSprites.count==0) {
-        if (!portrait && wide) {
-            StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+        if (!portrait) {
+            if (wide) StrataNxDrawWideArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
+            else ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         } else {
         UIColor *base = [self.themeIdentifier isEqualToString:@"switch-neon"] ? [UIColor colorWithWhite:.055 alpha:1] : StrataNxArtworkBacking(artwork,self.darkTheme,self.customThemeTint);
         [base setFill]; UIRectFill(bounds);
@@ -1954,7 +2049,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         CGPoint center=CGPointMake(footer.origin.x+footer.size.width*gear.x,footer.origin.y+footer.size.height*gear.y);
         CGFloat radius=MAX(20,MIN(footer.size.width*(portrait?.055:.032),footer.size.height*(portrait?.035:.052)));
         CGRect circle=CGRectMake(center.x-radius*.75,center.y-radius*.75,radius*1.5,radius*1.5);
-        [[UIColor colorWithWhite:self.darkTheme?.12:.92 alpha:1] setFill];
+        [[UIColor colorWithWhite:ZNUsesAMOLEDButtons(self.themeIdentifier,self.darkTheme)?.12:.92 alpha:1] setFill];
         [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
         UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
         [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
