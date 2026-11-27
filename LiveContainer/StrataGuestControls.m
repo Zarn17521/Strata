@@ -399,7 +399,7 @@ static StrataNxWideGeometry StrataNxWideLayout(CGRect bounds, UIImage *image) {
     l.rightFrame=ZNWideMapSourceToRect(l.rightSource,CGRectMake(CGRectGetMaxX(l.display),bounds.origin.y,side,h));
     // Reserve a narrow black HUD strip above the footer, leaving gear and
     // plus/minus in the remaining height. The live image is never resized.
-    CGFloat footerTop=CGRectGetMaxY(l.display)+h*.035+2;
+    CGFloat footerTop=CGRectGetMaxY(l.display)+h*.045+2;
     CGFloat footerH=MAX(1,CGRectGetMaxY(bounds)-footerTop-3);
     CGFloat footerScale=MAX(.01,MIN(w*.40/(image.size.width*.240),footerH/(image.size.height*.112)));
     l.footerFrame=StrataNxImageFrameAt(image.size,footerScale,
@@ -428,7 +428,7 @@ static CGRect ZNPerformanceBlackBar(CGRect bounds, UIImage *image, BOOL wide) {
     CGFloat top=CGRectGetMaxY(game);
     CGFloat bottom=CGRectIsNull(aperture)?top:CGRectGetMaxY(aperture);
     if (land && wide) {
-        bottom=MIN(CGRectGetMaxY(bounds),top+bounds.size.height*.035);
+        bottom=MIN(CGRectGetMaxY(bounds),top+bounds.size.height*.045);
     } else if (land) {
         bottom=MAX(bottom,top+bounds.size.height*.035);
         bottom=MIN(bottom,MIN(top+bounds.size.height*.075,CGRectGetMinY(bounds)+bounds.size.height*.84));
