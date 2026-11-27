@@ -30,6 +30,7 @@ struct StrataSwitchboard: View {
     @State private var pendingLaunch: Task<Void, Never>?
     @State private var thermalConstrained = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     @State private var showingSkinSettings = false
+    @State private var showingJITSettings = false
     @State private var choosingCover = false
     @State private var onlineArtwork: StrataArtworkOnlineRequest?
     @State private var coverKey = ""
@@ -47,6 +48,10 @@ struct StrataSwitchboard: View {
     @AppStorage("ZNLibraryHomeLandscape", store: LCUtils.appGroupUserDefault) private var homeLandscape = false
     @AppStorage("StrataNxSkinEnabled", store: LCUtils.appGroupUserDefault) private var nxSkinEnabled = true
     @AppStorage("ZNCompactPerformanceHUD", store: LCUtils.appGroupUserDefault) private var compactHUD = true
+    @AppStorage("ZNAutoBuiltInJIT", store: LCUtils.appGroupUserDefault) private var autoBuiltInJIT = false
+    @AppStorage("LCJITEnablerType", store: LCUtils.appGroupUserDefault) private var jitProvider = JITEnablerType.BuiltIn.rawValue
+    @AppStorage("ZNAutoGameMode", store: LCUtils.appGroupUserDefault) private var autoGameMode = false
+    private var builtInJITEnabled: Bool { autoBuiltInJIT && jitProvider == JITEnablerType.BuiltIn.rawValue }
     private var foreground: Color { darkMode ? .white : .black }
     private var background: Color { darkMode ? .black : .white }
     private var buttonSurface: Color { darkMode ? Color(white: 0.13) : Color(white: 0.92) }
@@ -98,7 +103,7 @@ struct StrataSwitchboard: View {
                         HStack(spacing: 12) {
                             libraryContent(items: items, tile: max(64, min(tile, geo.size.height - 190)), width: contentWidth)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            shortcutButtons.frame(width: railWidth)
+                            shortcutButtons(landscape: true).frame(width: railWidth)
                         }
                         .padding(.horizontal, margin)
                         .frame(maxHeight: .infinity)
@@ -107,7 +112,7 @@ struct StrataSwitchboard: View {
                             .frame(height: tile + 70)
                         if filtered.isEmpty && !canAddGame { Text("No apps here. Add apps or change this category.").foregroundStyle(.secondary).padding(.horizontal, margin) }
                         Spacer(minLength: 4)
-                        shortcutButtons.frame(maxWidth: .infinity).padding(.top, 12)
+                        shortcutButtons(landscape: false).frame(maxWidth: .infinity).padding(.top, 12)
                     }
                     Spacer(minLength: 4)
                     Divider().overlay(foreground.opacity(0.15))
@@ -207,6 +212,10 @@ struct StrataSwitchboard: View {
                     }
                 }
             }.navigationViewStyle(.stack)
+        }
+        .fullScreenCover(isPresented: $showingJITSettings, onDismiss: bind) {
+            LiveBoardJITSetup()
+                .preferredColorScheme(darkMode ? .dark : .light)
         }
         .fullScreenCover(isPresented: $showingSkinSettings, onDismiss: bind) {
             NavigationView {
@@ -569,11 +578,12 @@ struct StrataSwitchboard: View {
             .buttonStyle(.plain)
         }
     }
-    private var shortcutButtons: some View {
+    private func shortcutButtons(landscape: Bool) -> some View {
         // Keep each real action within an equally wide column. The small
         // captions are visual labels only; tap and long-press actions stay on
         // their existing icon controls.
-        HStack(spacing: 6) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 5),
+                                 count: landscape ? 2 : 5), spacing: 10) {
             shortcutCell("Skin") {
                 skinShortcut
                     .accessibilityIdentifier("switchboard.toggle.skin")
@@ -591,7 +601,7 @@ struct StrataSwitchboard: View {
                 }
             }
 
-            shortcutCell(compactHUD ? "ZN HUD ON" : "ZN HUD OFF") {
+            shortcutCell(compactHUD ? "Zn’s HUD ON" : "Zn’s HUD OFF") {
                 Button { compactHUD.toggle() } label: {
                     Image(systemName: "gauge")
                         .font(.system(size: 21, weight: .semibold))
@@ -600,13 +610,30 @@ struct StrataSwitchboard: View {
                         .background(Circle().fill(buttonSurface))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("ZN HUD")
+                .accessibilityLabel("Zn’s HUD")
                 .accessibilityValue(compactHUD ? "On" : "Off")
                 .accessibilityHint("Applies on the next game launch.")
                 .accessibilityIdentifier("switchboard.toggle.znHUD")
             }
+            shortcutCell(builtInJITEnabled ? "Built-in JIT ON" : "Built-in JIT OFF") {
+                jitShortcut
+            }
+            shortcutCell(autoGameMode ? "Game Mode ON" : "Game Mode OFF") {
+                Button { autoGameMode.toggle() } label: {
+                    Image(systemName: autoGameMode ? "gamecontroller.fill" : "gamecontroller")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(autoGameMode ? foreground : foreground.opacity(0.4))
+                        .frame(width: 50, height: 50)
+                        .background(Circle().fill(buttonSurface))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Automatic Game Mode request")
+                .accessibilityValue(autoGameMode ? "On" : "Off")
+                .accessibilityHint("Requests iOS Game Mode on a new guest launch. iOS decides activation.")
+                .accessibilityIdentifier("switchboard.toggle.gameMode")
+            }
         }
-        // ONE continuous outline around all three gameplay shortcut columns.
+        // ONE continuous outline around the five gameplay shortcuts.
         // The stroke and captions share the dark/light foreground.
         .padding(.horizontal, 8)
         .padding(.vertical, 10)
@@ -627,10 +654,49 @@ struct StrataSwitchboard: View {
             Text(caption)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(foreground)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.75)
+                .frame(minHeight: 24, alignment: .top)
         }
         .frame(maxWidth: .infinity)
+    }
+    private func toggleBuiltInJIT() {
+        if builtInJITEnabled {
+            autoBuiltInJIT = false
+        } else {
+            jitProvider = JITEnablerType.BuiltIn.rawValue
+            autoBuiltInJIT = true
+        }
+    }
+    private func openJITSettings() {
+        controller.stop()
+        showingJITSettings = true
+    }
+    private var jitShortcut: some View {
+        Image(systemName: builtInJITEnabled ? "bolt.fill" : "bolt.slash")
+            .font(.system(size: 21, weight: .semibold))
+            .foregroundStyle(builtInJITEnabled ? foreground : foreground.opacity(0.4))
+            .frame(width: 50, height: 50)
+            .background(Circle().fill(buttonSurface))
+            .contentShape(Circle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.55)
+                    .exclusively(before: TapGesture())
+                    .onEnded { result in
+                        switch result {
+                        case .first(let held): if held { openJITSettings() }
+                        case .second: toggleBuiltInJIT()
+                        }
+                    }
+            )
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Automatic built-in JIT")
+            .accessibilityValue(builtInJITEnabled ? "On" : "Off")
+            .accessibilityHint("Tap to toggle automatic JIT. Hold for JIT setup.")
+            .accessibilityAction { toggleBuiltInJIT() }
+            .accessibilityAction(named: Text("Open JIT settings")) { openJITSettings() }
+            .accessibilityIdentifier("switchboard.toggle.builtInJIT")
     }
     // Two mutually exclusive gestures: a short tap updates the shared
     // NxNative guest skin setting; holding never accidentally toggles it.
@@ -745,7 +811,7 @@ struct StrataSwitchboard: View {
         category = index >= 2 ? categories[index - 2] : nil
     }
     private func bind() {
-        guard visible, !showingWhatsNew, !editingLibrary, !choosingCover, !busy else { return }
+        guard visible, !showingWhatsNew, !showingJITSettings, !showingSkinSettings, !editingLibrary, !choosingCover, !busy else { return }
         controller.onCommand = { command in
             let items = filtered
             let keys = items.map(liveBoardAppKey) + (canAddGame ? [addGameKey] : [])

@@ -592,14 +592,14 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             LCUtils.openSideStore(delegate: self)
             return
         }
-        // Games and Ports launch through the Game Mode path automatically (full screen, Game Mode metadata),
-        // unless the user explicitly asked for a multitask window.
-        let category = LiveBoardSharedCategories.category(forKey: liveBoardAppKey(app))
-        // Host and LiveProcess declare Game Mode support; iOS decides activation. Keep seamless games switchable.
-        let seamless = LCUtils.appGroupUserDefault.object(forKey: "StrataSeamlessSwitching") as? Bool ?? true
-        let automaticGameMode = !seamless && multitask != true && (category == "Games" || category == "Ports")
+        // The dock toggles are automatic launch requests for regular guests.
+        // Explicit launch profiles and per-app JIT requirements remain intact.
+        let prefs = LCUtils.appGroupUserDefault
+        let automaticJIT = multitask != true && prefs.bool(forKey: "ZNAutoBuiltInJIT")
+            && prefs.integer(forKey: "LCJITEnablerType") == JITEnablerType.BuiltIn.rawValue
+        let automaticGameMode = multitask != true && prefs.bool(forKey: "ZNAutoGameMode")
         do {
-            try await app.launchFromLibrary(multitask: multitask, forceJIT: forceJIT, gameMode: gameMode || automaticGameMode, metalHUD: metalHUD)
+            try await app.launchFromLibrary(multitask: multitask, forceJIT: forceJIT || automaticJIT, gameMode: gameMode || automaticGameMode, metalHUD: metalHUD)
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true

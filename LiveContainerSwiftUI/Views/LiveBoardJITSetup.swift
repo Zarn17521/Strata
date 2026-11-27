@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct LiveBoardJITSetup: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("LCJITEnablerType", store: LCUtils.appGroupUserDefault) private var provider = JITEnablerType.BuiltIn.rawValue
+    @AppStorage("ZNAutoBuiltInJIT", store: LCUtils.appGroupUserDefault) private var autoBuiltInJIT = false
     @AppStorage("StrataJITDeviceAddress", store: LCUtils.appGroupUserDefault) private var deviceAddress = "10.7.0.1"
     @AppStorage("StrataJITRemotePairPort", store: LCUtils.appGroupUserDefault) private var remotePairPort = "49152"
     @ObservedObject private var session = LiveBoardJITSession.shared
@@ -17,6 +18,9 @@ struct LiveBoardJITSetup: View {
                         ForEach(JITEnablerType.allCases) { Text($0.displayName).tag($0.rawValue) }
                     }
                     Button("Use built-in JIT") { provider = JITEnablerType.BuiltIn.rawValue }
+                    Toggle("Automatic built-in JIT", isOn: $autoBuiltInJIT)
+                        .disabled(provider != JITEnablerType.BuiltIn.rawValue)
+                    Text("This also controls the Library dock shortcut. Turning it off preserves explicit JIT launches and per-app JIT requirements.").font(.footnote).foregroundStyle(.secondary)
                 }
                 if provider == JITEnablerType.BuiltIn.rawValue {
                     Section("One-time setup") {
@@ -65,6 +69,9 @@ struct LiveBoardJITSetup: View {
                 Section { NavigationLink("Memory and signing permissions") { StrataMemorySettings() } }
                 Section { NavigationLink("JIT-less setup and diagnostics") { LCJITLessDiagnoseView() } }
             }.navigationTitle("JIT setup")
+                .onChange(of: provider) { value in
+                    if value != JITEnablerType.BuiltIn.rawValue { autoBuiltInJIT = false }
+                }
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
                     do {
