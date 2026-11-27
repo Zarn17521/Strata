@@ -590,9 +590,10 @@ static UIView *StrataNxPadHitTest(id pad, SEL selector, CGPoint point, UIEvent *
     UIView *hit = StrataOldNxPadHitTest
         ? StrataOldNxPadHitTest(pad, selector, point, event) : nil;
     UIView *view = (UIView *)pad;
+    // In controller-only mode, reject the pad itself but preserve its menu subview.
+    if ([objc_getAssociatedObject(pad, &ZNRealControllerHiddenKey) boolValue] && hit == view) return nil;
     if (hit != view || !objc_getAssociatedObject(pad, &StrataNxPadArtTouchEnabledKey))
         return hit; // preserve the real artwork menu button and non-skin games
-    if ([objc_getAssociatedObject(pad, &ZNRealControllerHiddenKey) boolValue]) return nil;
     BOOL landscape = view.bounds.size.width > view.bounds.size.height;
     UIView *skin = [view.superview viewWithTag:877144];
     UIImage *image = [skin valueForKey:landscape ? @"landscapeArtwork" : @"portraitArtwork"];
@@ -1021,7 +1022,7 @@ static NSData *ZNControllerClickData(BOOL release) {
     self.znHaptic = [prefs boolForKey:@"ZNRealHaptic"];
     self.znSound = [prefs boolForKey:@"ZNRealSound"];
     self.znReleaseSound = [prefs boolForKey:@"ZNRealReleaseSound"];
-    self.znAutoHide = [prefs boolForKey:@"ZNRealAutoHide"];
+    self.znAutoHide = [prefs objectForKey:@"ZNRealAutoHide"] ? [prefs boolForKey:@"ZNRealAutoHide"] : YES;
     self.znIntensity = [prefs objectForKey:@"ZNRealIntensity"] ? MAX(0,MIN(1,[prefs doubleForKey:@"ZNRealIntensity"])) : .65;
     CGFloat volume = [prefs objectForKey:@"ZNRealVolume"] ? MAX(0,MIN(1,[prefs doubleForKey:@"ZNRealVolume"])) : .25;
     if (self.znHaptic) {
@@ -1040,6 +1041,7 @@ static NSData *ZNControllerClickData(BOOL release) {
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserver:self selector:@selector(znControllerChanged:) name:GCControllerDidConnectNotification object:nil];
     [center addObserver:self selector:@selector(znControllerChanged:) name:GCControllerDidDisconnectNotification object:nil];
+    [center addObserver:self selector:@selector(znControllerChanged:) name:UIApplicationDidBecomeActiveNotification object:nil];
     [self znRefreshControllerVisibility];
 }
 - (void)znControllerChanged:(NSNotification *)note {
@@ -1048,15 +1050,44 @@ static NSData *ZNControllerClickData(BOOL release) {
 }
 - (void)znRefreshControllerVisibility {
     BOOL connected = NO;
-    if (self.znAutoHide && !self.fullScreenMode) {
+    if (self.znAutoHide) {
         for (GCController *controller in GCController.controllers) {
-            if (controller.extendedGamepad) { connected=YES; break; }
+            if (controller.extendedGamepad && !controller.isSnapshot) { connected=YES; break; }
         }
     }
-    if (self.znControlsHidden == connected) return;
+    UIView *pad = self.mappedPad;
+    if (!pad) return;
+    BOOL changed = self.znControlsHidden != connected;
     self.znControlsHidden=connected;
-    objc_setAssociatedObject(self.mappedPad,&ZNRealControllerHiddenKey,@(connected),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(pad,&ZNRealControllerHiddenKey,@(connected),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (self.fullScreenMode) {
+        @try {
+            id controls = [pad valueForKey:@"controls"];
+            if ([controls isKindOfClass:CALayer.class]) {
+                [CATransaction begin];
+                [CATransaction setDisableActions:YES];
+                ((CALayer *)controls).opacity = connected ? 0 : .65;
+                [CATransaction commit];
+            }
+        } @catch (__unused NSException *e) {}
+    }
+    if (!changed) return;
+    if (connected) {
+        // Clear in-flight press highlights; do not reset the guest's physical HID.
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        for (CAGradientLayer *layer in self.pressLayers.allValues) {
+            [layer removeAllAnimations]; layer.opacity=0; layer.transform=CATransform3DIdentity;
+            [self.sparePressLayers addObject:layer];
+        }
+        [self.pressLayers removeAllObjects];
+        for (CAGradientLayer *layer in self.sparePressLayers) {
+            [layer removeAllAnimations]; layer.opacity=0; layer.transform=CATransform3DIdentity;
+        }
+        [CATransaction commit];
+    }
     [self setNeedsDisplay];
+    [pad.superview setNeedsLayout];
 }
 - (void)znClick:(BOOL)release role:(NSInteger)role {
     if (!release && self.znHaptic && self.znIntensity>0) {
@@ -1933,7 +1964,8 @@ static void StrataNxFitGameToImportedArt(UIViewController *root) {
             if (!CGRectEqualToRect(game.frame,picture)) game.frame=picture;
             @try {
                 id controls=[pad valueForKey:@"controls"];
-                if ([controls isKindOfClass:CALayer.class]) ((CALayer *)controls).opacity=.65;
+                if ([controls isKindOfClass:CALayer.class])
+                    ((CALayer *)controls).opacity=[objc_getAssociatedObject(pad,&ZNRealControllerHiddenKey) boolValue] ? 0 : .65;
                 UILabel *fps=[root valueForKey:@"fps"];
                 if ([fps isKindOfClass:UILabel.class] && !fps.hidden)
                     fps.frame=CGRectMake(CGRectGetMinX(picture)+5,CGRectGetMinY(picture)+5,64,22);

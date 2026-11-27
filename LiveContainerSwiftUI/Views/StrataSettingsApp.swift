@@ -536,7 +536,7 @@ struct ZNRealControllerSettings: View {
     @AppStorage("ZNRealHaptic", store: LCUtils.appGroupUserDefault) private var haptic = false
     @AppStorage("ZNRealSound", store: LCUtils.appGroupUserDefault) private var sound = false
     @AppStorage("ZNRealReleaseSound", store: LCUtils.appGroupUserDefault) private var releaseSound = false
-    @AppStorage("ZNRealAutoHide", store: LCUtils.appGroupUserDefault) private var autoHide = false
+    @AppStorage("ZNRealAutoHide", store: LCUtils.appGroupUserDefault) private var autoHide = true
     @AppStorage("ZNRealIntensity", store: LCUtils.appGroupUserDefault) private var intensity = 0.65
     @AppStorage("ZNRealVolume", store: LCUtils.appGroupUserDefault) private var volume = 0.25
     var body: some View {
@@ -560,7 +560,7 @@ struct ZNRealControllerSettings: View {
             Section {
                 Toggle("Bluetooth Auto-Hide", isOn: $autoHide)
             } header: { Text("Physical controller") } footer: {
-                Text("Classic and Wide skins only. When an extended gamepad is connected, show a simplified shell and keep the Settings gear. Touch controls return on disconnect. Relaunch NxNative to apply changed settings.")
+                Text("Enabled by default. When a supported physical gamepad connects, Classic and Wide use a simplified button-free shell with the Settings gear; Full Screen hides the native touch controls. Touch controls return after the last controller disconnects. Relaunch NxNative to apply changed settings.")
             }
         }.navigationTitle("ZN Real Controller Engine")
     }
