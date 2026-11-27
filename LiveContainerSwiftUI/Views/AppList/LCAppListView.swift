@@ -164,7 +164,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                 // are retired from the active route. Keep the standard
                 // management flow for installing and configuring apps.
                 if !manageLibrary {
-                    StrataSwitchboard(apps: launcherApps, launch: { app in Task { await launchFromLiveBoard(app) } }, manage: manageLauncherApp, openInterface: openInterface, openManagement: { manageLibrary = true }, launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true) } }, launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true) } }, launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true) } }, launchInGameModeWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true, gameMode: true) } }, launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true) } })
+                    StrataSwitchboard(apps: launcherApps, launch: { app in Task { await launchFromLiveBoard(app) } }, manage: manageLauncherApp, openInterface: openInterface, openManagement: { manageLibrary = true }, launchWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true, useDockLaunchPreferences: false) } }, launchMultitask: { app in Task { await launchFromLiveBoard(app, multitask: true, useDockLaunchPreferences: false) } }, launchInGameMode: { app in Task { await launchFromLiveBoard(app, gameMode: true, useDockLaunchPreferences: false) } }, launchInGameModeWithJIT: { app in Task { await launchFromLiveBoard(app, forceJIT: true, gameMode: true, useDockLaunchPreferences: false) } }, launchWithMetalHUD: { app in Task { await launchFromLiveBoard(app, metalHUD: true, useDockLaunchPreferences: false) } })
                 } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -569,7 +569,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
     }
 
     @MainActor
-    func launchFromLiveBoard(_ app: LCAppModel, forceJIT: Bool = false, gameMode: Bool = false, multitask: Bool? = nil, metalHUD: Bool = false) async {
+    func launchFromLiveBoard(_ app: LCAppModel, forceJIT: Bool = false, gameMode: Bool = false, multitask: Bool? = nil, metalHUD: Bool = false, useDockLaunchPreferences: Bool = true) async {
         if app.appInfo is StrataSettingsAppInfo { NotificationCenter.default.post(name: .strataOpenSettings, object: nil); return }
         // Recent apps for the card switcher, most recent first.
         let recentKey = liveBoardAppKey(app)
@@ -592,14 +592,20 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             LCUtils.openSideStore(delegate: self)
             return
         }
-        // The dock toggles are automatic launch requests for regular guests.
-        // Explicit launch profiles and per-app JIT requirements remain intact.
+        // Normal cover launches read two independent dock preferences.
+        // Explicit menu actions never inherit the other dock toggle.
+        // A false JIT request uses the original normal-launch path, which
+        // still honors a guest's mandatory/per-app JIT configuration.
         let prefs = LCUtils.appGroupUserDefault
-        let automaticJIT = multitask != true && prefs.bool(forKey: "ZNAutoBuiltInJIT")
+        let automaticJIT = useDockLaunchPreferences && multitask != true
+            && prefs.bool(forKey: "ZNAutoBuiltInJIT")
             && prefs.integer(forKey: "LCJITEnablerType") == JITEnablerType.BuiltIn.rawValue
-        let automaticGameMode = multitask != true && prefs.bool(forKey: "ZNAutoGameMode")
+        let automaticGameMode = useDockLaunchPreferences && multitask != true
+            && prefs.bool(forKey: "ZNAutoGameMode")
+        let requestJIT = forceJIT || automaticJIT
+        let requestGameMode = gameMode || automaticGameMode
         do {
-            try await app.launchFromLibrary(multitask: multitask, forceJIT: forceJIT || automaticJIT, gameMode: gameMode || automaticGameMode, metalHUD: metalHUD)
+            try await app.launchFromLibrary(multitask: multitask, forceJIT: requestJIT, gameMode: requestGameMode, metalHUD: metalHUD)
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true

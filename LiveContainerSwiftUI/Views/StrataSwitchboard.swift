@@ -462,7 +462,9 @@ struct StrataSwitchboard: View {
 
     @ViewBuilder private func appOptions(_ app: LCAppModel, perform: @escaping (@escaping () -> Void) -> Void) -> some View {
         let key = liveBoardAppKey(app)
-                Button("Launch default shortcut", systemImage: "play.fill") { perform { activate(app) } }
+                Button("Launch default shortcut", systemImage: "play.fill") {
+                    perform { launchShortcut(app, LiveBoardShortcutProfiles.defaultProfile(for: app)?.action ?? .normal) }
+                }
                 if !(app.appInfo is StrataPhoneAppInfo) && !(app.appInfo is BuiltInSideStoreAppInfo) {
                     Button("Shortcut Profiles…", systemImage: "square.stack.3d.up") { perform { controller.stop(); shortcutProfilesApp = LiveBoardAppearanceSelection(app: app) } }
                     if let launchWithJIT {
@@ -749,7 +751,9 @@ struct StrataSwitchboard: View {
         StrataNxTrimSkinPreviewCache()
     }
     private func activate(_ app: LCAppModel) {
-        launchShortcut(app, LiveBoardShortcutProfiles.defaultProfile(for: app)?.action ?? .normal)
+        // Ordinary cover taps/controller confirms follow the dock only.
+        // Saved profiles are still available from the explicit shortcut menu.
+        prepareForLaunch(app, using: launch)
     }
     private func launchShortcut(_ app: LCAppModel, _ action: LiveBoardShortcutAction) {
         switch action {
