@@ -803,6 +803,7 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
     dispatch_once(&once, ^{
         palette = @{
             @"switch-neon": @[@0.08,@0.48,@0.62],
+            @"switch-pearl-photo": @[@0.88,@0.88,@0.88],
             @"zelda": @[@0.20,@0.53,@0.29], @"mario": @[@0.88,@0.16,@0.14],
             @"kirby": @[@0.95,@0.42,@0.67], @"luigi": @[@0.18,@0.55,@0.29],
             @"peach": @[@0.96,@0.57,@0.70], @"bowser": @[@0.82,@0.25,@0.12],
@@ -831,8 +832,26 @@ static UIColor *StrataNxCustomThemeColor(NSString *identifier) {
 @implementation StrataNxThemeBundleToken
 @end
 
+static char ZNSwitchPearlPhotoKey;
 static UIImage *StrataNxLoadThemeArtwork(NSString *identifier, BOOL portrait, BOOL thumbnail, BOOL lowMemory, BOOL controls) {
-    if ([identifier isEqualToString:@"switch-neon"]) {
+    BOOL neon=[identifier isEqualToString:@"switch-neon"];
+    BOOL pearl=[identifier isEqualToString:@"switch-pearl-photo"];
+#if defined(STRATA_NX_SWITCH_PHOTOS)
+    if (!portrait && (neon || pearl)) {
+        UIImage *photo=[UIImage imageWithData:StrataNxPackedSwitchPhotoData(pearl,controls)];
+        if (photo) {
+            objc_setAssociatedObject(photo,&StrataNxPreparedPhotoKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(photo,&StrataNxThemeImageKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (pearl) objc_setAssociatedObject(photo,&ZNSwitchPearlPhotoKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            return photo;
+        }
+    }
+#endif
+    if (pearl) {
+        UIImage *photo=StrataNxBuiltinArtwork(portrait,NO,controls);
+        return photo; // Keep the existing Pearl portrait/legacy fallback.
+    }
+    if (neon) {
         CGSize size = portrait ? CGSizeMake(923,2000) : CGSizeMake(1792,1008);
         UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
         format.scale = thumbnail ? .32 : (lowMemory ? .75 : 1);
@@ -1629,6 +1648,7 @@ static void StrataNxDrawWidePanel(UIImage *image, CGRect frame, CGRect source) {
     CGContextRestoreGState(ctx);
 }
 static UIColor *StrataNxArtworkBacking(UIImage *image, BOOL dark, UIColor *tint) {
+    if ([objc_getAssociatedObject(image,&ZNSwitchPearlPhotoKey) boolValue]) return StrataNxBuiltShell(NO);
     if (!StrataNxIsThemeImage(image)) return StrataNxBuiltShell(dark);
     CGFloat red = 0, green = 0, blue = 0;
     [tint getRed:&red green:&green blue:&blue alpha:NULL];

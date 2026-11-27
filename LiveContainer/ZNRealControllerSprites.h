@@ -62,7 +62,7 @@
     [self.znSprites removeAllObjects];
     self.znSpriteBounds=self.bounds;
     BOOL wide=StrataNxIsWideSkin(self), photo=StrataNxIsPreparedPhoto(image);
-    BOOL dark=self.darkTheme || StrataNxIsThemeImage(image);
+    BOOL dark=![self.themeIdentifier isEqualToString:@"switch-pearl-photo"] && (self.darkTheme || StrataNxIsThemeImage(image));
     CGSize ref=land?CGSizeMake(1792,1008):CGSizeMake(923,2000);
     const NSInteger roles[]={StrataArtL,StrataArtZL,StrataArtR,StrataArtZR,StrataArtMinus,StrataArtPlus,StrataArtDpad,StrataArtLeftStick,StrataArtRightStick};
     NSArray *labels=@[@"L",@"ZL",@"R",@"ZR",@"−",@"+",@"",@"",@""];

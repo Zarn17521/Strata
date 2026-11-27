@@ -29,13 +29,18 @@ if missing:
 from prepare_nxnative_skins import final_assets
 
 prepared = final_assets(assets)
+from prepare_switch_photos import switch_photos
+switch = switch_photos(assets)
+prepared.update(switch)
 parts = [
     "// Generated at build time. Do not commit this file.\n",
     "#pragma once\n",
     "#define STRATA_NX_PREPARED_PHOTOS 1\n",
     "#define STRATA_NX_BLANK_PHOTOS 1\n",
 ]
-for key, filename in list(inputs.items()) + [(k+'Blank',v+' (button-free)') for k,v in inputs.items()]:
+if switch:
+    parts.append("#define STRATA_NX_SWITCH_PHOTOS 1\n")
+for key, filename in list(inputs.items()) + [(k+'Blank',v+' (button-free)') for k,v in inputs.items()] + [(k,k) for k in switch]:
     binary = prepared[key]
     encoded = base64.b64encode(binary).decode("ascii")
     parts.append(f"static const char StrataSkin_{key}[] =\n")
@@ -60,5 +65,14 @@ parts.extend([
     "        [NSString stringWithUTF8String:data] options:0];\n",
     "}\n",
 ])
+if switch:
+    parts.append("""static NSData *StrataNxPackedSwitchPhotoData(BOOL white, BOOL controls) {
+    const char *data = white
+        ? (controls ? StrataSkin_switchPearlTouch : StrataSkin_switchPearlBlank)
+        : (controls ? StrataSkin_switchNeonTouch : StrataSkin_switchNeonBlank);
+    return [[NSData alloc] initWithBase64EncodedString:
+        [NSString stringWithUTF8String:data] options:0];
+}
+""")
 header.write_text("".join(parts), encoding="ascii")
 print(f"Generated {header.relative_to(root)} ({header.stat().st_size} bytes)")
