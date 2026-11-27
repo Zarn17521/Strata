@@ -437,8 +437,9 @@ struct StrataSwitchboard: View {
                 controller.stop()
                 openManagement()
             } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .semibold))
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 30, weight: .bold))
+                    .symbolRenderingMode(.monochrome)
                     .foregroundStyle(foreground)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
