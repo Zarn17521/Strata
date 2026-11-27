@@ -417,6 +417,28 @@ static CGRect StrataNxDisplayRect(CGRect bounds, UIImage *image, BOOL wide) {
     CGFloat h=w*9.0/16.0;
     return CGRectMake(CGRectGetMinX(bounds),CGRectGetMinY(bounds)+bounds.size.height*.065,w,h);
 }
+// Shared drawing and HUD geometry: only the unused space BELOW the 16:9
+// picture, never inside the live drawable or over the footer buttons.
+static CGRect ZNPerformanceBlackBar(CGRect bounds, UIImage *image, BOOL wide) {
+    if (!image || CGRectIsEmpty(bounds)) return CGRectNull;
+    BOOL land=bounds.size.width>bounds.size.height;
+    if (!land && wide) return CGRectNull; // no reserved bezel in portrait Wide
+    CGRect game=StrataNxDisplayRect(bounds,image,wide);
+    CGRect aperture=StrataNxArtworkAperture(bounds,image);
+    if (CGRectIsNull(game)||CGRectIsEmpty(game)) return CGRectNull;
+    CGFloat top=CGRectGetMaxY(game);
+    CGFloat bottom=CGRectIsNull(aperture)?top:CGRectGetMaxY(aperture);
+    if (land) {
+        bottom=MAX(bottom,top+bounds.size.height*.035);
+        bottom=MIN(bottom,MIN(top+bounds.size.height*.075,CGRectGetMinY(bounds)+bounds.size.height*.84));
+    }
+    if (bottom<=top) return CGRectNull;
+    return CGRectIntersection(bounds,CGRectMake(CGRectGetMinX(game),top,game.size.width,bottom-top));
+}
+static void ZNPaintPerformanceBlackBar(CGRect bounds, UIImage *image, BOOL wide) {
+    CGRect bar=ZNPerformanceBlackBar(bounds,image,wide);
+    if (!CGRectIsNull(bar)&&!CGRectIsEmpty(bar)) { [UIColor.blackColor setFill]; UIRectFill(bar); }
+}
 static int StrataNxPanelForRole(NSInteger role) {
     switch (role) {
         case StrataArtFace: case StrataArtRightStick: case StrataArtR: case StrataArtZR: return 1;
@@ -1804,6 +1826,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
                           previewSize.height/size.height);
         if (!portrait) {
             ZNDrawLandscapeReferenceArtwork(source,art,dark,StrataNxCustomThemeColor(identifier));
+            ZNPaintPerformanceBlackBar(art,source,wide);
             CGContextRestoreGState(ctx);
             return;
         }
@@ -1830,6 +1853,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         if (!StrataNxIsThemeImage(source))
             StrataNxPaintDisplaySurround(aperture,StrataNxFullGameRect(aperture),dark);
         StrataNxDrawZNBrand(art,portrait);
+        ZNPaintPerformanceBlackBar(art,source,wide);
         CGContextRestoreGState(ctx);
     }];
     if (result) [previewCache setObject:result forKey:key
@@ -1894,12 +1918,14 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         [[UIBezierPath bezierPathWithOvalInRect:circle] fill];
         UIImage *symbol=[[UIImage systemImageNamed:@"gearshape.fill"] imageWithTintColor:UIColor.systemBlueColor renderingMode:UIImageRenderingModeAlwaysOriginal];
         [symbol drawInRect:CGRectInset(circle,radius*.34,radius*.34)];
+        ZNPaintPerformanceBlackBar(bounds,artwork,wide);
         CGContextRestoreGState(ctx);
         return;
     }
     if (artwork && !portrait) {
         ZNDrawLandscapeReferenceArtwork(artwork,bounds,self.darkTheme,self.customThemeTint);
         [self drawCustomSkinLayersPortrait:NO artworkFrame:ZNLandscapeReferenceFrame(bounds)];
+        ZNPaintPerformanceBlackBar(bounds,artwork,wide);
         CGContextRestoreGState(ctx);
         return;
     }
@@ -1960,6 +1986,7 @@ UIImage *StrataNxSkinPreviewImageForTheme(BOOL portrait, BOOL dark, NSString *mo
         // repaint white crop patches over the dark shell.
         StrataNxDrawZNBrand(art,portrait);
         [self drawCustomSkinLayersPortrait:portrait artworkFrame:art];
+        ZNPaintPerformanceBlackBar(bounds,image,wide);
         CGContextRestoreGState(ctx);
     } else {
         if (grad) {

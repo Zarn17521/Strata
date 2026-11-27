@@ -86,7 +86,8 @@
         default: break;
     }
     self.detailText=[NSString stringWithFormat:@"Game FPS: %@\nProcess RAM: %@\nAvailable process memory: %@\nThermal state: %@\n\nFPS requires the native FPS counter. Memory is the current process footprint and headroom, not total device free RAM.",fps,ram,available,thermal];
-    self.compactText=[NSString stringWithFormat:@"%@ FPS · %@",fps,ram];
+    NSString *availableCompact=[NSString stringWithFormat:@"%.2f GiB",headroom/1073741824.0];
+    self.compactText=[NSString stringWithFormat:@"%@ FPS · %@ Avail",fps,availableCompact];
     NSString *label=self.gaugeOnly?nil:self.compactText;
     if (!self.gaugeOnly && ![self.currentTitle isEqualToString:label]) [self setTitle:label forState:UIControlStateNormal];
     self.accessibilityValue=self.compactText;
@@ -124,7 +125,7 @@ static void ZNSetHUDMenuFallback(StrataNxSkinView *skin, ZNCompactHUDButton *hud
     gear.menu=[menu menuByReplacingChildren:items];
 }
 static BOOL ZNHUDFrameFits(CGRect candidate, CGRect safe, CGRect picture, StrataNxSkinView *skin, CGRect gearFrame) {
-    if (candidate.size.width<28 || candidate.size.height<20 || !CGRectContainsRect(safe,candidate) ||
+    if (candidate.size.width<28 || candidate.size.height<12 || !CGRectContainsRect(safe,candidate) ||
         CGRectIntersectsRect(candidate,picture) || (!CGRectIsNull(gearFrame) && CGRectIntersectsRect(candidate,gearFrame))) return NO;
     for (CALayer *sprite in skin.znSprites.allValues) {
         if (!sprite.hidden && CGRectIntersectsRect(CGRectInset(sprite.frame,-3,-3),candidate)) return NO;
@@ -177,10 +178,29 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
     CGFloat y=footer.origin.y+gear.y*footer.size.height;
     CGRect safe=CGRectInset(UIEdgeInsetsInsetRect(host.bounds,host.safeAreaInsets),2,2);
     CGFloat height=MIN(24,CGRectGetMaxY(safe)-CGRectGetMaxY(picture)-2);
-    CGRect candidate=CGRectMake(left,MAX(CGRectGetMaxY(picture)+2,y-height*.5),MIN(108,right-left),height);
-    BOOL fits=ZNHUDFrameFits(candidate,safe,picture,skin,gearFrame);
-    BOOL gauge=!fits || candidate.size.width<75;
+    // Prefer a left-aligned readout on the actual unused black screen band.
+    // The transparent background makes this look like part of the display.
+    BOOL inBar=NO;
+    CGRect band=ZNPerformanceBlackBar(skin.bounds,image,StrataNxIsWideSkin(skin));
+    CGRect candidate=CGRectNull;
+    BOOL fits=NO;
+    if (!CGRectIsNull(band)&&!CGRectIsEmpty(band)) {
+        CGRect hostBand=[host convertRect:band fromView:skin];
+        CGRect usable=CGRectIntersection(CGRectInset(hostBand,3,1),safe);
+        if (!CGRectIsNull(usable)&&usable.size.width>=116&&usable.size.height>=12) {
+            CGFloat hh=MIN(22,usable.size.height);
+            candidate=CGRectMake(CGRectGetMinX(usable),CGRectGetMidY(usable)-hh*.5,MIN(155,usable.size.width),hh);
+            fits=ZNHUDFrameFits(candidate,safe,picture,skin,gearFrame);
+            inBar=fits;
+        }
+    }
+    if (!fits) {
+        candidate=CGRectMake(left,MAX(CGRectGetMaxY(picture)+2,y-height*.5),MIN(155,right-left),height);
+        fits=candidate.size.height>=20&&ZNHUDFrameFits(candidate,safe,picture,skin,gearFrame);
+    }
+    BOOL gauge=!fits || candidate.size.width<100;
     if (gauge) {
+        inBar=NO;
         // Try compact gauge next to minus/gear, then scan the footer only.
         CGFloat gy=MAX(CGRectGetMaxY(picture)+2,y-14);
         CGRect options[]={CGRectMake(right-30,gy,30,28),CGRectMake(left,gy,30,28),CGRectMake(CGRectGetMaxX(picture)-33,gy,30,28)};
@@ -196,8 +216,12 @@ static void ZNLayoutCompactPerformanceHUD(UIViewController *root, StrataNxSkinVi
     if (!fits) { [hud removeFromSuperview]; ZNSetHUDMenuFallback(skin,hud,YES); return; }
     ZNSetHUDMenuFallback(skin,nil,NO);
     hud.gaugeOnly=gauge;
+    hud.backgroundColor=inBar?UIColor.clearColor:[UIColor colorWithWhite:.055 alpha:.92];
+    hud.layer.borderWidth=inBar?0:.5;
+    hud.titleLabel.font=[UIFont monospacedDigitSystemFontOfSize:inBar?10:9 weight:UIFontWeightSemibold];
+    hud.contentHorizontalAlignment=inBar?UIControlContentHorizontalAlignmentLeft:UIControlContentHorizontalAlignmentCenter;
     [hud setImage:gauge?[UIImage systemImageNamed:@"gauge.with.dots.needle.67percent"]:nil forState:UIControlStateNormal];
-    [hud setTitle:gauge?nil:(hud.compactText ?: @"— FPS · —") forState:UIControlStateNormal];
+    [hud setTitle:gauge?nil:(hud.compactText ?: @"— FPS · — Avail") forState:UIControlStateNormal];
     hud.frame=candidate;
     if (!hud.superview) [host addSubview:hud];
     [hud znSyncNativeFPSVisibility];
